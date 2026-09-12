@@ -7,7 +7,7 @@ HiveMe is a rust project with multiple applications built on top of MQTT.
 1. HiveMe CLI - A command-line interface for interacting with the MQTT broker.
 2. HiveMe GUI - A graphical user interface for interacting with the MQTT broker.
 
-Both applications stay in the same folder, share the same config.
+Both applications stay in the same folder, share the same config, support Linux, macOS, and Windows.
 
 ## HiveMe CLI
 
@@ -16,7 +16,7 @@ HiveMe CLI is a command-line interface for interacting with the MQTT broker. Its
 ### Usage
 
 - `hmc --help` or `hmc -h` can show the help information for the HiveMe CLI.
-- `hmc <message>` can be used to send a message to the MQTT broker.
+- `hmc <message>` can be used to send a message to the default topic on the MQTT broker.
 - `hmc -t <topic> <message>` can be used to send a message to a topic on the MQTT broker.
 
 ## HiveMe GUI
