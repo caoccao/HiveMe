@@ -47,8 +47,8 @@ hmc --json '{"stage":"deploy","ok":true}'
 ## Setting up
 
 The broker lives in `hmg`. The Settings tab is where a user pastes the URL,
-username, and password from the HiveMQ Cloud console, and it renders those as one line
-of JSON to copy. `hmc --init '<json>'` turns that line back into a config:
+username, and password from the HiveMQ Cloud console. **Copy CLI setup** copies the
+complete command, including the JSON, ready to paste into a terminal and run:
 
 ```sh
 hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret","prefix":"hiveme"}'
@@ -171,8 +171,8 @@ restarts.
 
 ## First run
 
-The intended path is `hmc --init` with the string from the `hmg` Settings tab, which
-creates the config and fills in the broker in one step.
+The intended path is to paste and run the command copied from the `hmg` Settings tab.
+It creates the config and fills in the broker in one step.
 
 Publishing before that has happened writes a config with defaults and a freshly
 generated `device.id`, prints the path on stderr, and exits 3. The user then runs

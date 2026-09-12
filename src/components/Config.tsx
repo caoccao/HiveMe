@@ -229,7 +229,10 @@ export default function Config() {
   const copyCliSetup = async () => {
     try {
       if (!await flushConfig()) return;
-      await writeText(await getBrokerInit());
+      // JSON escapes preserve apostrophes without ending the shell's quoted argument.
+      const setup = (await getBrokerInit()).replace(/['\u2018\u2019\u201a\u201b]/g,
+        (quote) => `\\u${quote.charCodeAt(0).toString(16).padStart(4, '0')}`);
+      await writeText(`hmc --init '${setup}'`);
       notifyInfo(t('settings.cliSetupCopied'));
     } catch (error) {
       notifyError(error);

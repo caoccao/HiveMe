@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+* Copy CLI setup now copies the complete `hmc --init` command with quoted JSON,
+  ready to paste and run. Apostrophes in credentials are preserved with JSON escapes.
 * Made Appearance the first and default settings category. Copied BetterMediaInfo's
   settings spacing and appearance rows, with mode buttons and dropdowns aligned
   on the right.

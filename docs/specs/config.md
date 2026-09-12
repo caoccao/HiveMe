@@ -230,8 +230,9 @@ UTF-8.
 
 A cluster is set up in `hmg`, which is where a user has the HiveMQ Cloud console open
 and can paste a URL and credentials into fields. `hmc` has no such place, so the
-Settings tab renders the same three values as one line of JSON, the user copies it, and
-`hmc --init '<json>'` turns it back into a config.
+Settings tab includes those values as one line of JSON in a complete
+`hmc --init '<json>'` command. The user copies the command, pastes it into a terminal,
+and runs it to create the CLI config.
 
 ```json hiveme:broker-init
 {

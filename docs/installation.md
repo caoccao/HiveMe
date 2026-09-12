@@ -121,8 +121,8 @@ Full rules in [specs/config.md](specs/config.md#location-and-precedence).
    URL copied from the console as it is shown there, the username, and the password.
    The protocol is the list beside the URL and starts on TLS MQTT, so there is no
    `mqtts://` to add to what was copied. Changes save automatically when you pause typing.
-3. Press **Copy CLI setup** in that same section and run
-   `hmc --init '<paste>'`, which is the whole of setting up the CLI.
+3. Press **Copy CLI setup** in that same section, paste the complete command into
+   your terminal, and run it. The command already includes `hmc --init` and the JSON.
 4. Send a test message: `hmc "hello"`. It appears in the GUI.
 
 The [README](../README.md#quick-start) walks through the same path in more detail,

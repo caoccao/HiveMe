@@ -77,7 +77,7 @@ revises them.
 | # | Question | Decision |
 |---|----------|----------|
 | 1 | HiveMQ Cloud plan and the role of the REST API | A Serverless cluster, and only that for now. The applications are MQTT only. Everything a Starter plan or above adds, the REST API included, is designed and reserved but implemented later. |
-| 1a | Where a cluster is configured | In `hmg`. Its Settings tab takes the URL, username, and password, and renders them as a one line setup string. `hmc --init '<json>'` turns that string back into a config, so `hmc` needs nothing typed into it. See [config.md](config.md#the-setup-string). |
+| 1a | Where a cluster is configured | In `hmg`. Its Settings tab takes the URL, username, and password. Copy CLI setup copies the complete `hmc --init '<json>'` command, ready to paste and run. See [config.md](config.md#the-setup-string). |
 | 1b | TLS | Automatic and not configurable for the supported plan. A Serverless cluster chains to a public authority the OS already trusts, so neither application generates, enrolls, or asks about a certificate. `broker.tls` remains for a local test broker. |
 | 2 | Config location and password storage | The per-OS config directory, with `--config` and `HIVEME_CONFIG` overrides. The password is plain text in the file, mode 0600 on Unix, with `passwordRef` reserved for the OS keychain. |
 | 3 | Producers and GUI strictness | Producers are the HiveMe tools plus the user's own scripts. The GUI is lenient: it parses the envelope when valid and otherwise shows the raw payload. |
@@ -215,6 +215,7 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Backend commands and events | [gui.md](gui.md#ipc) | `src-tauri` | 4.3 | done |
 | Messages tab | [gui.md](gui.md#layout) | `src/components` | 4.4 | done |
 | Settings tab opening on Appearance, with immediate changes and automatic saving | [gui.md](gui.md#settings) | `src/components/Config.tsx`, `src/lib/store.tsx` | 4.5 | done |
+| Copy CLI setup command, ready to paste and run | [gui.md](gui.md#copy-cli-setup) | `src/components/Config.tsx` | 4.5 | done |
 | OS notifications | [gui.md](gui.md#notifications) | `src-tauri/notification.rs` | 4.6 | done |
 | Update check and packaging | [app.md](#install) | `src-tauri/update.rs` | 5.1 | done |
 | Documentation and onboarding | [README](../../README.md) | `README.md`, `docs/` | 5.2 | done, except the screenshots |

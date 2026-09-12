@@ -72,11 +72,9 @@ chains to an authority your operating system already trusts.
 
 ### 5. Tell the CLI, without retyping any of it
 
-In that same Broker section, press **Copy CLI setup**, then:
-
-```sh
-hmc --init '<paste>'
-```
+In that same Broker section, press **Copy CLI setup**, paste the copied command into
+your terminal, and run it. The clipboard already contains `hmc --init` and the quoted
+JSON, so there is nothing to add.
 
 That writes the CLI's config, which is the same file the GUI just wrote. The string
 carries the password in plain text, so paste it and do not commit it or leave it in a

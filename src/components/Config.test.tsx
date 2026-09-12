@@ -252,16 +252,30 @@ describe('the settings tab', () => {
     ));
   });
 
-  it('flushes current edits before copying CLI setup', async () => {
+  it('flushes current edits before copying the complete CLI setup command', async () => {
+    const setup = JSON.stringify({ v: 1, url: CONFIG.broker?.url, username: 'hiveme-sam', password: 's3cret-edited', prefix: 'hiveme' });
+    vi.mocked(Service.getBrokerInit).mockResolvedValueOnce(setup);
     await renderBroker();
     await userEvent.type(screen.getByLabelText('Password'), '-edited');
     await userEvent.click(screen.getByRole('button', { name: 'Copy CLI setup' }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith('current setup'));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`hmc --init '${setup}'`));
+    expect(useAppStore.getState().dialogNotification?.title).toBe('CLI setup command copied. Paste it into your terminal and run it.');
     expect(Service.setConfig).toHaveBeenCalledWith(
       expect.objectContaining({ broker: expect.objectContaining({ password: 's3cret-edited' }) })
     );
     expect(vi.mocked(Service.setConfig).mock.invocationCallOrder[0])
       .toBeLessThan(vi.mocked(Service.getBrokerInit).mock.invocationCallOrder[0]);
+  });
+
+  it('keeps quotes and shell characters in credentials inside the JSON argument', async () => {
+    const setup = { v: 1, url: CONFIG.broker?.url, username: "O'Brien’s account", password: "'‘’‚‛\"$HOME`echo`; & | \\ password", prefix: 'hiveme' };
+    vi.mocked(Service.getBrokerInit).mockResolvedValueOnce(JSON.stringify(setup));
+    await renderBroker();
+    await userEvent.click(screen.getByRole('button', { name: 'Copy CLI setup' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const command = vi.mocked(writeText).mock.calls[0][0];
+    expect(command).toMatch(/^hmc --init '[^'‘’‚‛]*'$/);
+    expect(JSON.parse(command.slice("hmc --init '".length, -1))).toEqual(setup);
   });
 
   it('lets a subscription filter be replaced without removing its row', async () => {

@@ -490,20 +490,25 @@ user to configure and nothing for either application to generate. See
 ### Copy CLI setup
 
 `hmg` is where a cluster is set up, so it is also where `hmc` is set up. The Broker
-category has a **Copy CLI setup** button that puts the setup string of
-[config.md](config.md#the-setup-string) on the clipboard, next to the command that
-consumes it:
+category has a **Copy CLI setup** button that puts the complete command on the
+clipboard, with the setup JSON from [config.md](config.md#the-setup-string) already
+included as a single-quoted argument:
 
 ```sh
-hmc --init '<paste>'
+hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret","prefix":"hiveme"}'
 ```
+
+The user pastes the command into a terminal and runs it without adding anything.
+Apostrophes in the JSON use Unicode escapes so they cannot end the shell argument;
+parsing the JSON restores the original credential values.
 
 The button is disabled until the broker fields validate, because a string that cannot
 be applied is worse than no string. The password is in it, in plain text, and the
 button says so.
 
 The backend command is `get_broker_init`; `hiveme-core` renders the string, so the two
-applications cannot disagree about the format. Copy CLI setup first flushes pending
+applications cannot disagree about the format. The frontend wraps that JSON in the
+command before writing it to the clipboard. Copy CLI setup first flushes pending
 settings and waits for the write to finish, so the copied string uses the current
 credentials. A failed save prevents copying an older setup string.
 
