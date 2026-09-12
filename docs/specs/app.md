@@ -76,7 +76,9 @@ revises them.
 
 | # | Question | Decision |
 |---|----------|----------|
-| 1 | HiveMQ Cloud plan and the role of the REST API | A Serverless cluster. The applications are MQTT only. The REST client is designed but implemented in phase 6, gated on an API token, because the REST API needs the Starter plan. |
+| 1 | HiveMQ Cloud plan and the role of the REST API | A Serverless cluster, and only that for now. The applications are MQTT only. Everything a Starter plan or above adds, the REST API included, is designed and reserved but implemented later. |
+| 1a | Where a cluster is configured | In `hmg`. Its Settings tab takes the URL, username, and password, and renders them as a one line setup string. `hmc --init '<json>'` turns that string back into a config, so `hmc` needs nothing typed into it. See [config.md](config.md#the-setup-string). |
+| 1b | TLS | Automatic and not configurable for the supported plan. A Serverless cluster chains to a public authority the OS already trusts, so neither application generates, enrols, or asks about a certificate. `broker.tls` remains for a local test broker. |
 | 2 | Config location and password storage | The per-OS config directory, with `--config` and `HIVEME_CONFIG` overrides. The password is plain text in the file, mode 0600 on Unix, with `passwordRef` reserved for the OS keychain. |
 | 3 | Producers and GUI strictness | Producers are the HiveMe tools plus the user's own scripts. The GUI is lenient: it parses the envelope when valid and otherwise shows the raw payload. |
 | 4 | Encryption key model | A symmetric pre-shared key, AES-256-GCM, HKDF derived, with a key id for rotation. Designed now, implemented in phase 6. |
@@ -154,7 +156,7 @@ HiveMe/
     hiveme-core/                  # config, message, topic, rules, mqtt, storage (feature), cloud (feature, later)
     hmc/                          # CLI binary `hmc`
   xtask/                          # `cargo xtask schema`, `cargo xtask check-spec`
-  schemas/                        # config.schema.json, message.schema.json (generated, committed), README.md
+  schemas/                        # broker-init, config, message .schema.json (generated, committed), README.md
   scripts/
     ts/                           # Deno scripts: deno.json, deno.lock, change-version.ts,
                                   # check-license-headers.ts, check-spec-sync.ts, gen-types.ts
@@ -164,6 +166,7 @@ HiveMe/
     plans/                        # plan-initialization.md
     installation.md, development.md, release_notes.md, screenshots.md, todos.md
   .github/workflows/              # linux_build.yml, macos_build.yml, windows_build.yml
+  .config/                        # gitignored: broker.json, the setup string of a real cluster for the opt-in tests
   CLAUDE.md, AGENTS.md, README.md, LICENSE
 ```
 
@@ -175,9 +178,9 @@ rather than rely on memory.
 | # | Mechanism | Where |
 |---|-----------|-------|
 | 1 | `cargo xtask schema` regenerates the JSON schemas from the Rust types; the test `schemas_are_current` fails when the committed files are stale | `xtask`, `schemas/` |
-| 2 | `cargo xtask check-spec` extracts fenced blocks tagged `json hiveme:config`, `json hiveme:message`, and `json hiveme:message-encrypted` from `docs/specs/*.md`, validates each against its schema, and round trips it through the Rust types | `xtask`, `docs/specs/` |
+| 2 | `cargo xtask check-spec` extracts fenced blocks tagged `json hiveme:broker-init`, `json hiveme:config`, `json hiveme:message`, and `json hiveme:message-encrypted` from `docs/specs/*.md`, validates each against its schema, and round trips it through the Rust types | `xtask`, `docs/specs/` |
 | 3 | Every compatibility rule in [message.md](message.md#compatibility-rules) names a fixture that proves it | `crates/hiveme-core/tests/fixtures/` |
-| 4 | `cli_help_matches_spec` compares clap's help with the `text hiveme:help` block | `crates/hmc`, [cli.md](cli.md) |
+| 4 | `cli_help_matches_spec` compares clap's rendered help with the `text hiveme:help` block, so the block is the help text rather than a description of it | `crates/hmc`, [cli.md](cli.md) |
 | 5 | `pnpm gen:types` regenerates the TypeScript types from the schemas; CI fails when the output is not committed | `scripts/ts/gen-types.ts`, `src/generated/` |
 | 6 | `scripts/ts/check-spec-sync.ts` fails when the config, message, MQTT, CLI, or IPC code changes without a matching change under `docs/specs/`, and when `protocol.rs` changes without `protocol.ts` | `scripts/ts/` |
 | 7 | The status table below records what is built | this file |
@@ -204,7 +207,7 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Notification rule engine | [gui.md](gui.md#notifications) | `hiveme-core::rules` | 1.3 | done |
 | Schema and spec tooling | [app.md](#spec-sync) | `xtask`, `scripts` | 1.4 | done |
 | MQTT client | [hivemq-cloud.md](hivemq-cloud.md#how-hiveme-connects) | `hiveme-core::mqtt` | 2.1 | done |
-| CLI | [cli.md](cli.md) | `crates/hmc` | 3.1 | planned |
+| CLI | [cli.md](cli.md) | `crates/hmc` | 3.1 | done |
 | Tauri scaffold | [gui.md](gui.md#build-and-run) | `src-tauri`, `src` | 4.1 | planned |
 | Message storage | [gui.md](gui.md#storage) | `hiveme-core::storage` | 4.2 | planned |
 | Backend commands and events | [gui.md](gui.md#ipc) | `src-tauri` | 4.3 | planned |
@@ -269,3 +272,11 @@ Recorded so the plan and the tree can be reconciled later.
 9. The integration tests replace the broker container rather than restarting it, on a
    host port the test picks, so that the client reconnects to a broker with no session
    for it and the resubscribe path is what carries the subscription across.
+10. `hmc` uses `thiserror` rather than `anyhow`, against the convention for binaries.
+    Its contract is the exit code table of [cli.md](cli.md#exit-codes), so the set of
+    failures is closed and each one has to name its code; `anyhow` carries no such
+    discriminant. There is one type, `Failure`, and it exists for that mapping alone.
+11. The `hmc` integration tests give the anonymous test broker a username and password
+    anyway. `Config::validate` insists on credentials, `MqttClient::connect` validates,
+    and the HiveMQ CE allow-all extension accepts whatever it is sent, so the config a
+    test writes is the shape a real one has.

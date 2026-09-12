@@ -26,6 +26,7 @@
 //! * a write merges into the document that was read, so a key this build does not
 //!   know survives a round trip.
 
+mod init;
 mod migrate;
 mod paths;
 mod url;
@@ -39,6 +40,7 @@ use serde_json::Value;
 use crate::error::{Error, Result};
 use crate::message::Level;
 
+pub use init::{BROKER_INIT_VERSION, BrokerInit};
 pub use migrate::{CONFIG_VERSION, MigrationOutcome};
 pub use paths::{
   APP_NAME, CONFIG_FILE_NAME, CONFIG_PATH_VARIABLE, DATABASE_FILE_NAME, Os, PathEnv, config_dir_with, config_path,
@@ -1062,6 +1064,11 @@ fn write_atomically(path: &Path, text: &str) -> Result<()> {
 }
 
 /// The JSON schema of the config, as `cargo xtask schema` writes it.
+/// The JSON schema of the setup string, written to `schemas/broker-init.schema.json`.
+pub fn broker_init_json_schema() -> Value {
+  init::json_schema()
+}
+
 pub fn json_schema() -> Value {
   let mut schema = serde_json::to_value(schemars::schema_for!(Config)).expect("the config schema serialises");
   if let Some(object) = schema.as_object_mut() {

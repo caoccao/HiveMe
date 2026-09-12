@@ -21,3 +21,17 @@
   acknowledged them, subscriptions that report the reason the broker gave, a connection
   state the GUI status bar will render, and, for the GUI, reconnection with backoff and
   jitter that sends the subscriptions again when the broker has forgotten the session.
+* Added `hmc`, the command line publisher: a message from an argument or from stdin, a
+  topic relative to the configured prefix or absolute, `--json` for a payload HiveMe
+  does not shape, a level inferred from the notification rule that matches the topic,
+  and an exit code per kind of failure so a script can tell a wrong password from an
+  unacknowledged message. A first run with no config writes one and says where.
+* Made `hmg` the one place a HiveMQ Cloud cluster is set up. Its Settings tab will show
+  a one line setup string; `hmc --init '<json>'` turns that string into a config, so
+  there is no URL, username, or password to retype into the CLI. The format is
+  generated into `schemas/broker-init.schema.json` from the same Rust type both
+  applications use.
+* Said plainly that only Serverless clusters are supported for now, and that TLS is
+  automatic for them: the cluster certificate chains to a public authority the
+  operating system already trusts, so neither application generates, enrols, or asks
+  about a certificate.

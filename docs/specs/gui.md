@@ -210,6 +210,7 @@ schemas into `src/generated/` and re-exported from `protocol.ts`.
 | `get_config` | The effective config |
 | `set_config` | Validate, persist, and reconnect when broker or subscription fields changed |
 | `get_status` | Connection state snapshot |
+| `get_broker_init` | The setup string for `hmc --init`, from the saved broker settings |
 | `connect`, `disconnect` | Manual connection control |
 | `list_topics` | The topic tree with unread counts |
 | `get_messages` | One page of history for a topic: `(topic, before, limit)` |
@@ -236,7 +237,7 @@ The exact request and response JSON for every command is added in step 4.3.
 
 | Section | Fields |
 |---------|--------|
-| Broker | URL, username, password with a visibility toggle, TLS verification, CA file picker, keep alive, session expiry, connect timeout, reconnect delays |
+| Broker | URL, username, password with a visibility toggle, keep alive, session expiry, connect timeout, reconnect delays, and **Copy CLI setup** |
 | Topics | Prefix, default topic, subscriptions list editor |
 | Notifications | Enabled, notify own messages, rules table with add, edit, and delete |
 | Appearance | Display mode toggle, theme select, language select |
@@ -246,6 +247,29 @@ The exact request and response JSON for every command is added in step 4.3.
 
 Saving calls `set_config`. Validation errors surface in the snackbar. The backend
 reconnects when broker or subscription fields changed.
+
+TLS has no fields. A HiveMQ Cloud cluster presents a certificate that chains to a
+public authority, which the operating system already trusts, so there is nothing for a
+user to configure and nothing for either application to generate. See
+[hivemq-cloud.md](hivemq-cloud.md#how-hiveme-connects).
+
+### Copy CLI setup
+
+`hmg` is where a cluster is set up, so it is also where `hmc` is set up. The Broker
+section has a **Copy CLI setup** button that puts the setup string of
+[config.md](config.md#the-setup-string) on the clipboard, next to the command that
+consumes it:
+
+```sh
+hmc --init '<paste>'
+```
+
+The button is disabled until the broker fields validate, because a string that cannot
+be applied is worse than no string. The password is in it, in plain text, and the
+button says so.
+
+The backend command is `get_broker_init`; `hiveme-core` renders the string, so the two
+applications cannot disagree about the format.
 
 ## Window
 

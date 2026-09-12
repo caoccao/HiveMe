@@ -51,7 +51,25 @@ pnpm tauri build                                # from step 4.1
 `pnpm test` runs `vitest run --passWithNoTests`; the flag comes out once the first
 frontend test lands in step 4.3.
 
+## Running `hmc`
+
+A cluster is set up in `hmg`, which shows a one line setup string to paste into `hmc`:
+
+```sh
+cargo run -p hmc -- --config ./HiveMe.json --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret","prefix":"hiveme"}'
+cargo run -p hmc -- --config ./HiveMe.json "hello"
+echo hello | cargo run -p hmc -- --config ./HiveMe.json
+cargo run -p hmc -- --help
+```
+
+Until `hmg` exists, write the string by hand; the format is in
+[specs/config.md](specs/config.md#the-setup-string). Publishing before any `--init`
+writes a default config and exits 3. Full reference in [specs/cli.md](specs/cli.md).
+
 ## Logging
+
+`hmc` prints warnings to stderr and nothing to stdout. `--verbose` adds the connection
+details, and `RUST_LOG` overrides both.
 
 ```sh
 RUST_LOG=debug cargo run -p hmc -- "hello"      # Unix
@@ -59,6 +77,9 @@ set RUST_LOG=debug                              # Windows
 ```
 
 ## Layout notes
+
+* `.config/` is a gitignored scratch folder for local broker details. Nothing in a
+  build reads it except the opt-in cluster tests above.
 
 * The Cargo target directory is the repository root `target/`, because `src-tauri` is
   a workspace member rather than a standalone package.
@@ -89,7 +110,8 @@ through `testcontainers`. The image takes a few seconds to come up, so the whole
 runs in well under a minute.
 
 ```sh
-cargo test -p hiveme-core --test mqtt
+cargo test -p hiveme-core --test mqtt           # the client
+cargo test -p hmc --test publish                # hmc end to end
 ```
 
 Each test says why it did nothing and passes when Docker is unavailable, or when
@@ -97,18 +119,31 @@ Each test says why it did nothing and passes when Docker is unavailable, or when
 workflow has Docker and runs them.
 
 The container speaks plain MQTT, so nothing there exercises the TLS handshake. To test
-against a real HiveMQ Cloud cluster, which does, set all three of:
+against a real HiveMQ Cloud cluster, which does, put its setup string in
+`.config/broker.json`:
 
 ```sh
-export HIVEME_TEST_BROKER_URL=mqtts://<id>.s1.eu.hivemq.cloud:8883
-export HIVEME_TEST_USERNAME=<username>
-export HIVEME_TEST_PASSWORD=<password>
+mkdir -p .config
+cat > .config/broker.json <<'JSON'
+{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret"}
+JSON
+
 cargo test -p hiveme-core --test mqtt -- a_real_cloud_cluster_accepts_a_message
+cargo test -p hmc --test publish -- a_real_cloud_cluster_accepts_a_message_from_hmc
 ```
 
-That test publishes under `hiveme-test/<device>` rather than the usual prefix, so it
-cannot disturb the messages a real installation keeps on the same cluster. It is opt in
-and never runs in CI.
+`.config/` is gitignored, and `broker.json` is the same string the `hmg` Settings tab
+shows and `hmc --init` reads, so there is one format to know. It carries the broker
+password in plain text; treat the file as a credential.
+
+The `hmc` test runs the real `hmc --init` with that string and then publishes through
+it, which is the walkthrough of [specs/cli.md](specs/cli.md) end to end over TLS.
+
+Both tests publish under `hiveme-test/<device>` rather than the configured prefix, so
+they cannot disturb the messages a real installation keeps on the same cluster. Both
+are opt in and never run in CI. `HIVEME_TEST_BROKER_URL`, `HIVEME_TEST_USERNAME`, and
+`HIVEME_TEST_PASSWORD` still work for the `hiveme-core` test, so a CI secret needs no
+file.
 
 ## Releasing
 

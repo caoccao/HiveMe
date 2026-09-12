@@ -1,0 +1,37 @@
+{
+  "$id": "https://github.com/caoccao/HiveMe/schemas/broker-init.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Everything `hmc` needs to reach the cluster `hmg` is already talking to.",
+  "properties": {
+    "password": {
+      "default": "",
+      "description": "Plain text, because the CONNECT packet needs it in plain text.",
+      "type": "string"
+    },
+    "prefix": {
+      "description": "The topic namespace, carried so that `hmc` publishes where `hmg` is listening.\n\nAbsent means the receiving config keeps the prefix it already has, which is what\na string written by a build that predates this field looks like.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "url": {
+      "default": "",
+      "description": "`mqtts://<cluster>.s1.eu.hivemq.cloud:8883` for a HiveMQ Cloud cluster.",
+      "type": "string"
+    },
+    "username": {
+      "default": "",
+      "type": "string"
+    },
+    "v": {
+      "default": 1,
+      "description": "The format version. See [`BROKER_INIT_VERSION`].",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "title": "HiveMe broker setup string",
+  "type": "object"
+}

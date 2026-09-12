@@ -49,6 +49,9 @@ pub enum Error {
   #[error("the broker password is not available: {0}")]
   PasswordUnavailable(String),
 
+  #[error("the setup string is not usable: {0}")]
+  BrokerInit(String),
+
   #[error("TLS cannot be set up: {0}")]
   Tls(String),
 
@@ -93,6 +96,7 @@ impl Error {
         | Self::ConfigMigrate { .. }
         | Self::ConfigInvalid(_)
         | Self::PasswordUnavailable(_)
+        | Self::BrokerInit(_)
         // A trust store that cannot be assembled is a problem with broker.tls, not
         // with the network, so it is reported as one.
         | Self::Tls(_)

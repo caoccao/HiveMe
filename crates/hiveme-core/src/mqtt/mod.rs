@@ -787,7 +787,11 @@ async fn run(
   };
 
   match reason.as_deref() {
-    Some(reason) => log::warn!("the broker connection ended: {reason}"),
+    // A role that reconnects is the only one for which this log line is the sole
+    // record: elsewhere the same reason is handed back to the caller as an error, and
+    // `hmc` would otherwise print it twice on stderr.
+    Some(reason) if role.reconnects() => log::warn!("the broker connection ended: {reason}"),
+    Some(reason) => log::debug!("the broker connection ended: {reason}"),
     None => log::debug!("the broker connection was closed on request"),
   }
   inner.set_disconnected(reason.clone());
@@ -956,6 +960,8 @@ fn describe(error: &ConnectionError) -> String {
     ConnectionError::Tls(source) => format!(
       "the TLS handshake failed ({source}), check broker.tls.caFile and that the host is what the certificate names"
     ),
+    // The wrapper adds nothing a user wants to read in front of "connection refused".
+    ConnectionError::Io(source) => source.to_string(),
     other => other.to_string(),
   }
 }
@@ -1153,6 +1159,12 @@ mod tests {
     assert!(!is_terminal(&ConnectionError::Io(std::io::Error::from(
       std::io::ErrorKind::ConnectionReset
     ))));
+  }
+
+  #[test]
+  fn an_io_failure_is_reported_without_the_wrapper_around_it() {
+    let described = describe(&ConnectionError::Io(std::io::Error::other("connection refused")));
+    assert_eq!(described, "connection refused");
   }
 
   #[test]

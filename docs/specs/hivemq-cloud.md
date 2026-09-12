@@ -12,6 +12,24 @@ Sources:
 - [REST API](https://docs.hivemq.com/hivemq-cloud/rest-api.html)
 - [REST API specification](https://docs.hivemq.com/hivemq-cloud/rest-api/specification/) (`public-saas-openapi.yml`, OpenAPI 3.0.3)
 
+## Supported plans
+
+**Serverless only, for now.** Everything below that needs a Starter plan or above is
+designed and reserved, not implemented: the REST API, role based access, client
+certificates, and custom domains. They arrive in a later phase, and the config fields
+they need are already in [config.md](config.md) so that adding them will not bump the
+config `version`.
+
+What that means in practice:
+
+- Authentication is a username and password in the CONNECT packet. There is no
+  anonymous access and no client certificate on this plan, so there is nothing for
+  `hmc` or `hmg` to generate or to enrol.
+- TLS is server side only, and the certificate chains to a public authority. Neither
+  application asks a user anything about certificates.
+- The cluster is set up in the `hmg` Settings tab, which also renders the setup string
+  `hmc --init` reads. See [config.md](config.md#the-setup-string).
+
 ## Connectivity
 
 - HiveMQ Cloud accepts TLS connections only. MQTT over TLS on port 8883, MQTT over
@@ -74,12 +92,19 @@ identifier and `hmc` runs overlap with each other and with a running `hmg`.
 | `wss` | 8884 | MQTT over WebSocket with TLS, path `/mqtt`. Needs the `websocket` feature of `hiveme-core`, which is off by default. |
 | `ws` | 8083 | Plain WebSocket, same feature. |
 
-The trust store is the operating system's, loaded with
-[rustls-native-certs](https://crates.io/crates/rustls-native-certs). That is enough for
-HiveMQ Cloud on its own, because the cluster certificate chains to a public CA.
-`broker.tls.caFile` adds PEM certificates to those roots rather than replacing them,
-so a configuration for a local broker with a private CA still reaches the cloud.
-rustls sends the host of `broker.url` as the SNI name, which HiveMQ Cloud requires.
+TLS needs no configuration and nothing is generated. The trust store is the operating
+system's, loaded with
+[rustls-native-certs](https://crates.io/crates/rustls-native-certs), and that is enough
+for HiveMQ Cloud on its own, because the cluster certificate chains to a public
+authority every OS already trusts. rustls sends the host of `broker.url` as the SNI
+name, which HiveMQ Cloud requires. A user never sees a certificate field, in `hmg` or
+in the setup string `hmc` reads.
+
+`broker.tls.caFile` and `broker.tls.verifyServer` exist for the case the supported plan
+does not cover: a local test broker with a private CA. Neither is needed for, or
+applies to, a Serverless cluster. `caFile` adds PEM certificates to the native roots
+rather than replacing them, so a config written for a local broker still reaches the
+cloud.
 
 `broker.tls.verifyServer = false` skips the check that the certificate belongs to the
 host. It is honoured only for hosts outside `hivemq.cloud`: on a cloud host the
@@ -129,6 +154,13 @@ again. A caller therefore subscribes once rather than on every reconnect.
   `application/json`, payload format indicator 1, the `hiveme-v` user property, and the
   message expiry interval when the envelope has a `ttlSecs`. See
   [message.md](message.md).
+
+### Logging
+
+Everything goes through the `log` crate, so the host application decides where it
+lands. A connection that ends is logged as a warning only for a role that reconnects,
+because that log line is then the only record; for `hmc` the same reason is handed back
+as an error and printing it twice would be noise.
 
 ### Receiving
 

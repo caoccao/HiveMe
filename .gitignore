@@ -26,6 +26,15 @@ vite.config.ts.timestamp-*
 /src-tauri/gen/schemas
 
 # ------------------------------------------------------------------------------
+# Local broker details for testing
+#
+# .config/broker.json holds the setup string of a real HiveMQ Cloud cluster, which the
+# opt-in integration tests read. It is credentials, so it never leaves the machine.
+# See docs/development.md, "Testing against a broker".
+
+/.config/
+
+# ------------------------------------------------------------------------------
 # Editors and agents
 
 .DS_Store

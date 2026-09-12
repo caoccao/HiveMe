@@ -226,6 +226,45 @@ UTF-8.
 - The schema carries `$id` `https://hiveme.dev/schemas/config/v1.json`. That URL is an
   identifier, not a location.
 
+## The setup string
+
+A cluster is set up in `hmg`, which is where a user has the HiveMQ Cloud console open
+and can paste a URL and credentials into fields. `hmc` has no such place, so the
+Settings tab renders the same three values as one line of JSON, the user copies it, and
+`hmc --init '<json>'` turns it back into a config.
+
+```json hiveme:broker-init
+{
+  "v": 1,
+  "url": "mqtts://abc123.s1.eu.hivemq.cloud:8883",
+  "username": "hiveme-sam",
+  "password": "s3cret",
+  "prefix": "hiveme"
+}
+```
+
+`hmg` writes it on one line; the example is indented only to be read here.
+
+| Field | Config path | Notes |
+|-------|-------------|-------|
+| `v` | — | The format version, 1. A reader refuses a version it does not know rather than guessing at fields. |
+| `url` | `broker.url` | Must be `mqtts` for a `hivemq.cloud` host, which accepts TLS only. |
+| `username` | `broker.username` | Required. |
+| `password` | `broker.password` | Required, plain text, because the CONNECT packet needs it in plain text. |
+| `prefix` | `topics.prefix` | Optional. Carried so that `hmc` publishes where `hmg` is listening. Absent leaves the receiving config's prefix alone. |
+
+The schema is generated from the Rust type into `schemas/broker-init.schema.json`, and
+the example above is validated against it by `cargo xtask check-spec`.
+
+Applying a string touches only those fields. A `hmc` that has been in use keeps its
+`device.id`, its rules, and any key a newer build wrote, because the config writer
+merges into the document it read. Reading one tolerates surrounding whitespace and a
+single pair of wrapping quotes, since the string crosses a clipboard and a shell.
+
+The string is a credential. It carries the broker password in plain text, so it should
+be pasted rather than committed, and `.config/` is gitignored for exactly that reason.
+See [cli.md](cli.md#setting-up) and [development.md](../development.md#testing-against-a-broker).
+
 ## Secrets
 
 - Phase 1 stores `broker.password` in plain text in the config file. The file is
@@ -240,4 +279,5 @@ UTF-8.
   same `*Ref` mechanism for `encryption.keys[].secret` and `cloudApi.token`.
 - Logs never print `broker.password`, `encryption.keys[].secret`, or
   `cloudApi.token`. The Settings tab does display the password, because the user
-  edits it there.
+  edits it there, and so does the setup string, because `hmc` needs it.
+- A setup string is redacted before it reaches a log, the same way a config is.

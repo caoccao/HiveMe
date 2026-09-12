@@ -30,7 +30,7 @@
 
 use std::time::Duration;
 
-use hiveme_core::config::Config;
+use hiveme_core::config::{BrokerInit, Config};
 use hiveme_core::message::{Level, Message, Parsed, Sender};
 use hiveme_core::mqtt::{IncomingMessage, MqttClient, Qos, Role, State};
 use testcontainers::core::{IntoContainerPort, WaitFor};
@@ -568,30 +568,52 @@ fn a_connection_to_a_port_nothing_answers_on_fails_rather_than_hangs() {
   });
 }
 
+/// The setup string of a real cluster, when the developer has left one for the tests.
+///
+/// `.config/broker.json` holds the same string the `hmg` Settings tab shows and
+/// `hmc --init` reads, so there is one format to know rather than three environment
+/// variables to remember. The folder is gitignored, because the string is a credential.
+/// The variables still work, so a CI secret needs no file.
+fn cloud_setup() -> Option<BrokerInit> {
+  let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.config/broker.json");
+  if let Ok(text) = std::fs::read_to_string(&path) {
+    return match BrokerInit::parse(&text) {
+      Ok(setup) => Some(setup),
+      Err(error) => {
+        eprintln!("{} is not a usable setup string: {error}", path.display());
+        None
+      }
+    };
+  }
+  Some(BrokerInit {
+    url: std::env::var("HIVEME_TEST_BROKER_URL").ok()?,
+    username: std::env::var("HIVEME_TEST_USERNAME").ok()?,
+    password: std::env::var("HIVEME_TEST_PASSWORD").ok()?,
+    ..BrokerInit::default()
+  })
+}
+
 /// The only test that exercises TLS against a public certificate chain.
 ///
-/// It runs when `HIVEME_TEST_BROKER_URL`, `HIVEME_TEST_USERNAME`, and
-/// `HIVEME_TEST_PASSWORD` name a real cluster, and is skipped otherwise. The container
-/// the other tests use has no TLS, so without this the handshake is covered only by the
-/// unit tests of the rustls configuration.
+/// It runs when `.config/broker.json` holds the setup string of a real cluster, or when
+/// `HIVEME_TEST_BROKER_URL`, `HIVEME_TEST_USERNAME`, and `HIVEME_TEST_PASSWORD` name
+/// one, and is skipped otherwise. The container the other tests use has no TLS, so
+/// without this the handshake is covered only by the unit tests of the rustls
+/// configuration.
 #[test]
 fn a_real_cloud_cluster_accepts_a_message() {
-  let url = std::env::var("HIVEME_TEST_BROKER_URL").ok();
-  let username = std::env::var("HIVEME_TEST_USERNAME").ok();
-  let password = std::env::var("HIVEME_TEST_PASSWORD").ok();
-  let (Some(url), Some(username), Some(password)) = (url, username, password) else {
+  let Some(setup) = cloud_setup() else {
     eprintln!(
-      "skipping a_real_cloud_cluster_accepts_a_message: set HIVEME_TEST_BROKER_URL, \
-       HIVEME_TEST_USERNAME, and HIVEME_TEST_PASSWORD to run it"
+      "skipping a_real_cloud_cluster_accepts_a_message: put the setup string from the hmg \
+       Settings tab in .config/broker.json, or set HIVEME_TEST_BROKER_URL, \
+       HIVEME_TEST_USERNAME, and HIVEME_TEST_PASSWORD"
     );
     return;
   };
 
   runtime().block_on(async move {
     let mut config = Config::new_for_this_device();
-    config.broker.url = url;
-    config.broker.username = username;
-    config.broker.password = password;
+    setup.apply_to(&mut config);
     // A namespace of its own, so a test run cannot disturb the messages a real
     // installation keeps on the same cluster.
     config.topics.prefix = format!("hiveme-test/{}", &config.device.id[..8]);

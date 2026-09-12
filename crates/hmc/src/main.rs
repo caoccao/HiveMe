@@ -17,17 +17,61 @@
 
 //! HiveMe CLI.
 //!
-//! The command line interface is specified in `docs/specs/cli.md` and implemented in
-//! step 3.1 of `docs/plans/plan-initialization.md`. This entry point exists so that
-//! the workspace builds and the release pipeline can be exercised from phase 0.
+//! `hmc` publishes one message to the broker and exits. The reference is
+//! `docs/specs/cli.md`; this file is only the entry point, so that what a script sees
+//! (stdout, stderr, and the exit code) is decided in one place.
+//!
+//! There is no `windows_subsystem` attribute on purpose: `hmc` is a console
+//! application on every platform and must never open a window.
+
+mod cli;
+mod failure;
+mod run;
 
 use std::process::ExitCode;
 
+use clap::Parser;
+
+use crate::cli::Cli;
+use crate::failure::Failure;
+
 fn main() -> ExitCode {
-  eprintln!(
-    "hmc: not implemented yet: HiveMe {} has the shared core but not the command line \
-     interface, see docs/specs/cli.md and step 3.1 of docs/plans/plan-initialization.md",
-    hiveme_core::VERSION
-  );
-  ExitCode::from(1)
+  // clap prints its own usage errors and exits 2, which is the code the specification
+  // gives them, so a parse failure never reaches the mapping below.
+  let cli = Cli::parse();
+  init_logging(cli.verbose);
+
+  match runtime().and_then(|runtime| runtime.block_on(run::run(cli))) {
+    Ok(()) => ExitCode::SUCCESS,
+    Err(failure) => {
+      eprintln!("{}", failure.line());
+      ExitCode::from(failure.code())
+    }
+  }
+}
+
+/// The tokio runtime the MQTT client runs on.
+///
+/// A single thread is enough: one publish, one acknowledgement, and the event loop that
+/// carries them. It also starts faster, which matters for something a script runs in a
+/// loop.
+fn runtime() -> Result<tokio::runtime::Runtime, Failure> {
+  tokio::runtime::Builder::new_current_thread()
+    .enable_all()
+    .build()
+    .map_err(|source| Failure::Unexpected(format!("cannot start the async runtime: {source}")))
+}
+
+/// Sends the `log` output to stderr, never to stdout.
+///
+/// Without `--verbose` only warnings are shown, so a successful run writes nothing at
+/// all, and the one warning a user is likely to meet, an unencrypted broker URL, still
+/// reaches them. `RUST_LOG` overrides both.
+fn init_logging(verbose: bool) {
+  let default = if verbose { "debug" } else { "warn" };
+  env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default))
+    .target(env_logger::Target::Stderr)
+    .format_timestamp(None)
+    .format_target(false)
+    .init();
 }

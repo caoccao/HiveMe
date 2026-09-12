@@ -44,6 +44,7 @@ pub struct Example {
 /// The schema that validates a tag.
 pub fn schema_for_tag(tag: &str) -> Option<&'static str> {
   match tag {
+    "broker-init" => Some("broker-init.schema.json"),
     "config" => Some("config.schema.json"),
     "message" | "message-encrypted" => Some("message.schema.json"),
     _ => None,
@@ -174,6 +175,7 @@ fn round_trip(tag: &str, value: &serde_json::Value) -> Result<(), String> {
   }
 
   match tag {
+    "broker-init" => compare::<hiveme_core::config::BrokerInit>(value, "broker setup string"),
     "config" => compare::<hiveme_core::config::Config>(value, "config"),
     "message" | "message-encrypted" => compare::<hiveme_core::message::Message>(value, "message"),
     _ => Ok(()),

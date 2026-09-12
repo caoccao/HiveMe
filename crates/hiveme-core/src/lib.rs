@@ -38,7 +38,7 @@ pub mod mqtt;
 pub mod rules;
 pub mod topic;
 
-pub use config::{Config, ConfigFile};
+pub use config::{BrokerInit, Config, ConfigFile};
 pub use error::{Error, Result};
 pub use message::{Level, Message, Parsed, Payload, Sender};
 pub use mqtt::{MqttClient, Qos, Role, State, Status};
@@ -55,6 +55,7 @@ pub const APP_NAME: &str = config::APP_NAME;
 /// there is one definition of what the committed schemas should contain.
 pub fn json_schemas() -> Vec<(&'static str, serde_json::Value)> {
   vec![
+    ("broker-init.schema.json", config::broker_init_json_schema()),
     ("config.schema.json", config::json_schema()),
     ("message.schema.json", message::json_schema()),
   ]
@@ -76,9 +77,9 @@ mod tests {
   }
 
   #[test]
-  fn both_schemas_are_generated() {
+  fn every_schema_is_generated() {
     let schemas = json_schemas();
-    assert_eq!(schemas.len(), 2);
+    assert_eq!(schemas.len(), 3);
     for (name, schema) in schemas {
       assert!(schema.get("$id").is_some(), "{name} has no $id");
       assert_eq!(schema["type"], "object", "{name} is not an object schema");
