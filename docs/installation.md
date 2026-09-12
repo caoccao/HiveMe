@@ -1,8 +1,8 @@
 # Installation
 
-HiveMe ships two programs from one repository: `hmg`, the desktop application, and
-`hmc`, the command line publisher. They share a config file, and every installer
-carries both, so setting the cluster up once is enough for both.
+HiveMe, short for HiveMQ Messager, ships two programs from one repository: `hmg`, the
+desktop application, and `hmc`, the command line publisher. They share a config file,
+and every installer carries both, so setting the cluster up once is enough for both.
 
 Download the latest release from the
 [Releases](https://github.com/caoccao/HiveMe/releases) page.

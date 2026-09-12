@@ -1,7 +1,7 @@
 # App
 
-HiveMe is a Rust project with two applications built on top of MQTT, sharing one
-config file and one message format.
+HiveMe, short for HiveMQ Messager, is a Rust project with two applications built on
+top of MQTT, sharing one config file and one message format.
 
 1. **HiveMe CLI** (`hmc`) sends a message to the broker from a shell or a script.
 2. **HiveMe GUI** (`hmg`) watches the broker, keeps a local history, and raises OS

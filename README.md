@@ -2,8 +2,8 @@
 
 [![Linux Build](https://github.com/caoccao/HiveMe/actions/workflows/linux_build.yml/badge.svg)](https://github.com/caoccao/HiveMe/actions/workflows/linux_build.yml) [![MacOS Build](https://github.com/caoccao/HiveMe/actions/workflows/macos_build.yml/badge.svg)](https://github.com/caoccao/HiveMe/actions/workflows/macos_build.yml) [![Windows Build](https://github.com/caoccao/HiveMe/actions/workflows/windows_build.yml/badge.svg)](https://github.com/caoccao/HiveMe/actions/workflows/windows_build.yml)
 
-HiveMe is a pair of desktop applications for your own MQTT topics, built on
-[HiveMQ Cloud](https://www.hivemq.com/).
+HiveMe, short for HiveMQ Messager, is a pair of desktop applications for your own
+MQTT topics, built on [HiveMQ Cloud](https://www.hivemq.com/).
 
 * **`hmc`**, a CLI that sends a message from a shell or a script.
 * **`hmg`**, a GUI that watches your topics, keeps a local history, and raises OS
