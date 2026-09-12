@@ -18,7 +18,7 @@
 //! Shared core of the HiveMe applications.
 //!
 //! `hmc` and `hmg` both build on this crate so that the config file, the message
-//! format, the topic rules, and the MQTT behaviour cannot drift apart.
+//! format, the topic rules, and the MQTT behavior cannot drift apart.
 //!
 //! | Module    | Phase | Specification                |
 //! |-----------|-------|------------------------------|

@@ -21,6 +21,7 @@ import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
 import { useTranslation } from 'react-i18next';
 import type { TopicNode } from '../lib/protocol';
+import { formatNumber } from '../lib/format';
 import { useAppStore } from '../lib/store';
 
 /**
@@ -95,7 +96,8 @@ export default function TopicTree() {
           </Typography>
           {node.unread > 0 && (
             <Badge
-              badgeContent={node.unread}
+              badgeContent={formatNumber(Math.min(node.unread, 999)) + (node.unread > 999 ? '+' : '')}
+              aria-label={t('topics.unread', { count: node.unread })}
               color="primary"
               max={999}
               sx={{ mr: 1.5, '& .MuiBadge-badge': { position: 'static', transform: 'none' } }}
@@ -125,6 +127,7 @@ export default function TopicTree() {
           </Typography>
         ) : (
           <SimpleTreeView
+            aria-label={t('settings.topics')}
             expandedItems={expanded}
             selectedItems={selectedTopic ?? null}
             onExpandedItemsChange={(_, items) => {

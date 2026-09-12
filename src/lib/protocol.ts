@@ -156,7 +156,7 @@ export enum Level {
 
 export const LEVELS: Level[] = [Level.Debug, Level.Info, Level.Warn, Level.Error];
 
-/** Which colour scheme the GUI follows. */
+/** Which color scheme the GUI follows. */
 export enum DisplayMode {
   Auto = 'Auto',
   Light = 'Light',
@@ -198,8 +198,31 @@ export enum UpdateCheckInterval {
 
 /** The languages that ship today. */
 export enum Language {
+  De = 'de',
   EnUS = 'en-US',
+  Es = 'es',
+  Fr = 'fr',
+  It = 'it',
+  Ja = 'ja',
+  ZhCN = 'zh-CN',
+  ZhHK = 'zh-HK',
+  ZhTW = 'zh-TW',
 }
+
+export const LANGUAGES: Language[] = Object.values(Language);
+
+/** Autonyms keep the language picker readable regardless of the active locale. */
+export const LANGUAGE_LABELS: Record<Language, string> = {
+  [Language.De]: 'Deutsch',
+  [Language.EnUS]: 'English (US)',
+  [Language.Es]: 'Español',
+  [Language.Fr]: 'Français',
+  [Language.It]: 'Italiano',
+  [Language.Ja]: '日本語',
+  [Language.ZhCN]: '简体中文',
+  [Language.ZhHK]: '繁體中文 (香港)',
+  [Language.ZhTW]: '繁體中文 (臺灣)',
+};
 
 /** Whether a closable tab is absent, being opened, or already open. */
 export enum ControlStatus {

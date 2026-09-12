@@ -43,7 +43,7 @@ tauri-plugin-dialog = "2.7"
 tauri-plugin-notification = "2.3"
 tauri-plugin-opener = "2"
 # Windows only: the toast API, and the registry key that gives it an application
-# identity so the notification is labelled HiveMe rather than PowerShell.
+# identity so the notification is labeled HiveMe rather than PowerShell.
 tauri-winrt-notification = "0.7"
 windows-registry = "0.6"
 tempfile = "3.27"

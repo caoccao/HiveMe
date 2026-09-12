@@ -62,7 +62,7 @@ jobs:
     - name: Type check the Deno scripts
       run: deno task -c scripts/ts/deno.json check
 
-    - name: Check licence headers
+    - name: Check license headers
       run: deno task -c scripts/ts/deno.json check-license-headers
 
     - name: Check specification sync

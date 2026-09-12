@@ -34,7 +34,7 @@ import { useTranslation } from 'react-i18next';
 import * as Protocol from '../lib/protocol';
 import { useAppStore } from '../lib/store';
 
-/** Enter sends; Shift+Enter is a newline. Exported so the behaviour can be tested. */
+/** Enter sends; Shift+Enter is a newline. Exported so the behavior can be tested. */
 export function isSendKey(event: { key: string; shiftKey: boolean; ctrlKey: boolean; altKey: boolean }): boolean {
   return event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey;
 }
@@ -108,7 +108,9 @@ export default function Composer() {
               maxRows={6}
               fullWidth
               size="small"
-              slotProps={{ htmlInput: { 'aria-label': t('composer.placeholder') } }}
+              slotProps={{
+                htmlInput: { 'aria-label': asJson ? t('composer.placeholderJson') : t('composer.placeholder') },
+              }}
             />
           </Box>
         </Tooltip>

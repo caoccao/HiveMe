@@ -24,7 +24,7 @@ What that means in practice:
 
 - Authentication is a username and password in the CONNECT packet. There is no
   anonymous access and no client certificate on this plan, so there is nothing for
-  `hmc` or `hmg` to generate or to enrol.
+  `hmc` or `hmg` to generate or to enroll.
 - TLS is server side only, and the certificate chains to a public authority. Neither
   application asks a user anything about certificates.
 - The cluster is set up in the `hmg` Settings tab, which also renders the setup string
@@ -107,7 +107,7 @@ rather than replacing them, so a config written for a local broker still reaches
 cloud.
 
 `broker.tls.verifyServer = false` skips the check that the certificate belongs to the
-host. It is honoured only for hosts outside `hivemq.cloud`: on a cloud host the
+host. It is honored only for hosts outside `hivemq.cloud`: on a cloud host the
 credentials travel in the CONNECT packet, so an unverified connection would hand them
 to whatever answered, and the certificate is verified anyway with a warning in the
 log. Turning it off anywhere logs a warning.
@@ -154,7 +154,7 @@ each one up in its own translation table, which is what lets the badge read
 ### Reconnect
 
 `broker.reconnect.initialDelayMs` doubles per attempt up to
-`broker.reconnect.maxDelayMs`, and half of each delay is randomised. The jitter matters
+`broker.reconnect.maxDelayMs`, and half of each delay is randomized. The jitter matters
 because several installations share a cluster, and a cluster restart would otherwise
 bring them all back at the same instant. A successful connection resets the sequence.
 
@@ -302,6 +302,6 @@ what to do when a step does not work. The HiveMQ documentation for each step:
    the same thing; see [config.md](config.md).
 5. Press **Copy CLI setup** and run `hmc --init '<paste>'`, which is all `hmc` needs.
    See [config.md](config.md#the-setup-string).
-6. Credentials take up to a minute to become active, so a refusal straight afterwards
+6. Credentials take up to a minute to become active, so a refusal straight afterward
    usually means waiting rather than a wrong password. Then send a test message with
    `hmc` and watch it arrive in `hmg`.

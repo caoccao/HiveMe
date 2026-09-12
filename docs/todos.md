@@ -20,6 +20,5 @@ page collects what the plan deliberately left open.
 * OS keychain storage for the broker password, the encryption secrets, and the REST
   token.
 * Named broker profiles.
-* The remaining locales: de, es, fr, it, ja, zh-CN, zh-HK, zh-TW.
 * Payload based notification rule matching.
 * The `hmc sub` and `hmc config` subcommands.

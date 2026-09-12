@@ -114,7 +114,7 @@ impl BrokerInit {
   pub fn to_json(&self) -> String {
     // Compact rather than pretty: it crosses a clipboard and a shell argument, where a
     // newline is a hazard and indentation is noise.
-    serde_json::to_string(self).expect("a broker init string serialises")
+    serde_json::to_string(self).expect("a broker init string serializes")
   }
 
   /// Rejects a string the applications could not act on.
@@ -192,7 +192,7 @@ fn unwrap_quotes(text: &str) -> &str {
 
 /// The JSON schema of the setup string, written to `schemas/broker-init.schema.json`.
 pub fn json_schema() -> serde_json::Value {
-  let mut schema = serde_json::to_value(schemars::schema_for!(BrokerInit)).expect("the schema serialises");
+  let mut schema = serde_json::to_value(schemars::schema_for!(BrokerInit)).expect("the schema serializes");
   if let Some(object) = schema.as_object_mut() {
     object.insert(
       "$id".to_owned(),

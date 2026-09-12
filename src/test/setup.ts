@@ -21,7 +21,7 @@
 import '@testing-library/jest-dom/vitest';
 import { afterEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
-import '../i18n';
+import { changeLanguage } from '../i18n';
 
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>
@@ -37,6 +37,7 @@ if (!window.matchMedia) {
     }) as MediaQueryList;
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await changeLanguage('en-US');
 });

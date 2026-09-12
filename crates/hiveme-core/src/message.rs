@@ -77,7 +77,7 @@ impl Level {
     }
   }
 
-  /// Reads a level from its wire form. An unrecognised value becomes [`Level::Other`].
+  /// Reads a level from its wire form. An unrecognized value becomes [`Level::Other`].
   pub fn parse(raw: &str) -> Self {
     match raw {
       "debug" => Self::Debug,
@@ -219,7 +219,7 @@ impl Payload {
 /// How a message was encrypted.
 ///
 /// Designed but not implemented; see `docs/specs/message.md`. Readers already
-/// recognise the shape so that an encrypted message is displayed as a placeholder
+/// recognize the shape so that an encrypted message is displayed as a placeholder
 /// rather than as unreadable JSON.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -484,7 +484,7 @@ fn looks_like_envelope(value: &serde_json::Value) -> bool {
 /// is added here. Keeping it in the crate means the generator, the freshness test, and
 /// the spec example check all see the same schema.
 pub fn json_schema() -> serde_json::Value {
-  let mut schema = serde_json::to_value(schemars::schema_for!(Message)).expect("the message schema serialises");
+  let mut schema = serde_json::to_value(schemars::schema_for!(Message)).expect("the message schema serializes");
   if let Some(object) = schema.as_object_mut() {
     object.insert(
       "$id".to_owned(),

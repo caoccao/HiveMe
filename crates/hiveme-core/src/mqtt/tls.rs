@@ -38,7 +38,7 @@ use crate::error::{Error, Result};
 ///
 /// Server verification cannot be turned off for a HiveMQ Cloud host: the credentials
 /// travel in the CONNECT packet, so an unverified connection would hand them to
-/// whoever answered. The setting is honoured for any other host, where a local broker
+/// whoever answered. The setting is honored for any other host, where a local broker
 /// with a self-signed certificate is a reasonable thing to have, and logs a warning.
 pub fn client_config(tls: &Tls, url: &BrokerUrl) -> Result<Arc<ClientConfig>> {
   install_crypto_provider();

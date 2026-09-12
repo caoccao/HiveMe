@@ -15,12 +15,22 @@
 * limitations under the License.
 */
 
-import { render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import type { Config as ConfigType } from '../lib/protocol';
-import { useAppStore } from '../lib/store';
+import { INITIAL_STATUS, useAppStore } from '../lib/store';
+import * as Service from '../lib/service';
 import Config, { fromDrafts, isBrokerUsable, toDrafts } from './Config';
+
+vi.mock('../lib/service', () => ({
+  setConfig: vi.fn(async (config: ConfigType) => config),
+  getStatus: vi.fn(async () => INITIAL_STATUS),
+  getBrokerInit: vi.fn(async () => 'current setup'),
+}));
+
+vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({ writeText: vi.fn() }));
 
 const CONFIG: ConfigType = {
   version: 1,
@@ -48,7 +58,13 @@ const CONFIG: ConfigType = {
 };
 
 beforeEach(() => {
-  useAppStore.setState({ config: structuredClone(CONFIG), about: null });
+  vi.clearAllMocks();
+  useAppStore.setState({ config: structuredClone(CONFIG), about: null, dialogNotification: null });
+});
+
+afterEach(async () => {
+  cleanup();
+  await useAppStore.getState().flushConfig();
 });
 
 describe('isBrokerUsable', () => {
@@ -81,14 +97,20 @@ describe('the subscription editor', () => {
     expect(fromDrafts([{ filter: '$SYS/#', absolute: true }])).toEqual([{ filter: '$SYS/#', absolute: true }]);
   });
 
-  it('drops a row the user left blank rather than writing an empty filter', () => {
-    expect(fromDrafts([{ filter: '  ', absolute: false }, { filter: 'info', absolute: false }])).toEqual(['info']);
+  it('keeps a blank row editable until the user replaces or removes it', () => {
+    expect(fromDrafts([{ filter: '  ', absolute: false }, { filter: 'info', absolute: false }])).toEqual(['', 'info']);
   });
 });
 
+async function renderBroker() {
+  const view = render(<Config />);
+  await userEvent.click(screen.getByRole('tab', { name: 'Broker' }));
+  return view;
+}
+
 describe('the settings tab', () => {
-  it('fills the broker fields from the config', () => {
-    render(<Config />);
+  it('fills the broker fields from the config', async () => {
+    await renderBroker();
     expect(screen.getByLabelText('URL')).toHaveValue('abc123.s1.eu.hivemq.cloud:8883');
     expect(screen.getByLabelText('Protocol')).toHaveTextContent('TLS MQTT');
     expect(screen.getByDisplayValue('hiveme-sam')).toBeInTheDocument();
@@ -102,28 +124,27 @@ describe('the settings tab', () => {
     ['TLS MQTT', 'abc123.s1.eu.hivemq.cloud:8883', 'mqtts://abc123.s1.eu.hivemq.cloud:8883'],
     ['TLS WebSocket', 'abc123.s1.eu.hivemq.cloud:8884/mqtt', 'wss://abc123.s1.eu.hivemq.cloud:8884/mqtt'],
   ])('saves the %s URL of the console as it was pasted', async (protocol, shown, saved) => {
-    const saveConfig = vi.fn().mockResolvedValue(true);
-    useAppStore.setState({ saveConfig });
-    render(<Config />);
+    await renderBroker();
 
     await userEvent.click(screen.getByLabelText('Protocol'));
     await userEvent.click(screen.getByRole('option', { name: protocol }));
     await userEvent.clear(screen.getByLabelText('URL'));
     await userEvent.type(screen.getByLabelText('URL'), shown);
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    expect(saveConfig.mock.calls[0][0].broker.url).toBe(saved);
+    expect(useAppStore.getState().config?.broker?.url).toBe(saved);
+    await waitFor(() => expect(Service.setConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({ broker: expect.objectContaining({ url: saved }) })
+    ));
   });
 
-  it('starts a broker that has none on TLS MQTT, which is the only one the cloud accepts', () => {
+  it('starts a broker that has none on TLS MQTT, which is the only one the cloud accepts', async () => {
     useAppStore.setState({ config: { ...structuredClone(CONFIG), broker: { url: '', username: '', password: '' } } });
-    render(<Config />);
+    await renderBroker();
     expect(screen.getByLabelText('Protocol')).toHaveTextContent('TLS MQTT');
     expect(screen.getByLabelText('URL')).toHaveValue('');
   });
 
   it('says which port a URL that names none will use, because the protocol decides it', async () => {
-    render(<Config />);
+    await renderBroker();
     expect(screen.getByText(/Connects to mqtts:\/\/abc123.s1.eu.hivemq.cloud:8883, on port 8883/)).toBeInTheDocument();
 
     await userEvent.clear(screen.getByLabelText('URL'));
@@ -133,7 +154,7 @@ describe('the settings tab', () => {
   });
 
   it('takes a scheme off a URL pasted with one rather than leaving it in the box', async () => {
-    render(<Config />);
+    await renderBroker();
 
     await userEvent.clear(screen.getByLabelText('URL'));
     await userEvent.type(screen.getByLabelText('URL'), 'mqtt://localhost:1884');
@@ -143,7 +164,7 @@ describe('the settings tab', () => {
   });
 
   it('hides the password until the toggle is used', async () => {
-    render(<Config />);
+    await renderBroker();
     const password = screen.getByDisplayValue('s3cret');
     expect(password).toHaveAttribute('type', 'password');
 
@@ -152,72 +173,125 @@ describe('the settings tab', () => {
     expect(screen.getByDisplayValue('s3cret')).toHaveAttribute('type', 'text');
   });
 
-  it('says that TLS needs no settings, because it does not', () => {
-    render(<Config />);
+  it('says that TLS needs no settings, because it does not', async () => {
+    await renderBroker();
     expect(screen.getByText(/TLS needs no settings/)).toBeInTheDocument();
   });
 
-  it('saves what the user edited', async () => {
-    const saveConfig = vi.fn().mockResolvedValue(true);
-    useAppStore.setState({ saveConfig });
-    render(<Config />);
+  it('applies edits immediately and saves after typing pauses', async () => {
+    await renderBroker();
 
     await userEvent.clear(screen.getByDisplayValue('hiveme-sam'));
     await userEvent.type(screen.getByLabelText('Username'), 'someone-else');
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    expect(saveConfig).toHaveBeenCalledTimes(1);
-    expect(saveConfig.mock.calls[0][0].broker.username).toBe('someone-else');
+    expect(useAppStore.getState().config?.broker?.username).toBe('someone-else');
+    expect(Service.setConfig).not.toHaveBeenCalled();
+    await waitFor(() => expect(Service.setConfig).toHaveBeenCalledTimes(1));
+    expect(Service.setConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ broker: expect.objectContaining({ username: 'someone-else' }) })
+    );
   });
 
-  it('reverts to what the backend has', async () => {
+  it('has no Save, Revert, or Open config button and does not save on mount', async () => {
     render(<Config />);
-
-    await userEvent.type(screen.getByLabelText('Username'), '-edited');
-    expect(screen.getByDisplayValue('hiveme-sam-edited')).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Revert' }));
-
-    expect(screen.getByDisplayValue('hiveme-sam')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Save|Revert|config file/i })).not.toBeInTheDocument();
+    await act(async () => { await useAppStore.getState().flushConfig(); });
+    expect(Service.setConfig).not.toHaveBeenCalled();
   });
 
-  it('offers the CLI setup string only while the broker fields are usable', () => {
-    render(<Config />);
+  it('offers the CLI setup string only while the broker fields are usable', async () => {
+    await renderBroker();
     expect(screen.getByRole('button', { name: /Copy CLI setup/ })).toBeEnabled();
   });
 
-  it('refuses to offer a setup string that could not be applied', () => {
+  it('refuses to offer a setup string that could not be applied', async () => {
     useAppStore.setState({ config: { ...structuredClone(CONFIG), broker: { url: '', username: '', password: '' } } });
-    render(<Config />);
+    await renderBroker();
     expect(screen.getByRole('button', { name: /Copy CLI setup/ })).toBeDisabled();
   });
 
-  it('opens on the broker category, because that is what has to be filled in first', () => {
+  it('opens on Appearance as the first category with mode, theme, and language controls', () => {
     render(<Config />);
-    expect(screen.getByRole('tab', { name: 'Broker', selected: true })).toBeInTheDocument();
+    expect(screen.getAllByRole('tab')[0]).toBe(screen.getByRole('tab', { name: 'Appearance', selected: true }));
+    expect(screen.getByRole('group', { name: 'Mode' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Auto Mode', pressed: true })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Light Mode' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Dark Mode' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Theme' })).toHaveTextContent('Ocean');
+    expect(screen.getByRole('combobox', { name: 'Language' })).toHaveTextContent('English (US)');
+    expect(screen.queryByLabelText('Username')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Messages per topic')).not.toBeInTheDocument();
   });
 
   it('shows one category at a time and switches on a click', async () => {
     render(<Config />);
-    expect(screen.getByLabelText('Username')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Mode' })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('tab', { name: 'History' }));
 
-    expect(screen.queryByLabelText('Username')).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Mode' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Messages per topic')).toBeInTheDocument();
   });
 
   it('keeps an edit made in one category while the user is in another', async () => {
-    const saveConfig = vi.fn().mockResolvedValue(true);
-    useAppStore.setState({ saveConfig });
-    render(<Config />);
+    await renderBroker();
 
     await userEvent.type(screen.getByLabelText('Username'), '-edited');
     await userEvent.click(screen.getByRole('tab', { name: 'Update' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(useAppStore.getState().config?.broker?.username).toBe('hiveme-sam-edited');
+    await waitFor(() => expect(Service.setConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ broker: expect.objectContaining({ username: 'hiveme-sam-edited' }) })
+    ));
+  });
 
-    expect(saveConfig.mock.calls[0][0].broker.username).toBe('hiveme-sam-edited');
+  it('finishes an automatic save after the settings tab is closed', async () => {
+    const view = await renderBroker();
+    await userEvent.type(screen.getByLabelText('Username'), '-edited');
+    view.unmount();
+    await waitFor(() => expect(Service.setConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ broker: expect.objectContaining({ username: 'hiveme-sam-edited' }) })
+    ));
+  });
+
+  it('flushes current edits before copying CLI setup', async () => {
+    await renderBroker();
+    await userEvent.type(screen.getByLabelText('Password'), '-edited');
+    await userEvent.click(screen.getByRole('button', { name: 'Copy CLI setup' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('current setup'));
+    expect(Service.setConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ broker: expect.objectContaining({ password: 's3cret-edited' }) })
+    );
+    expect(vi.mocked(Service.setConfig).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(Service.getBrokerInit).mock.invocationCallOrder[0]);
+  });
+
+  it('lets a subscription filter be replaced without removing its row', async () => {
+    render(<Config />);
+    await userEvent.click(screen.getByRole('tab', { name: 'Topics' }));
+    await userEvent.clear(screen.getByLabelText('Subscription filter 1'));
+    expect(screen.getByLabelText('Subscription filter 1')).toHaveValue('');
+    await userEvent.type(screen.getByLabelText('Subscription filter 1'), 'build/#');
+    expect(useAppStore.getState().config?.topics?.subscriptions).toEqual(['build/#']);
+  });
+
+  it('does not copy stale credentials when their automatic save fails', async () => {
+    vi.mocked(Service.setConfig).mockRejectedValueOnce(new Error('Cannot save credentials'));
+    await renderBroker();
+    await userEvent.type(screen.getByLabelText('Password'), '-edited');
+    await userEvent.click(screen.getByRole('button', { name: 'Copy CLI setup' }));
+    await waitFor(() => expect(useAppStore.getState().dialogNotification?.title).toBe('Cannot save credentials'));
+    expect(Service.getBrokerInit).not.toHaveBeenCalled();
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it('applies numeric settings and switches immediately', async () => {
+    render(<Config />);
+    await userEvent.click(screen.getByRole('tab', { name: 'History' }));
+    await userEvent.clear(screen.getByLabelText('Messages per topic'));
+    await userEvent.type(screen.getByLabelText('Messages per topic'), '250');
+    expect(useAppStore.getState().config?.gui?.history?.maxMessagesPerTopic).toBe(250);
+    await userEvent.click(screen.getByRole('tab', { name: 'Notifications' }));
+    await userEvent.click(screen.getByLabelText('Raise OS notifications'));
+    expect(useAppStore.getState().config?.notifications?.enabled).toBe(false);
   });
 
   it('keeps the sections that are designed but not implemented visibly so', async () => {

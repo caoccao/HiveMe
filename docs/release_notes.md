@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+* Made Appearance the first and default settings category. Copied BetterMediaInfo's
+  settings spacing and appearance rows, with mode buttons and dropdowns aligned
+  on the right.
+* Standardized English text on US English across the UI, backend diagnostics, CLI
+  and CI messages, documentation, and generated schema descriptions.
+* Localized the frontend in German, US English, Spanish, French, Italian, Japanese,
+  Simplified Chinese, and Traditional Chinese for Hong Kong and Taiwan. The language
+  picker now applies the selection immediately and saves automatically. Theme names,
+  message levels, encrypted previews, accessible labels, plural counts, dates, and
+  numeric formatting follow the selected language.
+* Made all settings apply immediately and save automatically after a short typing
+  pause, following BetterMediaInfo. Removed Save, Revert, and Open config buttons.
+  Pending writes survive closing the Settings tab, and Copy CLI setup waits for
+  current edits to be saved before copying.
+
 * Split the specification into `app.md`, `config.md`, `message.md`, `cli.md`,
   `gui.md`, and `hivemq-cloud.md`, and designed the config schema, the JSON message
   envelope, and the future encryption scheme.
@@ -33,7 +48,7 @@
   applications use.
 * Said plainly that only Serverless clusters are supported for now, and that TLS is
   automatic for them: the cluster certificate chains to a public authority the
-  operating system already trusts, so neither application generates, enrols, or asks
+  operating system already trusts, so neither application generates, enrolls, or asks
   about a certificate.
 * Added `hmg`, the desktop application: a topic tree with unread badges on the left, a
   chat view of the selected topic on the right, and an input box that publishes through
@@ -51,12 +66,12 @@
   when something the connection is built from changed.
 * Turned the notification rules into OS notifications on all three platforms, with the
   rate limit, the "and N more messages" summary, and a toolbar toggle that holds them
-  back for the session. On Windows the notification is labelled HiveMe, because the
+  back for the session. On Windows the notification is labeled HiveMe, because the
   application registers an identity of its own instead of borrowing the one of whatever
   process raised the toast.
 * Added a status bar that shows the connection, the broker, the reconnect countdown,
   the subscriptions, the messages this session, and the size of the history.
-* Drew the pair an icon: a honey coloured hive cell holding a message bubble for `hmg`
+* Drew the pair an icon: a honey colored hive cell holding a message bubble for `hmg`
   and a command prompt for `hmc`. On Windows `hmc.exe` carries its own icon and version
   information, so Explorer and the taskbar name it rather than showing a blank
   executable.
@@ -83,12 +98,11 @@
   will be saved and which port it will connect on, since a URL that names no port
   connects on the protocol's own.
 * Fixed a connected `hmg` that behaved as though it were not: the composer stayed
-  disabled, the badge stayed grey, and the toolbar still offered Connect. The backend
+  disabled, the badge stayed gray, and the toolbar still offered Connect. The backend
   named the state `connected` while the frontend was looking for `Connected`, so the
   one place the two ever compared it always disagreed. The state now travels under the
   name both halves already documented, and a test on each side holds it there.
 * Divided the Settings tab into categories, listed down the left as the reference
   project lists them: Broker, Topics, Notifications, Appearance, History, Update, and
   Advanced. One page of every setting at once was more than anyone needed to read to
-  change one of them. Save and Revert stay below whichever category is open, and an
-  edit made in one survives a move to another.
+  change one of them. An edit made in one survives a move to another.

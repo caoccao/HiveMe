@@ -332,7 +332,7 @@ fn history_survives_a_restart() {
   assert_eq!(reopened.topics().unwrap()[0].unread, 1);
 
   // The second open migrates an existing database rather than an empty one, and the
-  // echo of the same message must still be recognised across the restart.
+  // echo of the same message must still be recognized across the restart.
   let again = reopened.insert(&incoming("hiveme/info", &message)).unwrap();
   assert!(!again.is_new);
 }

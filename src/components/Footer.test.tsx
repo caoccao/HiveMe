@@ -48,7 +48,7 @@ describe('the status bar', () => {
     expect(screen.getByText('broker.example:8883')).toBeInTheDocument();
   });
 
-  // The colour is read across the room, before the word is. Green is working, grey is
+  // The color is read across the room, before the word is. Green is working, gray is
   // stopped, and amber is on its way, so a state that arrives under a name the badge
   // does not know must not be able to borrow the green.
   it.each([
@@ -56,11 +56,11 @@ describe('the status bar', () => {
     [Protocol.ConnectionState.Disconnected, 'MuiChip-colorDefault'],
     [Protocol.ConnectionState.Connecting, 'MuiChip-colorWarning'],
     [Protocol.ConnectionState.Reconnecting, 'MuiChip-colorWarning'],
-  ])('colours the %s badge', (state, colour) => {
+  ])('colors the %s badge', (state, color) => {
     useAppStore.setState({ status: { ...INITIAL_STATUS, state } });
 
     const { container } = render(<Footer />);
 
-    expect(container.querySelector('.MuiChip-root')).toHaveClass(colour);
+    expect(container.querySelector('.MuiChip-root')).toHaveClass(color);
   });
 });

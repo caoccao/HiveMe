@@ -15,25 +15,64 @@
 * limitations under the License.
 */
 
-// Only `en-US` ships today. The other locales of the reference project arrive in a
-// later phase; the structure is already the one they slot into.
-
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import { Language, LANGUAGES } from '../lib/protocol';
+import de from './locales/de.json';
 import enUS from './locales/en-US.json';
+import es from './locales/es.json';
+import fr from './locales/fr.json';
+import it from './locales/it.json';
+import ja from './locales/ja.json';
+import zhCN from './locales/zh-CN.json';
+import zhHK from './locales/zh-HK.json';
+import zhTW from './locales/zh-TW.json';
+
+/** Resolve regional and script tags to a bundled locale, with English as fallback. */
+export function resolveLanguage(language?: string): Language {
+  const tag = (language ?? '').trim().replace(/_/g, '-').toLowerCase();
+  const exact = LANGUAGES.find((locale) => locale.toLowerCase() === tag);
+  if (exact) return exact;
+  const [base, ...subtags] = tag.split('-');
+  if (base === 'zh') {
+    if (subtags.includes('hk') || subtags.includes('mo')) return Language.ZhHK;
+    if (subtags.includes('hant') || subtags.includes('tw')) return Language.ZhTW;
+    return Language.ZhCN;
+  }
+  return LANGUAGES.find((locale) => locale === base) ?? Language.EnUS;
+}
+
+function syncDocumentLanguage() {
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = i18n.resolvedLanguage ?? Language.EnUS;
+  }
+}
+
+i18n.on('languageChanged', syncDocumentLanguage);
 
 i18n.use(initReactI18next).init({
   resources: {
+    de: { translation: de },
     'en-US': { translation: enUS },
+    es: { translation: es },
+    fr: { translation: fr },
+    it: { translation: it },
+    ja: { translation: ja },
+    'zh-CN': { translation: zhCN },
+    'zh-HK': { translation: zhHK },
+    'zh-TW': { translation: zhTW },
   },
-  fallbackLng: 'en-US',
+  lng: Language.EnUS,
+  supportedLngs: LANGUAGES,
+  load: 'currentOnly',
+  fallbackLng: Language.EnUS,
   interpolation: {
     escapeValue: false,
   },
 });
 
-export function changeLanguage(language: string) {
-  i18n.changeLanguage(language);
+export function changeLanguage(language?: string) {
+  return i18n.changeLanguage(resolveLanguage(language));
 }
 
 export default i18n;

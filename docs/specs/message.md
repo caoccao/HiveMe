@@ -12,8 +12,8 @@ compatibility rule names the fixture that proves it.
 ## Goals
 
 - A JSON payload on the wire, readable with `jq` and by third party tools.
-- Backwards compatible: a new reader reads an old message.
-- Forwards compatible: an old reader reads a new message, degrading gracefully.
+- Backward compatible: a new reader reads an old message.
+- Forward compatible: an old reader reads a new message, degrading gracefully.
 - One envelope shape for plaintext and encrypted messages, so a reader can route on
   the header before touching the body.
 - Third party JSON and plain text are still displayed, never dropped.
@@ -183,7 +183,7 @@ exists so that the envelope and the config do not have to change when it lands.
 - Message key: `HKDF-SHA256(ikm = secret, salt = "hiveme/v1", info = "msg:" || kid)`,
   32 bytes. Deriving rather than using the secret directly gives domain separation for
   future uses of the same secret.
-- Plaintext: the UTF-8 bytes of the serialised `payload` object.
+- Plaintext: the UTF-8 bytes of the serialized `payload` object.
 - Associated data: the compact UTF-8 JSON array
   `[v, id, ts, sender.id or "", type, alg, kid]`. Binding the header this way stops a
   ciphertext being moved to another id, sender, or key.
@@ -222,7 +222,7 @@ exists so that the envelope and the config do not have to change when it lands.
 ### What exists today
 
 - The `Enc`, `EncryptionConfig`, and `KeyEntry` types, included in both schemas.
-- A parser that recognises an encrypted envelope and returns
+- A parser that recognizes an encrypted envelope and returns
   `Message { enc: Some(_), payload: None }`.
 - A GUI bubble that renders a lock icon with "encrypted (key k-2026-09)" plus the
   sender and time.

@@ -46,4 +46,4 @@ hmc -c /tmp/hmc.json -t error --title CI     "Nightly build 483 failed: 2 tests 
 hmc -c /tmp/hmc.json -t build/ci --json '{"build":483,"branch":"main","failed":["config::migrate"]}'
 ```
 
-Select `error` in the tree for the main shot, and `docker stop hiveme-shots` afterwards.
+Select `error` in the tree for the main shot, and `docker stop hiveme-shots` afterward.

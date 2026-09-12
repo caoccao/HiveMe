@@ -399,7 +399,7 @@ pub enum SecretRef {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Tls {
-  /// Honoured only for hosts outside `hivemq.cloud`, and logs a warning when false.
+  /// Honored only for hosts outside `hivemq.cloud`, and logs a warning when false.
   pub verify_server: bool,
   /// Extra PEM roots appended to the native trust store.
   pub ca_file: Option<PathBuf>,
@@ -613,7 +613,7 @@ impl Rule {
 pub struct Gui {
   pub display_mode: DisplayMode,
   pub theme: Theme,
-  /// A BCP 47 tag. Only `en-US` ships today.
+  /// A BCP 47 tag. The GUI supports de, en-US, es, fr, it, ja, zh-CN, zh-HK, and zh-TW.
   pub language: String,
   pub history: History,
   pub window: Window,
@@ -631,7 +631,7 @@ impl Default for Gui {
   }
 }
 
-/// Which colour scheme the GUI follows.
+/// Which color scheme the GUI follows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, schemars::JsonSchema)]
 pub enum DisplayMode {
   /// Follow the operating system.
@@ -702,7 +702,7 @@ pub struct Window {
   pub size: WindowSize,
 }
 
-/// The remembered window position. Negative means "centre the window".
+/// The remembered window position. Negative means "center the window".
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct WindowPosition {
@@ -1071,7 +1071,7 @@ pub fn broker_init_json_schema() -> Value {
 }
 
 pub fn json_schema() -> Value {
-  let mut schema = serde_json::to_value(schemars::schema_for!(Config)).expect("the config schema serialises");
+  let mut schema = serde_json::to_value(schemars::schema_for!(Config)).expect("the config schema serializes");
   if let Some(object) = schema.as_object_mut() {
     object.insert(
       "$id".to_owned(),

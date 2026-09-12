@@ -25,6 +25,7 @@
 
 import type { Message, Payload, Sender } from './protocol';
 import { Level, Tier } from './protocol';
+import i18n from '../i18n';
 
 /** The envelope version this build fully understands. */
 export const ENVELOPE_VERSION = 1;
@@ -158,19 +159,19 @@ export function isKnownLevel(level: string | null | undefined): boolean {
 export function previewOf(parsed: Parsed): string {
   switch (parsed.tier) {
     case Tier.Envelope: {
-      const payload = payloadOf(parsed.message);
-      if (payload) {
-        return payload.body ?? '';
-      }
       const enc = (parsed.message as { enc?: { kid?: string } }).enc;
-      return enc ? `encrypted (key ${enc.kid ?? ''})` : '';
+      if (enc) {
+        return i18n.t('messages.encrypted', { kid: enc.kid ?? '' });
+      }
+      const payload = payloadOf(parsed.message);
+      return payload?.body ?? '';
     }
     case Tier.Json:
       return truncate(JSON.stringify(parsed.value) ?? '', RAW_JSON_PREVIEW_LIMIT);
     case Tier.Text:
       return parsed.text;
     case Tier.Bytes:
-      return `${parsed.length} bytes`;
+      return i18n.t('messages.bytes', { count: parsed.length });
   }
 }
 

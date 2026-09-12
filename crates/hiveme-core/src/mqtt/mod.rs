@@ -1179,7 +1179,7 @@ mod tests {
   }
 
   #[test]
-  fn an_unauthorised_publish_points_at_the_console() {
+  fn an_unauthorized_publish_points_at_the_console() {
     let reason = describe_puback(PubAckReason::NotAuthorized);
     assert!(reason.contains("HiveMQ Cloud console"), "{reason}");
   }

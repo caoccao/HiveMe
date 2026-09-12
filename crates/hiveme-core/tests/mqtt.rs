@@ -15,7 +15,7 @@
 * limitations under the License.
 */
 
-//! The MQTT behaviour promised by `docs/specs/hivemq-cloud.md`, against a real broker.
+//! The MQTT behavior promised by `docs/specs/hivemq-cloud.md`, against a real broker.
 //!
 //! A HiveMQ CE container stands in for the cloud. It is the open source build of the
 //! same broker and speaks MQTT 5 on 1883, without TLS and without credentials, which

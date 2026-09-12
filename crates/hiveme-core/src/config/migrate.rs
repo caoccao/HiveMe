@@ -17,7 +17,7 @@
 
 //! Config version migrations.
 //!
-//! A migration runs on the raw JSON document, before it is deserialised, so that a
+//! A migration runs on the raw JSON document, before it is deserialized, so that a
 //! renamed or restructured key can be moved without the typed model knowing about the
 //! old shape. See `docs/specs/config.md`, "Versioning and compatibility".
 

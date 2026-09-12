@@ -33,7 +33,7 @@ pub fn generated() -> Vec<(&'static str, serde_json::Value)> {
 
 /// The exact bytes a schema file should contain.
 pub fn text(schema: &serde_json::Value) -> String {
-  let mut text = serde_json::to_string_pretty(schema).expect("a schema serialises");
+  let mut text = serde_json::to_string_pretty(schema).expect("a schema serializes");
   text.push('\n');
   text
 }

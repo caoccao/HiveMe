@@ -18,7 +18,7 @@
 //! The reconnect delay of the `hmg` connection.
 //!
 //! Exponential with equal jitter: the delay doubles until `broker.reconnect.maxDelayMs`
-//! and then half of it is randomised. The jitter matters because several HiveMe
+//! and then half of it is randomized. The jitter matters because several HiveMe
 //! installations share a cluster and a cluster restart would otherwise bring them all
 //! back at the same instant.
 
@@ -74,7 +74,7 @@ impl Backoff {
     self.attempt = 0;
   }
 
-  /// The delay before the next attempt, half of it randomised.
+  /// The delay before the next attempt, half of it randomized.
   pub fn next_delay(&mut self) -> Duration {
     let ceiling = self.ceiling();
     self.attempt = self.attempt.saturating_add(1);
@@ -186,7 +186,7 @@ mod tests {
   }
 
   #[test]
-  fn the_config_delays_are_honoured() {
+  fn the_config_delays_are_honored() {
     let reconnect = Reconnect {
       initial_delay_ms: 250,
       max_delay_ms: 1_000,

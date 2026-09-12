@@ -73,7 +73,7 @@ is automatic: a HiveMQ Cloud cluster presents a certificate that chains to a pub
 authority, which the operating system already trusts. See
 [hivemq-cloud.md](hivemq-cloud.md#how-hiveme-connects).
 
-## Behaviour
+## Behavior
 
 ### The body
 
@@ -136,7 +136,7 @@ authority, which the operating system already trusts. See
 
 ## Appearance
 
-`hmc` has an icon of its own: the same honey coloured hive cell as `hmg`, holding a
+`hmc` has an icon of its own: the same honey colored hive cell as `hmg`, holding a
 command prompt rather than a message bubble, so the pair reads as a pair. The source
 is `crates/hmc/icons/hmc.png` and the packed sizes are `crates/hmc/icons/hmc.ico`.
 

@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Box } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 import { SPLIT_DEFAULT_PERCENT, SPLIT_MAX_PERCENT, SPLIT_MIN_PERCENT, SPLIT_STORAGE_KEY } from '../lib/constants';
 import Composer from './Composer';
 import MessageView from './MessageView';
@@ -35,6 +36,7 @@ function readSplit(): number {
 }
 
 export default function Messages() {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [split, setSplit] = useState(readSplit);
   const [dragging, setDragging] = useState(false);
@@ -83,6 +85,7 @@ export default function Messages() {
 
       <Box
         role="separator"
+        aria-label={t('messages.resizeTopics')}
         aria-orientation="vertical"
         onPointerDown={(event) => {
           event.preventDefault();

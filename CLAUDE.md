@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in
-this repository. `AGENTS.md` is a copy of this file; keep the two identical.
+this repository. `AGENTS.md` links to this file; do not modify it.
 
 ## Project Overview
 
@@ -81,7 +81,7 @@ The same protocol pattern as BetterMediaInfo:
    hand-synced. camelCase in TypeScript, snake_case in Rust with `#[serde(rename)]`.
    `scripts/ts/check-spec-sync.ts` fails when one changes without the other.
 2. **IPC layer**: `src/lib/service.ts` wraps every `invoke`; `src-tauri/src/lib.rs`
-   holds one thin `#[tauri::command]` per call, alphabetised, each returning
+   holds one thin `#[tauri::command]` per call, alphabetized, each returning
    `Result<T, String>` through `convert_error`.
 3. **Business logic**: `hiveme-core`, so that `hmc` and `hmg` cannot diverge.
    `src-tauri/src/controller.rs` only orchestrates.
@@ -112,6 +112,9 @@ The specifications describe the code as built, and CI enforces it. See
 
 ## Conventions
 
+* All project-authored English uses US English spelling and terminology, including
+  UI text, CLI and backend messages, documentation, comments, and translation keys.
+  Other locales keep their own language conventions.
 * Every `.rs`, `.ts`, and `.tsx` file starts with the Apache-2.0 header from
   `scripts/license-header.txt`. `scripts/ts/check-license-headers.ts` enforces it.
 * Rust: edition 2024, `max_width = 120`, `tab_spaces = 2`, `thiserror` in libraries,
@@ -119,7 +122,7 @@ The specifications describe the code as built, and CI enforces it. See
 * The toolchain is pinned in `rust-toolchain.toml`.
 * Config JSON keys are camelCase. Enum values that live only in the config are
   PascalCase; values that also travel in messages keep their wire casing.
-* MUI components take colours from the theme through `sx` or `styled`, never hard
+* MUI components take colors from the theme through `sx` or `styled`, never hard
   coded, so both display modes work.
 * Text is never transformed. The theme sets `typography.button.textTransform` to
   `none`, which covers buttons, tabs, and toggle buttons; do not add `textTransform`

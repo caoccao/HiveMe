@@ -17,6 +17,7 @@
 
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { changeLanguage } from '../i18n';
 import type { MessageRow } from '../lib/protocol';
 import { Tier } from '../lib/protocol';
 import { Bubble, JsonTree } from './MessageView';
@@ -118,6 +119,27 @@ describe('the tiers', () => {
       <Bubble row={row({ tier: Tier.Text, raw: 'plain text from some other tool', body: 'x', title: null })} />
     );
     expect(screen.getByText('plain text from some other tool')).toBeInTheDocument();
+  });
+
+  it('localizes encrypted previews instead of displaying the stored English placeholder', async () => {
+    await changeLanguage('de');
+    const raw = JSON.stringify({
+      v: 1, id: 'encrypted', ts: '2026-09-12T09:41:23Z',
+      enc: { alg: 'A256GCM', kid: 'key-42', iv: 'nonce' }, ciphertext: 'ciphertext',
+      payload: { body: 'Ignore plaintext when encryption is present' },
+    });
+    render(<Bubble row={row({ raw, body: 'encrypted (key key-42)', level: 'warn' })} />);
+    expect(screen.getByText('verschlüsselt (Schlüssel key-42)')).toBeInTheDocument();
+    expect(screen.getByText('Warnung')).toBeInTheDocument();
+    expect(screen.queryByText('encrypted (key key-42)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ignore plaintext when encryption is present')).not.toBeInTheDocument();
+  });
+
+  it('keeps user messages and unknown levels verbatim while translating the fallback level', async () => {
+    await changeLanguage('ja');
+    render(<Bubble row={row({ tier: Tier.Text, raw: 'Original text', level: 'custom-level' })} />);
+    expect(screen.getByText('Original text')).toBeInTheDocument();
+    expect(screen.getByText('custom-level（情報）')).toBeInTheDocument();
   });
 
   it('shows a payload that is not text as hex with its size', () => {

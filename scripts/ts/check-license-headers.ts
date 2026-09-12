@@ -79,7 +79,7 @@ for (const fileUrl of sourceFiles) {
 }
 
 if (missing.length > 0) {
-  console.error("Missing the Apache-2.0 licence header:");
+  console.error("Missing the Apache-2.0 license header:");
   for (const file of missing) {
     console.error(`  ${file}`);
   }
@@ -88,4 +88,4 @@ if (missing.length > 0) {
   Deno.exit(1);
 }
 
-console.info(`Licence headers OK, ${sourceFiles.length} file(s) checked.`);
+console.info(`License headers OK, ${sourceFiles.length} file(s) checked.`);

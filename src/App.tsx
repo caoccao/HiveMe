@@ -76,9 +76,7 @@ function App() {
   }, [initConfig, initAbout, initStatus, refreshTopics]);
 
   useEffect(() => {
-    if (language) {
-      changeLanguage(language);
-    }
+    void changeLanguage(language);
   }, [language]);
 
   // The backend is the only source of truth for the connection, the history, and the

@@ -24,6 +24,9 @@
 //! Only the types the IPC invents live here. The config and the message envelope are
 //! generated from the JSON schemas into `src/generated/`, because they are the shared
 //! format rather than a protocol of the GUI's own.
+//!
+//! The frontend's Language enum lists its bundled translations. `gui.language`
+//! remains a BCP 47 string in the shared config; no IPC enum or conversion is needed.
 
 use std::sync::{Arc, Mutex};
 

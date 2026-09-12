@@ -68,7 +68,7 @@ pub fn init() -> Result<()> {
   let error = holder.load_error.clone();
   CONFIG
     .set(RwLock::new(holder))
-    .map_err(|_| anyhow!("the config was initialised twice"))?;
+    .map_err(|_| anyhow!("the config was initialized twice"))?;
   match error {
     Some(error) => Err(anyhow!(error)),
     None => Ok(()),

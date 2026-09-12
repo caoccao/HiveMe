@@ -18,7 +18,7 @@
 //! `hmg`, the HiveMe GUI.
 //!
 //! This file is the IPC surface and nothing else: one thin `#[tauri::command]` per
-//! call, alphabetised, each delegating to [`controller`] and turning its error into a
+//! call, alphabetized, each delegating to [`controller`] and turning its error into a
 //! string for the frontend. The contract is written in `docs/specs/gui.md`.
 
 use std::sync::atomic::AtomicU64;

@@ -112,7 +112,7 @@ export interface Tls {
    */
   caFile?: string | null;
   /**
-   * Honoured only for hosts outside `hivemq.cloud`, and logs a warning when false.
+   * Honored only for hosts outside `hivemq.cloud`, and logs a warning when false.
    */
   verifyServer?: boolean;
 }
@@ -194,12 +194,12 @@ export interface KeyEntry {
  */
 export interface Gui {
   /**
-   * Which colour scheme the GUI follows.
+   * Which color scheme the GUI follows.
    */
   displayMode?: ('Light' | 'Dark') | 'Auto';
   history?: History;
   /**
-   * A BCP 47 tag. Only `en-US` ships today.
+   * A BCP 47 tag. The GUI supports de, en-US, es, fr, it, ja, zh-CN, zh-HK, and zh-TW.
    */
   language?: string;
   /**
@@ -249,7 +249,7 @@ export interface Window {
   size?: WindowSize;
 }
 /**
- * The remembered window position. Negative means "centre the window".
+ * The remembered window position. Negative means "center the window".
  */
 export interface WindowPosition {
   x?: number;

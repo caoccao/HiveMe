@@ -152,7 +152,7 @@ export default function About() {
             <TableCell sx={{ wordBreak: 'break-all' }}>{about?.databasePath}</TableCell>
           </TableRow>
           <TableRow>
-            <TableCell sx={{ fontWeight: 600 }}>{t('about.licence')}</TableCell>
+            <TableCell sx={{ fontWeight: 600 }}>{t('about.license')}</TableCell>
             <TableCell>Apache-2.0</TableCell>
           </TableRow>
         </TableBody>

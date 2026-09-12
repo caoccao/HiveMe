@@ -183,6 +183,7 @@ export default function MainContent() {
       {newVersion && (
         <Alert
           severity="info"
+          closeText={t('tabs.close')}
           onClose={async () => {
             if (skipChecked) {
               await skipVersion(newVersion);

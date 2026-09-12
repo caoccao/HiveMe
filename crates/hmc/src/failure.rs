@@ -146,7 +146,7 @@ mod tests {
   }
 
   #[test]
-  fn an_encryption_mode_this_build_cannot_honour_is_a_config_failure() {
+  fn an_encryption_mode_this_build_cannot_honor_is_a_config_failure() {
     let failure = Failure::from(Error::NotImplemented("encryption arrives in phase 6".to_owned()));
     assert_eq!(failure.code(), 3);
   }

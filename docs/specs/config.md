@@ -136,7 +136,7 @@ value the applications use when the key is absent.
 | `broker.keepAliveSecs` | integer | no | 30 | MQTT keep alive. |
 | `broker.sessionExpirySecs` | integer | no | 3600 | `hmg` only. `hmc` always uses 0. |
 | `broker.connectTimeoutSecs` | integer | no | 10 | |
-| `broker.tls.verifyServer` | boolean | no | true | `false` is honoured only for hosts outside `hivemq.cloud` and logs a warning. |
+| `broker.tls.verifyServer` | boolean | no | true | `false` is honored only for hosts outside `hivemq.cloud` and logs a warning. |
 | `broker.tls.caFile` | path or null | no | null | Extra PEM roots appended to the native trust store. |
 | `broker.reconnect.initialDelayMs` | integer | no | 1000 | |
 | `broker.reconnect.maxDelayMs` | integer | no | 30000 | Exponential backoff with jitter, `hmg` only. |
@@ -151,7 +151,7 @@ value the applications use when the key is absent.
 | `notifications.rules[]` | object[] | no | the three built-ins | See [gui.md](gui.md#notifications). |
 | `gui.displayMode` | `Auto`, `Light`, `Dark` | no | `Auto` | `Auto` follows `prefers-color-scheme`. |
 | `gui.theme` | theme name | no | `Ocean` | One of the twenty palette names listed in [gui.md](gui.md#theme). |
-| `gui.language` | BCP 47 tag | no | detected | Only `en-US` ships in phase 1. |
+| `gui.language` | BCP 47 tag | no | `en-US` | Supports `de`, `en-US`, `es`, `fr`, `it`, `ja`, `zh-CN`, `zh-HK`, and `zh-TW`. Regional tags resolve to a bundled locale; unsupported tags fall back to English. See [GUI languages](gui.md#languages). |
 | `gui.history.maxMessagesPerTopic` | integer | no | 1000 | Older rows beyond this count are deleted per topic. 0 keeps everything. |
 | `gui.history.retentionDays` | integer | no | 30 | 0 disables time based pruning. |
 | `gui.window.position` | `{ x, y }` | no | `-1, -1` | Negative means "center the window". |
@@ -215,7 +215,7 @@ UTF-8.
 - Unknown fields are ignored on read and **preserved on write**: a write merges the
   typed structure into the `serde_json::Value` that was read, so a newer `hmc` and an
   older `hmg` can share one file without losing each other's settings. This is a
-  deliberate departure from the reference project, which serialises the struct
+  deliberate departure from the reference project, which serializes the struct
   directly.
 - Adding an optional field with a default does not bump `version`.
 - Renaming a field or changing its meaning bumps `version` and adds a

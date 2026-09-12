@@ -101,14 +101,14 @@ Key schemas: `Credentials { username, password }`, `UserInfo { username, roleRef
 | BetterMediaInfo | HiveMe | Notes |
 |-----------------|--------|-------|
 | `src-tauri/` single Cargo package | `src-tauri/` package `hmg` inside a root Cargo workspace | Workspace is needed because `hmc` and `hiveme-core` are separate crates. `cargo tauri` works unchanged; the target dir moves to the repo root `target/`. |
-| `src-tauri/src/lib.rs`: alphabetised `#[tauri::command]` wrappers, `convert_error`, `run()` with a tokio runtime handed to Tauri | Same | Commands delegate to `controller.rs`; logging via `log` + `env_logger` (`RUST_LOG`). |
+| `src-tauri/src/lib.rs`: alphabetized `#[tauri::command]` wrappers, `convert_error`, `run()` with a tokio runtime handed to Tauri | Same | Commands delegate to `controller.rs`; logging via `log` + `env_logger` (`RUST_LOG`). |
 | `controller.rs` business logic | `controller.rs` orchestration only | Business logic lives in `hiveme-core` so `hmc` shares it. |
 | `protocol.rs` / `src/lib/protocol.ts` hand-synced | Same for IPC-only types (status, events, tree nodes) | Config and message types are generated from the JSON schemas instead of hand-written (decision 9) and re-exported from `protocol.ts`. |
 | `config.rs`: `Config` with `#[serde(default)]`, camelCase keys, `OnceLock<RwLock<Config>>`, `get_config`/`set_config`, `<App>.json` in the per-OS config dir | Same wrapper in `src-tauri/src/config.rs` over `hiveme_core::config` | File is `HiveMe/HiveMe.json`; `hmc` uses the same resolution code from the core crate. |
 | `window.rs`: `setup` (title with version, restore size/position, show), `on_window_event` (persist size/position) | Same | Window state lives in `gui.window` of the config. |
 | `constants.rs` `APP_NAME` | Same, `APP_NAME = "HiveMe"` | |
 | Plugins: dialog, clipboard-manager, opener | dialog, clipboard-manager, opener, notification | Notification plugin drives OS notifications. |
-| `src/App.tsx`: MUI `ThemeProvider`, `displayMode` Auto/Light/Dark, 20 named colour themes, compact component defaults | Same, palette table copied | |
+| `src/App.tsx`: MUI `ThemeProvider`, `displayMode` Auto/Light/Dark, 20 named color themes, compact component defaults | Same, palette table copied | |
 | `Layout.tsx` grid `auto 1fr auto`: Toolbar, MainContent, Footer | Same | Footer renders the status bar required by the spec; copyright moves to the About tab. |
 | `MainContent.tsx`: tabs with `ControlStatus` Hidden/Selected/Visible for Settings and About, Ctrl+1..9, Ctrl+W, Ctrl+Tab | Same | Tab 0 is the fixed "Messages" tab holding the tree and chat split. |
 | `Toolbar.tsx`: `ButtonGroup` of `IconButton`s with tooltips and shortcuts (F10 settings) | Same | Buttons listed in section 8. |
@@ -116,7 +116,7 @@ Key schemas: `Credentials { username, password }`, `UserInfo { username, roleRef
 | `lib/store.tsx` Zustand `useAppStore`, `lib/service.ts` invoke wrappers, `lib/constants.ts`, `lib/format.ts` | Same | Components never call Tauri APIs directly. |
 | `src/i18n` with react-i18next and 9 locales | Same structure, `en-US` only in phase 1 | Other locales are a later phase; `gui.language` is detected from the system like BetterMediaInfo. |
 | `Config.tsx` settings tab with `SectionHeader` sections | `Config.tsx` with Broker, Topics, Notifications, Appearance, Update sections | |
-| `About.tsx` | `About.tsx` with app version, links, licence | |
+| `About.tsx` | `About.tsx` with app version, links, license | |
 | Update check against GitHub releases, `update` config block | Same, repository `caoccao/HiveMe` | Phase 5. |
 | `.github/workflows/{linux,macos,windows}_build.yml`, artifacts per OS, `cargo test -r` before build | Same three workflows plus lint and schema steps | `hmc` binaries are uploaded alongside the bundles. |
 | `scripts/ts/change-version.ts` (Deno) | Same, adapted file list | Workspace version inheritance keeps the list short. |
@@ -192,7 +192,7 @@ HiveMe/
 
 `hmg`
 
-1. `run()` initialises logging, the tokio runtime, managed state (`AppState { config, client handle, store, rules, notification limiter }`), plugins, `window::setup`, and the command handler.
+1. `run()` initializes logging, the tokio runtime, managed state (`AppState { config, client handle, store, rules, notification limiter }`), plugins, `window::setup`, and the command handler.
 2. `setup` restores the window, opens SQLite, connects with a persistent session, subscribes to every filter in `topics.subscriptions`, and starts the update check when due.
 3. Each incoming message is parsed leniently, stored, added to the topic tree, pushed to the frontend as a `message` event, and evaluated against notification rules. Matching messages not sent by this device raise an OS notification.
 4. Sending from the composer calls the `publish` command, which uses the same core publish path as `hmc`. The message appears immediately as an outgoing bubble and is reconciled with the broker echo by `id`.
@@ -321,7 +321,7 @@ Field reference:
 | `broker.keepAliveSecs` | integer | no | 30 | |
 | `broker.sessionExpirySecs` | integer | no | 3600 | GUI only; `hmc` always uses 0. |
 | `broker.connectTimeoutSecs` | integer | no | 10 | |
-| `broker.tls.verifyServer` | boolean | no | true | `false` is only honoured for non-`hivemq.cloud` hosts and logs a warning. |
+| `broker.tls.verifyServer` | boolean | no | true | `false` is only honored for non-`hivemq.cloud` hosts and logs a warning. |
 | `broker.tls.caFile` | path or null | no | null | Extra PEM roots appended to the native store. |
 | `broker.reconnect.*` | integer | no | 1000 / 30000 | Exponential backoff with jitter. |
 | `topics.prefix` | string | no | `hiveme` | May be empty, in which case relative topics are absolute. No leading or trailing `/`, no wildcards. |
@@ -373,8 +373,8 @@ Spec file: `docs/specs/message.md`. Schema: `schemas/message.schema.json` (gener
 ### 5.1 Goals
 
 - JSON payload on the wire. Readable by `jq` and third-party tools.
-- Backwards compatible: new readers read old messages.
-- Forwards compatible: old readers read new messages, degrading gracefully.
+- Backward compatible: new readers read old messages.
+- Forward compatible: old readers read new messages, degrading gracefully.
 - One envelope shape for plaintext and encrypted messages so readers can route on the header before touching the body.
 - Third-party JSON and plain text are still displayed.
 
@@ -507,7 +507,7 @@ Spec section: `docs/specs/message.md#encryption`. Config section: `encryption` (
 
 - `A256GCM`: AES-256-GCM, 96-bit random nonce per message, 128-bit tag.
 - Message key: `HKDF-SHA256(ikm = secret, salt = "hiveme/v1", info = "msg:" || kid)`, 32 bytes. Deriving instead of using the secret directly gives domain separation for future uses of the same secret.
-- Plaintext: UTF-8 bytes of the serialised `payload` object.
+- Plaintext: UTF-8 bytes of the serialized `payload` object.
 - Associated data: the compact UTF-8 JSON array `[v, id, ts, sender.id or "", type, alg, kid]`. Binding the header prevents moving a ciphertext to another id, sender, or key.
 - Nonce reuse is the main risk with GCM. Random 96-bit nonces are safe for well under 2^32 messages per key; the rotation policy keeps keys far below that. `XC20P` is reserved for a future variant with 192-bit nonces.
 
@@ -523,7 +523,7 @@ Spec section: `docs/specs/message.md#encryption`. Config section: `encryption` (
 ### 6.4 What this plan implements for encryption
 
 - Types `Enc`, `EncryptionConfig`, `KeyEntry` in `hiveme-core`, included in both schemas.
-- Parser recognises encrypted envelopes and returns `Message { enc: Some(_), payload: None }`.
+- Parser recognizes encrypted envelopes and returns `Message { enc: Some(_), payload: None }`.
 - GUI renders an encrypted bubble as a lock icon with "encrypted (key k-2026-09)" plus sender and time.
 - `hmc` and `hmg` refuse to publish while `encryption.mode != "Off"` and report "encryption is not implemented yet" (exit code 3 in `hmc`, snackbar in `hmg`), so a half-configured setup cannot silently send plaintext.
 - No cryptography crate is added yet.
@@ -561,20 +561,20 @@ Spec file: `docs/specs/gui.md`. Layout and component structure follow BetterMedi
 
 `Layout.tsx`: CSS grid with rows `auto 1fr auto` inside a `100vh` box.
 
-- `Toolbar.tsx` (top): `ButtonGroup`s of small `IconButton`s with tooltips, keyboard shortcuts in the tooltip text. Groups: Connect/Disconnect (state-aware icon), Pause notifications (toggle, active colour), Clear selected topic history, Settings (F10, opens the Settings tab), About (opens the About tab).
+- `Toolbar.tsx` (top): `ButtonGroup`s of small `IconButton`s with tooltips, keyboard shortcuts in the tooltip text. Groups: Connect/Disconnect (state-aware icon), Pause notifications (toggle, active color), Clear selected topic history, Settings (F10, opens the Settings tab), About (opens the About tab).
 - `MainContent.tsx` (middle): MUI `Tabs`, same `TabControl` and `ControlStatus` pattern as BetterMediaInfo. Tab 0 "Messages" is fixed; "Settings" and "About" open as closable tabs. Shortcuts Ctrl+1..9, Ctrl+W, Ctrl+Tab, Ctrl+Shift+Tab.
-- `Footer.tsx` (bottom): the status bar required by the spec. Connection state with colour, broker host, reconnect countdown, subscription count, messages received this session, last error (click opens details), database size.
-- `NotificationSnackbar.tsx`: top-centre `Snackbar` with `Alert` driven by the store's `dialogNotification`, used for command errors and confirmations.
+- `Footer.tsx` (bottom): the status bar required by the spec. Connection state with color, broker host, reconnect countdown, subscription count, messages received this session, last error (click opens details), database size.
+- `NotificationSnackbar.tsx`: top-center `Snackbar` with `Alert` driven by the store's `dialogNotification`, used for command errors and confirmations.
 
 `Messages.tsx` (tab 0): horizontal split with a draggable divider persisted in `localStorage`.
 
 - `TopicTree.tsx` (left, `@mui/x-tree-view` `RichTreeView`): topic hierarchy split on `/`, root node is the prefix. Each node shows an unread badge. Nodes appear when the first message on that topic arrives or when a message is sent to it, and persist in SQLite. A filter field sits above the tree.
-- `MessageView.tsx` (right): chat view for the selected topic. Messages from this device (`sender.id == device.id`) align right, others align left with the sender name and app. Bubbles show `title` (bold), `body`, a collapsed `data` JSON tree, a `level` chip, and time. Raw JSON and raw text tiers use a monospace bubble. Encrypted messages show a lock placeholder. Virtualised list (`@tanstack/react-virtual`, already used by BetterMediaInfo), newest at the bottom, auto-scroll unless the user scrolled up. Right-click or hover menu: copy body, copy JSON (clipboard plugin).
+- `MessageView.tsx` (right): chat view for the selected topic. Messages from this device (`sender.id == device.id`) align right, others align left with the sender name and app. Bubbles show `title` (bold), `body`, a collapsed `data` JSON tree, a `level` chip, and time. Raw JSON and raw text tiers use a monospace bubble. Encrypted messages show a lock placeholder. Virtualized list (`@tanstack/react-virtual`, already used by BetterMediaInfo), newest at the bottom, auto-scroll unless the user scrolled up. Right-click or hover menu: copy body, copy JSON (clipboard plugin).
 - `Composer.tsx` (bottom of the message view): multi-line `TextField` and a send `IconButton`. Enter sends, Shift+Enter inserts a newline. A small menu on the send button toggles "send as raw JSON" and per-message QoS/retain overrides. Disabled when disconnected or when no topic is selected.
 
 `Config.tsx` (Settings tab): `SectionHeader` sections as in BetterMediaInfo: Broker (URL, username, password with visibility toggle, TLS options with a CA file picker via the dialog plugin, advanced timings), Topics (prefix, default, subscriptions list editor), Notifications (enabled, notify own messages, rules table with add/edit/delete), Appearance (display mode toggle, theme select, language select), Update (check interval). Save calls `set_config`; the backend reconnects when broker or subscription fields changed. Encryption and Cloud API sections are read-only placeholders that state "not implemented yet" until their phases.
 
-`About.tsx`: app icon, name, version, links to GitHub and author, licence, copyright. Update notice appears here and as a dialog in `MainContent` like BetterMediaInfo.
+`About.tsx`: app icon, name, version, links to GitHub and author, license, copyright. Update notice appears here and as a dialog in `MainContent` like BetterMediaInfo.
 
 Theme: `App.tsx` copies BetterMediaInfo's `getPaletteByTheme` (20 themes), `displayMode` handling with `prefers-color-scheme`, `typography.fontSize: 12`, and the compact `components` defaults.
 
@@ -621,7 +621,7 @@ Options:
   -V, --version              Print version
 ```
 
-Behaviour:
+Behavior:
 
 - Exactly one of MESSAGE or stdin is used. If both are absent (no argument and stdin is a TTY), exit 2 with usage.
 - `--json` requires the input to parse as JSON; otherwise exit 2. The MQTT content type is still `application/json`, but no `hiveme-v` property is set.
@@ -660,7 +660,7 @@ Each step lists tasks, spec sync, tests, and the done condition. Steps inside a 
 - Done when: every design question in this plan has a home in a spec file, and `app.md` lists all files.
 
 **Step 0.2 Workspace and conventions.**
-- Tasks: root `Cargo.toml` workspace (`src-tauri`, `crates/hiveme-core`, `crates/hmc`, `xtask`) with `[workspace.package]` version, edition 2024, licence, authors; `rust-toolchain.toml` pinned; `.rustfmt.toml`; clippy `-D warnings`; Apache-2.0 header template and a `scripts/ts/check-license-headers.ts`; `package.json` (`dev`, `build`, `tauri`, `typecheck`, `test`, `gen:types`), `pnpm-workspace.yaml` (`onlyBuiltDependencies: [esbuild]`), `index.html`, `vite.config.js` (port 1420, ignore `src-tauri`), `tsconfig.json` copied from BetterMediaInfo; `.gitignore` union of BetterMediaInfo's and cargo's; `README.md` with badges; `CLAUDE.md` and `AGENTS.md` (identical) describing layout, commands, protocol-sync and spec-sync rules; `docs/development.md`, `docs/installation.md`, `docs/release_notes.md`, `docs/todos.md`, `docs/screenshots.md` stubs.
+- Tasks: root `Cargo.toml` workspace (`src-tauri`, `crates/hiveme-core`, `crates/hmc`, `xtask`) with `[workspace.package]` version, edition 2024, license, authors; `rust-toolchain.toml` pinned; `.rustfmt.toml`; clippy `-D warnings`; Apache-2.0 header template and a `scripts/ts/check-license-headers.ts`; `package.json` (`dev`, `build`, `tauri`, `typecheck`, `test`, `gen:types`), `pnpm-workspace.yaml` (`onlyBuiltDependencies: [esbuild]`), `index.html`, `vite.config.js` (port 1420, ignore `src-tauri`), `tsconfig.json` copied from BetterMediaInfo; `.gitignore` union of BetterMediaInfo's and cargo's; `README.md` with badges; `CLAUDE.md` and `AGENTS.md` (identical) describing layout, commands, protocol-sync and spec-sync rules; `docs/development.md`, `docs/installation.md`, `docs/release_notes.md`, `docs/todos.md`, `docs/screenshots.md` stubs.
 - Spec sync: `app.md` "Repository layout" section identical to 3.2.
 - Tests: `cargo build --workspace`, `pnpm install`.
 - Done when: `cargo build --workspace` succeeds on the developer machine.
@@ -687,7 +687,7 @@ Each step lists tasks, spec sync, tests, and the done condition. Steps inside a 
 - Tasks: prefix resolution, topic validation, filter matching with `+`, `#`, and `$`-prefixed topics; rule engine with templating and first-match semantics; per-rule rate limiter; level inference for publishing.
 - Spec sync: `gui.md#notifications` and `config.md#topics` updated with the exact matching semantics and the template grammar.
 - Tests: MQTT filter matching table from the MQTT 5 spec examples; template rendering including the `{a|b}` fallback; built-in defaults apply only when `rules` is absent.
-- Done when: rule behaviour in the spec is executable as tests.
+- Done when: rule behavior in the spec is executable as tests.
 
 **Step 1.4 Schema and spec tooling.**
 - Tasks: `xtask schema`; `xtask check-spec` (extract fenced blocks and validate); `scripts/ts/check-spec-sync.ts`; `spec_examples_are_valid`, `schemas_are_current` tests; `pnpm gen:types`; PR template with the definition-of-done checklist.
@@ -725,13 +725,13 @@ Each step lists tasks, spec sync, tests, and the done condition. Steps inside a 
 - Done when: history survives an app restart.
 
 **Step 4.3 Backend commands and events.**
-- Tasks: `AppState` (config, client handle, store, rule engine, notification limiter); `mqtt.rs` task bridging the core client to storage, rules, and `Emitter`; commands and events listed in section 8 as alphabetised wrappers in `lib.rs` delegating to `controller.rs`; `protocol.rs` and `protocol.ts` types (`Status`, `TopicNode`, `MessageRow`, `PublishOptions`, `*Event`); own-message reconciliation by `id`; reconnect on `set_config` when broker or subscription fields changed.
+- Tasks: `AppState` (config, client handle, store, rule engine, notification limiter); `mqtt.rs` task bridging the core client to storage, rules, and `Emitter`; commands and events listed in section 8 as alphabetized wrappers in `lib.rs` delegating to `controller.rs`; `protocol.rs` and `protocol.ts` types (`Status`, `TopicNode`, `MessageRow`, `PublishOptions`, `*Event`); own-message reconciliation by `id`; reconnect on `set_config` when broker or subscription fields changed.
 - Spec sync: `gui.md#ipc` lists each command with request and response JSON, and each event payload, referencing the generated types.
 - Tests: Rust unit tests for the state machine with a fake client; a vitest test that parses fixture messages with `src/lib/message.ts` and matches the Rust tiers.
 - Done when: the frontend can drive the whole flow through IPC with a mocked broker.
 
 **Step 4.4 Frontend Messages tab.**
-- Tasks: `Messages.tsx` split pane; `TopicTree.tsx` with unread badges and filter; `MessageView.tsx` with virtualisation and bubble alignment by sender; `Composer.tsx` with Enter to send; `Footer.tsx` status bar wired to `status` events; store slices for topics, messages per topic, selection, status; `lib/format.ts` for times and sizes; `lib/message.ts` lenient parser (TypeScript twin of the Rust tiers, used for display only).
+- Tasks: `Messages.tsx` split pane; `TopicTree.tsx` with unread badges and filter; `MessageView.tsx` with virtualization and bubble alignment by sender; `Composer.tsx` with Enter to send; `Footer.tsx` status bar wired to `status` events; store slices for topics, messages per topic, selection, status; `lib/format.ts` for times and sizes; `lib/message.ts` lenient parser (TypeScript twin of the Rust tiers, used for display only).
 - Spec sync: `gui.md` layout description, keyboard shortcuts, and the exact rendering rules for each message tier.
 - Tests: component tests for tree building from topic lists, bubble alignment, composer key handling, and parser tier rendering.
 - Done when: the user can select a topic, read history, send a message, and see it echoed; `hmc -t error` from another terminal appears live in the GUI.
@@ -744,7 +744,7 @@ Each step lists tasks, spec sync, tests, and the done condition. Steps inside a 
 
 **Step 4.6 Notifications end to end.**
 - Tasks: `notification.rs` wiring the rule engine to the notification plugin on all three OSes; pause toggle; rate limiting; clicking a notification focuses the window and selects the topic where the platform supports it.
-- Spec sync: `gui.md#notifications` matches behaviour including platform caveats (Windows app identity in debug builds).
+- Spec sync: `gui.md#notifications` matches behavior including platform caveats (Windows app identity in debug builds).
 - Tests: rule engine unit tests from 1.3; manual test checklist per OS in `gui.md`.
 - Done when: the three built-in rules produce notifications on macOS, Linux (GNOME), and Windows.
 
@@ -783,10 +783,10 @@ Each of these already has its config fields and spec sections reserved so adding
 | Schema and spec checks | tests from section 10, `xtask check-spec`, `scripts/ts/check-spec-sync.ts` | all three workflows |
 | MQTT integration | `testcontainers` + `hivemq/hivemq-ce` | Linux workflow, local with Docker |
 | Real cloud | opt-in env vars | local only |
-| CLI behaviour | `assert_cmd` | all three workflows |
+| CLI behavior | `assert_cmd` | all three workflows |
 | Frontend | `vitest`, React Testing Library, `tsc -b`, eslint | all three workflows |
 | GUI build | `pnpm tauri build` | all three workflows |
-| Lint | `cargo fmt --check`, `cargo clippy --workspace -D warnings`, licence header check | all three workflows |
+| Lint | `cargo fmt --check`, `cargo clippy --workspace -D warnings`, license header check | all three workflows |
 
 Workflows cache cargo and pnpm stores. macOS and Windows jobs skip Docker tests via `HIVEME_SKIP_DOCKER=1`.
 
@@ -800,8 +800,8 @@ Workflows cache cargo and pnpm stores. macOS and Windows jobs skip Docker tests 
 | HiveMQ CE container lacks TLS, so TLS is only covered by the opt-in cloud test | Add a TLS-enabled Mosquitto container with a self-signed CA and `caFile` to the integration suite in phase 2 if time allows; otherwise document the gap in `hivemq-cloud.md`. |
 | Serverless credentials may be publish-only or subscribe-only | `hmg` surfaces SUBACK failure reasons in the status bar; `hmc` maps PUBACK reason codes to exit code 4 with the reason string. |
 | Workspace changes Tauri's target directory to the repo root | Workflow artifact paths use `target/release/bundle/...`; `docs/development.md` states it. |
-| Windows notification behaviour differs (app identity required) | Tauri handles app identity via the bundle; document the debug-build limitation in `gui.md`. |
-| Tree view performance with many topics | Virtualised `RichTreeView`, topic query capped, filter field. |
+| Windows notification behavior differs (app identity required) | Tauri handles app identity via the bundle; document the debug-build limitation in `gui.md`. |
+| Tree view performance with many topics | Virtualized `RichTreeView`, topic query capped, filter field. |
 | Config rewrite by the GUI loses user comments | JSON has no comments; the merge-on-write preserves unknown keys, and the GUI only writes when the user saves settings or moves the window. |
 | Window-state writes on every move/resize contend with `hmc` reads | Writes are atomic (temp file + rename); `hmc` retries a read once on parse failure. |
 
@@ -810,6 +810,6 @@ Workflows cache cargo and pnpm stores. macOS and Windows jobs skip Docker tests 
 ## 14. Open items to confirm during implementation
 
 - Whether `wss://` transport ships in phase 2 or phase 6 depends on `rumqttc` WebSocket support quality with rustls at implementation time.
-- The exact MUI tree component (`RichTreeView` vs `SimpleTreeView`) is chosen in step 4.4 based on virtualisation support in `@mui/x-tree-view` 9.
+- The exact MUI tree component (`RichTreeView` vs `SimpleTreeView`) is chosen in step 4.4 based on virtualization support in `@mui/x-tree-view` 9.
 - The `$id` URLs for the schemas are placeholders until a docs site exists.
 - Whether `pnpm tauri build` in a workspace needs `--config` tweaks for the portable 7z step on Windows is verified in step 0.3.

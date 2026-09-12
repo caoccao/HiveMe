@@ -17,7 +17,7 @@
 
 //! One `hmc` run: read the config, build the message, publish it, leave.
 //!
-//! The behaviour is specified in `docs/specs/cli.md`. Everything that could also be
+//! The behavior is specified in `docs/specs/cli.md`. Everything that could also be
 //! useful to `hmg` lives in `hiveme-core`, so this file only decides what the command
 //! line asked for.
 

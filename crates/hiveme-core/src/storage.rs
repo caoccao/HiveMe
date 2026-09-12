@@ -156,7 +156,7 @@ impl NewMessage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Insertion {
   pub message: StoredMessage,
-  /// False when the row was already there, which is how a broker echo is recognised.
+  /// False when the row was already there, which is how a broker echo is recognized.
   pub is_new: bool,
   /// Whether this is the first message ever stored on the topic.
   pub topic_is_new: bool,
@@ -180,7 +180,7 @@ impl Pruned {
 
 /// The message history.
 ///
-/// One connection behind a mutex. SQLite serialises writers anyway, and `hmg` reads
+/// One connection behind a mutex. SQLite serializes writers anyway, and `hmg` reads
 /// history a page at a time from the IPC thread while one task writes what arrives, so
 /// a pool would buy nothing.
 pub struct Store {
@@ -233,7 +233,7 @@ impl Store {
   ///
   /// Version 0 means a database this build has not stamped, whether it is brand new or
   /// was written before `schema_version` existed, so the tables are created with
-  /// `IF NOT EXISTS` and the version is written afterwards.
+  /// `IF NOT EXISTS` and the version is written afterward.
   fn migrate(&self) -> Result<()> {
     let connection = self.lock();
     connection
@@ -297,7 +297,7 @@ impl Store {
     Ok(())
   }
 
-  /// Stores a message, or recognises one that is already there.
+  /// Stores a message, or recognizes one that is already there.
   ///
   /// The unread count only moves for a message that is new and came from the broker;
   /// what this installation sent has been seen by definition.

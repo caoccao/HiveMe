@@ -34,6 +34,7 @@ import {
   isNewerVersion,
   parseRow,
   payloadOf,
+  previewOf,
   senderLabel,
   senderOf,
 } from '../lib/message';
@@ -55,8 +56,8 @@ const STICK_THRESHOLD_PX = 48;
 /** How close to the top asks for the previous page. */
 const LOAD_OLDER_THRESHOLD_PX = 64;
 
-/** The chip colour of each level. */
-function levelColour(level: Protocol.Level): 'default' | 'info' | 'warning' | 'error' {
+/** The chip color of each level. */
+function levelColor(level: Protocol.Level): 'default' | 'info' | 'warning' | 'error' {
   switch (level) {
     case Protocol.Level.Warn:
       return 'warning';
@@ -164,8 +165,12 @@ export function Bubble({ row }: { row: Protocol.MessageRow }) {
           <Chip
             size="small"
             variant="outlined"
-            color={levelColour(level)}
-            label={isKnownLevel(row.level) ? level : `${row.level} (${level})`}
+            color={levelColor(level)}
+            label={
+              isKnownLevel(row.level) || !row.level
+                ? t(`levels.${level}`)
+                : t('messages.unknownLevel', { level: row.level, fallback: t(`levels.${level}`) })
+            }
           />
           <IconButton
             size="small"
@@ -180,7 +185,7 @@ export function Bubble({ row }: { row: Protocol.MessageRow }) {
         {envelope && isEncrypted(envelope) ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
             <LockIcon sx={{ fontSize: 16 }} />
-            <Typography variant="body2">{row.body}</Typography>
+            <Typography variant="body2">{previewOf(parsed)}</Typography>
           </Box>
         ) : parsed.tier === Protocol.Tier.Envelope ? (
           <>

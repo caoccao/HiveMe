@@ -238,7 +238,7 @@ fn render(template: &str, context: &Context) -> String {
 /// What the rate limiter decided about one notification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Admission {
-  /// Show it, summarising this many that were held back since the last one.
+  /// Show it, summarizing this many that were held back since the last one.
   Show { suppressed: u32 },
   /// Hold it back.
   Suppress,
@@ -273,7 +273,7 @@ impl NotificationLimiter {
 
   /// Whether the rule may raise a notification now.
   ///
-  /// `now` is passed in rather than read from the clock so that the behaviour is
+  /// `now` is passed in rather than read from the clock so that the behavior is
   /// testable.
   pub fn admit(&mut self, rule_id: &str, now: Instant) -> Admission {
     match self.entries.get_mut(rule_id) {

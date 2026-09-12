@@ -18,7 +18,7 @@
 //! Where the config file and the history database live.
 //!
 //! The rules are specified in `docs/specs/config.md`. Every rule is expressed against
-//! an injected [`PathEnv`] and an explicit [`Os`], so that the Windows behaviour can
+//! an injected [`PathEnv`] and an explicit [`Os`], so that the Windows behavior can
 //! be tested from a Linux or macOS host and vice versa.
 
 use std::path::{Path, PathBuf};
@@ -96,7 +96,7 @@ fn non_empty_var(name: &str) -> Option<PathBuf> {
   }
 }
 
-/// The config file path for this process, honouring `--config` when given.
+/// The config file path for this process, honoring `--config` when given.
 pub fn config_path(explicit: Option<&Path>) -> Result<PathBuf> {
   config_path_with(explicit, &PathEnv::from_process(), Os::current())
 }
@@ -156,7 +156,7 @@ pub fn database_path(config_path: &Path) -> PathBuf {
 ///
 /// `Path::parent` only understands the host's separator, so a Windows path would lose
 /// its directory when this rule is exercised from Linux or macOS. Doing it by hand
-/// keeps the Windows behaviour testable everywhere.
+/// keeps the Windows behavior testable everywhere.
 fn parent_directory(path: &Path) -> PathBuf {
   let text = path.to_string_lossy();
   match text.rfind(['/', '\\']) {

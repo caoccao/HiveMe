@@ -23,6 +23,7 @@ import * as Protocol from './protocol';
 import * as Service from './service';
 import { MESSAGE_PAGE_SIZE } from './constants';
 import type { DialogNotification } from './types';
+import { changeLanguage } from '../i18n';
 
 /** The status a GUI that has not heard from the backend yet renders. */
 export const INITIAL_STATUS: Protocol.Status = {
@@ -66,7 +67,8 @@ interface AppState {
   initStatus: () => Promise<void>;
   refreshTopics: () => Promise<void>;
 
-  saveConfig: (config: Protocol.Config) => Promise<boolean>;
+  updateConfig: (change: (config: Protocol.Config) => void) => void;
+  flushConfig: () => Promise<boolean>;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   toggleNotificationsPaused: () => Promise<void>;
@@ -97,195 +99,236 @@ export function errorMessage(error: unknown): string {
   return String(error);
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
-  config: null,
-  about: null,
-  status: INITIAL_STATUS,
+export const useAppStore = create<AppState>((set, get) => {
+  // Keep automatic saves outside the Settings component so closing its tab cannot
+  // cancel an edit. One writer drains the newest snapshot after each pending write.
+  let configSaveTimer: ReturnType<typeof setTimeout> | undefined;
+  let pendingConfig: Protocol.Config | null = null;
+  let configSaveInFlight: Promise<boolean> | null = null;
+  let lastConfigSaveSucceeded = true;
 
-  topics: [],
-  topicFilter: '',
-  selectedTopic: null,
-  messages: new Map(),
-  loadedTopics: new Set(),
-  loadingOlder: false,
-  hasOlder: new Map(),
+  return {
+    config: null,
+    about: null,
+    status: INITIAL_STATUS,
 
-  dialogNotification: null,
-  tabAboutStatus: Protocol.ControlStatus.Hidden,
-  tabSettingsStatus: Protocol.ControlStatus.Hidden,
+    topics: [],
+    topicFilter: '',
+    selectedTopic: null,
+    messages: new Map(),
+    loadedTopics: new Set(),
+    loadingOlder: false,
+    hasOlder: new Map(),
 
-  initConfig: async () => {
-    try {
-      set({ config: await Service.getConfig() });
-    } catch (error) {
-      get().notifyError(error);
-    }
-  },
+    dialogNotification: null,
+    tabAboutStatus: Protocol.ControlStatus.Hidden,
+    tabSettingsStatus: Protocol.ControlStatus.Hidden,
 
-  initAbout: async () => {
-    try {
-      set({ about: await Service.getAbout() });
-    } catch (error) {
-      get().notifyError(error);
-    }
-  },
+    initConfig: async () => {
+      try {
+        const config = await Service.getConfig();
+        await changeLanguage(config.gui?.language);
+        set({ config });
+      } catch (error) {
+        get().notifyError(error);
+      }
+    },
 
-  initStatus: async () => {
-    try {
-      set({ status: await Service.getStatus() });
-    } catch (error) {
-      get().notifyError(error);
-    }
-  },
+    initAbout: async () => {
+      try {
+        set({ about: await Service.getAbout() });
+      } catch (error) {
+        get().notifyError(error);
+      }
+    },
 
-  refreshTopics: async () => {
-    try {
-      set({ topics: await Service.listTopics() });
-    } catch (error) {
-      get().notifyError(error);
-    }
-  },
+    initStatus: async () => {
+      try {
+        set({ status: await Service.getStatus() });
+      } catch (error) {
+        get().notifyError(error);
+      }
+    },
 
-  saveConfig: async (config) => {
-    try {
-      const saved = await Service.setConfig(config);
-      set({ config: saved });
-      await get().initStatus();
-      return true;
-    } catch (error) {
-      get().notifyError(error);
-      return false;
-    }
-  },
+    refreshTopics: async () => {
+      try {
+        set({ topics: await Service.listTopics() });
+      } catch (error) {
+        get().notifyError(error);
+      }
+    },
 
-  connect: async () => {
-    try {
-      set({ status: await Service.connect() });
-    } catch (error) {
-      get().notifyError(error);
-      await get().initStatus();
-    }
-  },
+    updateConfig: (change) => {
+      const current = get().config;
+      if (!current) return;
+      const config = structuredClone(current);
+      change(config);
+      set({ config });
+      void changeLanguage(config.gui?.language);
+      pendingConfig = config;
+      clearTimeout(configSaveTimer);
+      configSaveTimer = setTimeout(() => void get().flushConfig(), 500);
+    },
 
-  disconnect: async () => {
-    try {
-      await Service.disconnect();
-      await get().initStatus();
-    } catch (error) {
-      get().notifyError(error);
-    }
-  },
+    flushConfig: () => {
+      clearTimeout(configSaveTimer);
+      configSaveTimer = undefined;
+      if (configSaveInFlight) return configSaveInFlight;
+      if (!pendingConfig) return Promise.resolve(lastConfigSaveSucceeded);
 
-  toggleNotificationsPaused: async () => {
-    try {
-      set({ status: await Service.setNotificationsPaused(!get().status.notificationsPaused) });
-    } catch (error) {
-      get().notifyError(error);
-    }
-  },
+      configSaveInFlight = (async () => {
+        while (pendingConfig) {
+          const snapshot = pendingConfig;
+          pendingConfig = null;
+          try {
+            const saved = await Service.setConfig(snapshot);
+            // Only accept normalized values if no newer edit is already on screen.
+            if (get().config === snapshot) set({ config: saved });
+            lastConfigSaveSucceeded = true;
+            await get().initStatus();
+          } catch (error) {
+            lastConfigSaveSucceeded = false;
+            // A newer edit may already have corrected the rejected value. Keep edits
+            // visible on failure; the next change retries the complete configuration.
+            if (!pendingConfig) get().notifyError(error);
+          }
+        }
+        return lastConfigSaveSucceeded;
+      })().finally(() => {
+        configSaveInFlight = null;
+      });
+      return configSaveInFlight;
+    },
 
-  selectTopic: async (topic) => {
-    set({ selectedTopic: topic });
-    if (topic === null) {
-      return;
-    }
-    try {
-      if (!get().loadedTopics.has(topic)) {
-        const page = await Service.getMessages(topic, null, MESSAGE_PAGE_SIZE);
+    connect: async () => {
+      try {
+        set({ status: await Service.connect() });
+      } catch (error) {
+        get().notifyError(error);
+        await get().initStatus();
+      }
+    },
+
+    disconnect: async () => {
+      try {
+        await Service.disconnect();
+        await get().initStatus();
+      } catch (error) {
+        get().notifyError(error);
+      }
+    },
+
+    toggleNotificationsPaused: async () => {
+      try {
+        set({ status: await Service.setNotificationsPaused(!get().status.notificationsPaused) });
+      } catch (error) {
+        get().notifyError(error);
+      }
+    },
+
+    selectTopic: async (topic) => {
+      set({ selectedTopic: topic });
+      if (topic === null) {
+        return;
+      }
+      try {
+        if (!get().loadedTopics.has(topic)) {
+          const page = await Service.getMessages(topic, null, MESSAGE_PAGE_SIZE);
+          const messages = new Map(get().messages);
+          messages.set(topic, page);
+          const loadedTopics = new Set(get().loadedTopics);
+          loadedTopics.add(topic);
+          const hasOlder = new Map(get().hasOlder);
+          hasOlder.set(topic, page.length >= MESSAGE_PAGE_SIZE);
+          set({ messages, loadedTopics, hasOlder });
+        }
+        await Service.markRead(topic);
+        await get().refreshTopics();
+      } catch (error) {
+        get().notifyError(error);
+      }
+    },
+
+    loadOlderMessages: async (topic) => {
+      const state = get();
+      if (state.loadingOlder || state.hasOlder.get(topic) === false) {
+        return;
+      }
+      const current = state.messages.get(topic) ?? [];
+      if (current.length === 0) {
+        return;
+      }
+      set({ loadingOlder: true });
+      try {
+        const page = await Service.getMessages(topic, current[0].rowId, MESSAGE_PAGE_SIZE);
         const messages = new Map(get().messages);
-        messages.set(topic, page);
-        const loadedTopics = new Set(get().loadedTopics);
-        loadedTopics.add(topic);
+        messages.set(topic, [...page, ...(get().messages.get(topic) ?? [])]);
         const hasOlder = new Map(get().hasOlder);
         hasOlder.set(topic, page.length >= MESSAGE_PAGE_SIZE);
-        set({ messages, loadedTopics, hasOlder });
+        set({ messages, hasOlder });
+      } catch (error) {
+        get().notifyError(error);
+      } finally {
+        set({ loadingOlder: false });
       }
-      await Service.markRead(topic);
-      await get().refreshTopics();
-    } catch (error) {
-      get().notifyError(error);
-    }
-  },
+    },
 
-  loadOlderMessages: async (topic) => {
-    const state = get();
-    if (state.loadingOlder || state.hasOlder.get(topic) === false) {
-      return;
-    }
-    const current = state.messages.get(topic) ?? [];
-    if (current.length === 0) {
-      return;
-    }
-    set({ loadingOlder: true });
-    try {
-      const page = await Service.getMessages(topic, current[0].rowId, MESSAGE_PAGE_SIZE);
-      const messages = new Map(get().messages);
-      messages.set(topic, [...page, ...(get().messages.get(topic) ?? [])]);
-      const hasOlder = new Map(get().hasOlder);
-      hasOlder.set(topic, page.length >= MESSAGE_PAGE_SIZE);
-      set({ messages, hasOlder });
-    } catch (error) {
-      get().notifyError(error);
-    } finally {
-      set({ loadingOlder: false });
-    }
-  },
+    clearSelectedTopic: async () => {
+      const topic = get().selectedTopic;
+      if (!topic) {
+        return;
+      }
+      try {
+        await Service.clearTopic(topic);
+        const messages = new Map(get().messages);
+        messages.set(topic, []);
+        const hasOlder = new Map(get().hasOlder);
+        hasOlder.set(topic, false);
+        set({ messages, hasOlder });
+        await get().refreshTopics();
+      } catch (error) {
+        get().notifyError(error);
+      }
+    },
 
-  clearSelectedTopic: async () => {
-    const topic = get().selectedTopic;
-    if (!topic) {
-      return;
-    }
-    try {
-      await Service.clearTopic(topic);
-      const messages = new Map(get().messages);
-      messages.set(topic, []);
-      const hasOlder = new Map(get().hasOlder);
-      hasOlder.set(topic, false);
-      set({ messages, hasOlder });
-      await get().refreshTopics();
-    } catch (error) {
-      get().notifyError(error);
-    }
-  },
+    publish: async (topic, body, options) => {
+      try {
+        const row = await Service.publish(topic, body, options);
+        get().receiveMessage(row);
+        await get().refreshTopics();
+        return true;
+      } catch (error) {
+        get().notifyError(error);
+        return false;
+      }
+    },
 
-  publish: async (topic, body, options) => {
-    try {
-      const row = await Service.publish(topic, body, options);
-      get().receiveMessage(row);
-      await get().refreshTopics();
-      return true;
-    } catch (error) {
-      get().notifyError(error);
-      return false;
-    }
-  },
+    // A row that is already there is replaced rather than appended, so that the copy the
+    // broker echoes back of something this installation sent never doubles the bubble.
+    receiveMessage: (message) => {
+      const state = get();
+      if (!state.loadedTopics.has(message.topic)) {
+        return;
+      }
+      const current = state.messages.get(message.topic) ?? [];
+      const index = current.findIndex((row) => row.rowId === message.rowId);
+      const next = index >= 0 ? current.map((row, at) => (at === index ? message : row)) : [...current, message];
+      const messages = new Map(state.messages);
+      messages.set(message.topic, next);
+      set({ messages });
+    },
 
-  // A row that is already there is replaced rather than appended, so that the copy the
-  // broker echoes back of something this installation sent never doubles the bubble.
-  receiveMessage: (message) => {
-    const state = get();
-    if (!state.loadedTopics.has(message.topic)) {
-      return;
-    }
-    const current = state.messages.get(message.topic) ?? [];
-    const index = current.findIndex((row) => row.rowId === message.rowId);
-    const next = index >= 0 ? current.map((row, at) => (at === index ? message : row)) : [...current, message];
-    const messages = new Map(state.messages);
-    messages.set(message.topic, next);
-    set({ messages });
-  },
+    setStatus: (status) => set({ status }),
+    setTopicFilter: (topicFilter) => set({ topicFilter }),
+    setDialogNotification: (dialogNotification) => set({ dialogNotification }),
 
-  setStatus: (status) => set({ status }),
-  setTopicFilter: (topicFilter) => set({ topicFilter }),
-  setDialogNotification: (dialogNotification) => set({ dialogNotification }),
+    notifyInfo: (title) =>
+      set({ dialogNotification: { title, type: Protocol.DialogNotificationType.Info } }),
 
-  notifyInfo: (title) =>
-    set({ dialogNotification: { title, type: Protocol.DialogNotificationType.Info } }),
+    notifyError: (error) =>
+      set({ dialogNotification: { title: errorMessage(error), type: Protocol.DialogNotificationType.Error } }),
 
-  notifyError: (error) =>
-    set({ dialogNotification: { title: errorMessage(error), type: Protocol.DialogNotificationType.Error } }),
-
-  setTabAboutStatus: (tabAboutStatus) => set({ tabAboutStatus }),
-  setTabSettingsStatus: (tabSettingsStatus) => set({ tabSettingsStatus }),
-}));
+    setTabAboutStatus: (tabAboutStatus) => set({ tabAboutStatus }),
+    setTabSettingsStatus: (tabSettingsStatus) => set({ tabSettingsStatus }),
+  };
+});

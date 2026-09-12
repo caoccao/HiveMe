@@ -126,7 +126,7 @@
       "type": "object"
     },
     "DisplayMode": {
-      "description": "Which colour scheme the GUI follows.",
+      "description": "Which color scheme the GUI follows.",
       "oneOf": [
         {
           "enum": [
@@ -195,7 +195,7 @@
         },
         "language": {
           "default": "en-US",
-          "description": "A BCP 47 tag. Only `en-US` ships today.",
+          "description": "A BCP 47 tag. The GUI supports de, en-US, es, fr, it, ja, zh-CN, zh-HK, and zh-TW.",
           "type": "string"
         },
         "theme": {
@@ -538,7 +538,7 @@
         },
         "verifyServer": {
           "default": true,
-          "description": "Honoured only for hosts outside `hivemq.cloud`, and logs a warning when false.",
+          "description": "Honored only for hosts outside `hivemq.cloud`, and logs a warning when false.",
           "type": "boolean"
         }
       },
@@ -626,7 +626,7 @@
       "type": "object"
     },
     "WindowPosition": {
-      "description": "The remembered window position. Negative means \"centre the window\".",
+      "description": "The remembered window position. Negative means \"center the window\".",
       "properties": {
         "x": {
           "default": -1,

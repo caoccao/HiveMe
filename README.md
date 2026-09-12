@@ -53,7 +53,7 @@ what each one is for.
 
 ### 4. Tell the GUI about the cluster
 
-Start HiveMe, press **F10** for the Settings tab, and fill in the Broker section:
+Start HiveMe, press **F10** for the Settings tab, select **Broker**, and fill in:
 
 | Field | Value |
 |-------|-------|
@@ -66,9 +66,9 @@ The console shows that URL as `<your-cluster>.s1.eu.hivemq.cloud:8883`, with no 
 in front of it, and that is exactly what goes in the box. The protocol list beside it is
 where `mqtts://` comes from, so there is nothing to add, remove, or retype.
 
-Press **Save**. The status bar at the bottom turns to **connected**. There is nothing
-to configure for TLS: a HiveMQ Cloud certificate chains to an authority your operating
-system already trusts.
+Changes save automatically when you pause typing. The status bar at the bottom turns
+to **connected**. There is nothing to configure for TLS: a HiveMQ Cloud certificate
+chains to an authority your operating system already trusts.
 
 ### 5. Tell the CLI, without retyping any of it
 

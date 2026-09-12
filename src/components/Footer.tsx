@@ -22,8 +22,8 @@ import * as Protocol from '../lib/protocol';
 import { formatBytes, formatDuration } from '../lib/format';
 import { useAppStore } from '../lib/store';
 
-/** The status colour of each connection state. */
-function stateColour(state: string): 'success' | 'warning' | 'default' | 'error' {
+/** The status color of each connection state. */
+function stateColor(state: string): 'success' | 'warning' | 'default' | 'error' {
   switch (state) {
     case Protocol.ConnectionState.Connected:
       return 'success';
@@ -73,7 +73,7 @@ export default function Footer() {
     >
       <Chip
         size="small"
-        color={stateColour(status.state)}
+        color={stateColor(status.state)}
         variant="outlined"
         label={t(`footer.state.${status.state}`, { defaultValue: status.state })}
       />

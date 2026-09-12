@@ -10,7 +10,7 @@ unticked.
 - [ ] Code
 - [ ] Tests, including a failing case for each new rule
 - [ ] The specification under `docs/specs/` is updated, or this change does not touch
-      any behaviour a specification describes
+      any behavior a specification describes
 - [ ] `cargo xtask schema` was rerun and `schemas/` is committed
 - [ ] `pnpm gen:types` was rerun and `src/generated/` is committed
 - [ ] `src-tauri/src/protocol.rs` and `src/lib/protocol.ts` moved together
@@ -25,6 +25,6 @@ unticked.
 - [ ] `pnpm typecheck` and `pnpm test`
 
 <!--
-A pure refactor that cannot change behaviour may carry the `spec-sync-exempt` label,
+A pure refactor that cannot change behavior may carry the `spec-sync-exempt` label,
 which skips the code-and-specification pairing check in CI.
 -->

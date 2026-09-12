@@ -90,7 +90,7 @@ describe('the parse tiers', () => {
     expect(displayedLevel(level)).toBe(Level.Info);
   });
 
-  it('recognises an encrypted envelope whose algorithm it does not know', () => {
+  it('recognizes an encrypted envelope whose algorithm it does not know', () => {
     const parsed = parseText(fixture('unknown_alg.json'));
     expect(parsed.tier).toBe(Tier.Envelope);
     if (parsed.tier !== Tier.Envelope) {

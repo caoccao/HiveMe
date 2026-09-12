@@ -59,7 +59,7 @@ provides; a bare window manager may not.
 Open the `.dmg` and drag HiveMe to Applications. The binaries are inside the bundle,
 at `HiveMe.app/Contents/MacOS/hmg` and `HiveMe.app/Contents/MacOS/hmc`.
 
-The build is not signed or notarised, so the first launch has to be through the
+The build is not signed or notarized, so the first launch has to be through the
 right-click Open menu, or Gatekeeper will refuse it.
 
 ### Windows
@@ -117,10 +117,10 @@ Full rules in [specs/config.md](specs/config.md#location-and-precedence).
 
 1. Create a HiveMQ Cloud cluster and a set of MQTT credentials. See
    [specs/hivemq-cloud.md](specs/hivemq-cloud.md#console-walkthrough).
-2. Start `hmg`, open the Settings tab, and fill in the Broker category with the cluster
+2. Start `hmg`, open the Settings tab, select Broker, and fill in the cluster
    URL copied from the console as it is shown there, the username, and the password.
    The protocol is the list beside the URL and starts on TLS MQTT, so there is no
-   `mqtts://` to add to what was copied. Save.
+   `mqtts://` to add to what was copied. Changes save automatically when you pause typing.
 3. Press **Copy CLI setup** in that same section and run
    `hmc --init '<paste>'`, which is the whole of setting up the CLI.
 4. Send a test message: `hmc "hello"`. It appears in the GUI.

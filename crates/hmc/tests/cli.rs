@@ -47,7 +47,7 @@ fn scratch() -> (tempfile::TempDir, PathBuf) {
 
 /// Writes `config` to `path` the way the config module would.
 fn write(path: &Path, config: &Config) {
-  let text = serde_json::to_string_pretty(config).expect("the config serialises");
+  let text = serde_json::to_string_pretty(config).expect("the config serializes");
   std::fs::write(path, text).expect("the config is written");
 }
 

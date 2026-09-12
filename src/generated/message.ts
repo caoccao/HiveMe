@@ -69,7 +69,7 @@ export type Level = string;
  * How a message was encrypted.
  *
  * Designed but not implemented; see `docs/specs/message.md`. Readers already
- * recognise the shape so that an encrypted message is displayed as a placeholder
+ * recognize the shape so that an encrypted message is displayed as a placeholder
  * rather than as unreadable JSON.
  */
 export interface Enc {

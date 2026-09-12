@@ -16,10 +16,12 @@
 */
 
 import { Alert, Snackbar } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 import * as Protocol from '../lib/protocol';
 import { useAppStore } from '../lib/store';
 
 export default function NotificationSnackbar() {
+  const { t } = useTranslation();
   const notification = useAppStore((state) => state.dialogNotification);
   const setNotification = useAppStore((state) => state.setDialogNotification);
   const severity = notification?.type === Protocol.DialogNotificationType.Error ? 'error' : 'success';
@@ -30,7 +32,13 @@ export default function NotificationSnackbar() {
       onClose={() => setNotification(null)}
       anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
     >
-      <Alert onClose={() => setNotification(null)} severity={severity} variant="filled" sx={{ maxWidth: '80vw' }}>
+      <Alert
+        closeText={t('tabs.close')}
+        onClose={() => setNotification(null)}
+        severity={severity}
+        variant="filled"
+        sx={{ maxWidth: '80vw' }}
+      >
         {notification?.title}
       </Alert>
     </Snackbar>

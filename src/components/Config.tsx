@@ -23,6 +23,7 @@ import {
   Card,
   CardContent,
   Checkbox,
+  FormControl,
   FormControlLabel,
   IconButton,
   InputAdornment,
@@ -50,7 +51,6 @@ import CloudIcon from '@mui/icons-material/Cloud';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import DeleteIcon from '@mui/icons-material/Delete';
-import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import HistoryIcon from '@mui/icons-material/History';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import LinkIcon from '@mui/icons-material/Link';
@@ -66,6 +66,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { useTranslation } from 'react-i18next';
+import { resolveLanguage } from '../i18n';
 import * as Protocol from '../lib/protocol';
 import {
   BrokerProtocol,
@@ -74,15 +75,15 @@ import {
   joinBrokerUrl,
   splitBrokerUrl,
 } from '../lib/brokerUrl';
-import { getBrokerInit, openConfigFile } from '../lib/service';
+import { getBrokerInit } from '../lib/service';
 import { useAppStore } from '../lib/store';
 
 /** One category of settings: one entry in the sidebar, one panel beside it. */
 export enum ConfigCategory {
+  Appearance = 'Appearance',
   Broker = 'Broker',
   Topics = 'Topics',
   Notifications = 'Notifications',
-  Appearance = 'Appearance',
   History = 'History',
   Update = 'Update',
   Advanced = 'Advanced',
@@ -107,6 +108,24 @@ function SectionHeader({ icon, title, action }: { icon: React.ReactNode; title: 
   );
 }
 
+function SettingRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        py: 1,
+        borderBottom: 1,
+        borderColor: 'divider',
+      }}
+    >
+      <Typography variant="body2" color="text.secondary">{label}</Typography>
+      <Box>{children}</Box>
+    </Box>
+  );
+}
+
 /** A group within a category, for the settings that belong together but are not the first thing asked for. */
 function Section({ children }: { children: React.ReactNode }) {
   return (
@@ -126,14 +145,19 @@ function NumberField({
   value: number | undefined;
   onChange: (value: number) => void;
 }) {
+  const [text, setText] = useState(String(value ?? 0));
+  useEffect(() => setText(String(value ?? 0)), [value]);
+
   return (
     <TextField
       label={label}
       type="number"
-      value={value ?? 0}
+      value={text}
       onChange={(event) => {
-        const parsed = Number.parseInt(event.target.value, 10);
-        if (Number.isFinite(parsed) && parsed >= 0) {
+        const input = event.target.value;
+        setText(input);
+        const parsed = Number(input);
+        if (input.trim() !== '' && Number.isInteger(parsed) && parsed >= 0) {
           onChange(parsed);
         }
       }}
@@ -157,42 +181,33 @@ export function toDrafts(subscriptions: Protocol.Subscription[] | undefined): Su
 }
 
 export function fromDrafts(drafts: SubscriptionDraft[]): Protocol.Subscription[] {
-  return drafts
-    .filter((draft) => draft.filter.trim() !== '')
-    .map((draft) => (draft.absolute ? { filter: draft.filter.trim(), absolute: true } : draft.filter.trim()));
+  return drafts.map((draft) => (draft.absolute ? { filter: draft.filter.trim(), absolute: true } : draft.filter.trim()));
 }
 
 export default function Config() {
   const { t } = useTranslation();
   const config = useAppStore((state) => state.config);
-  const saveConfig = useAppStore((state) => state.saveConfig);
+  const update = useAppStore((state) => state.updateConfig);
+  const flushConfig = useAppStore((state) => state.flushConfig);
   const notifyInfo = useAppStore((state) => state.notifyInfo);
   const notifyError = useAppStore((state) => state.notifyError);
-  const about = useAppStore((state) => state.about);
-
-  const [draft, setDraft] = useState<Protocol.Config | null>(config);
-  const [category, setCategory] = useState<ConfigCategory>(ConfigCategory.Broker);
+  const [category, setCategory] = useState<ConfigCategory>(ConfigCategory.Appearance);
   const [showPassword, setShowPassword] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   // The protocol is a box of its own but not a setting of its own: it is the scheme of
   // the one URL the config keeps. It is held here so that a protocol chosen before the
   // URL is typed stays chosen, rather than being erased along with the empty URL.
   const [url, setUrl] = useState<BrokerUrlParts>(() => splitBrokerUrl(config?.broker?.url));
 
-  const reload = (loaded: Protocol.Config | null) => {
-    setDraft(loaded);
-    setUrl(splitBrokerUrl(loaded?.broker?.url));
-  };
-
   useEffect(() => {
-    setDraft(config);
-    setUrl(splitBrokerUrl(config?.broker?.url));
-  }, [config]);
+    // Keep the raw text and a protocol selected before an address is entered.
+    const stored = config?.broker?.url ?? '';
+    setUrl((previous) => joinBrokerUrl(previous) === stored ? previous : splitBrokerUrl(stored, previous));
+  }, [config?.broker?.url]);
 
-  const subscriptions = useMemo(() => toDrafts(draft?.topics?.subscriptions), [draft]);
+  const subscriptions = useMemo(() => toDrafts(config?.topics?.subscriptions), [config?.topics?.subscriptions]);
 
-  if (!draft) {
+  if (!config) {
     return (
       <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
         {t('settings.loading')}
@@ -200,34 +215,20 @@ export default function Config() {
     );
   }
 
-  const update = (change: (next: Protocol.Config) => void) => {
-    const next = structuredClone(draft) as Protocol.Config;
-    change(next);
-    setDraft(next);
-  };
-
   const editUrl = (parts: BrokerUrlParts) => {
     setUrl(parts);
     update((next) => ((next.broker ??= {}).url = joinBrokerUrl(parts)));
   };
 
-  const broker = draft.broker ?? {};
-  const topics = draft.topics ?? {};
-  const notifications = draft.notifications ?? {};
-  const gui = draft.gui ?? {};
+  const broker = config.broker ?? {};
+  const topics = config.topics ?? {};
+  const notifications = config.notifications ?? {};
+  const gui = config.gui ?? {};
   const rules = notifications.rules ?? [];
-
-  const save = async () => {
-    setSaving(true);
-    const saved = await saveConfig(draft);
-    setSaving(false);
-    if (saved) {
-      notifyInfo(t('settings.saved'));
-    }
-  };
 
   const copyCliSetup = async () => {
     try {
+      if (!await flushConfig()) return;
       await writeText(await getBrokerInit());
       notifyInfo(t('settings.cliSetupCopied'));
     } catch (error) {
@@ -529,6 +530,7 @@ export default function Config() {
                 <TableCell>
                   <Select
                     value={rule.level ?? Protocol.Level.Info}
+                    inputProps={{ 'aria-label': t('settings.ruleLevel') }}
                     onChange={(event) =>
                       update(
                         (next) =>
@@ -538,7 +540,7 @@ export default function Config() {
                   >
                     {Protocol.LEVELS.map((level) => (
                       <MenuItem key={level} value={level}>
-                        {level}
+                        {t(`levels.${level}`)}
                       </MenuItem>
                     ))}
                   </Select>
@@ -596,9 +598,11 @@ export default function Config() {
   const appearancePanel = (
     <Box>
       <SectionHeader icon={<PaletteIcon fontSize="small" />} title={t('settings.appearance')} />
-      <Stack spacing={2}>
+      <SettingRow label={t('settings.mode')}>
         <ToggleButtonGroup
           exclusive
+          size="small"
+          aria-label={t('settings.mode')}
           value={gui.displayMode ?? Protocol.DisplayMode.Auto}
           onChange={(_, value) => {
             if (value) {
@@ -606,52 +610,50 @@ export default function Config() {
             }
           }}
         >
-          <ToggleButton value={Protocol.DisplayMode.Auto}>
-            <BrightnessAutoIcon fontSize="small" sx={{ mr: 0.5 }} />
-            {t('settings.displayModeAuto')}
+          <ToggleButton value={Protocol.DisplayMode.Auto} sx={{ px: 1.5, gap: 0.5 }}>
+            <BrightnessAutoIcon sx={{ fontSize: 16 }} />
+            <Typography variant="caption">{t('settings.displayModeAuto')}</Typography>
           </ToggleButton>
-          <ToggleButton value={Protocol.DisplayMode.Light}>
-            <LightModeIcon fontSize="small" sx={{ mr: 0.5 }} />
-            {t('settings.displayModeLight')}
+          <ToggleButton value={Protocol.DisplayMode.Light} sx={{ px: 1.5, gap: 0.5 }}>
+            <LightModeIcon sx={{ fontSize: 16 }} />
+            <Typography variant="caption">{t('settings.displayModeLight')}</Typography>
           </ToggleButton>
-          <ToggleButton value={Protocol.DisplayMode.Dark}>
-            <DarkModeIcon fontSize="small" sx={{ mr: 0.5 }} />
-            {t('settings.displayModeDark')}
+          <ToggleButton value={Protocol.DisplayMode.Dark} sx={{ px: 1.5, gap: 0.5 }}>
+            <DarkModeIcon sx={{ fontSize: 16 }} />
+            <Typography variant="caption">{t('settings.displayModeDark')}</Typography>
           </ToggleButton>
         </ToggleButtonGroup>
-        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          <Box>
-            <Typography variant="caption" color="text.secondary">
-              {t('settings.theme')}
-            </Typography>
-            <Select
-              value={gui.theme ?? Protocol.Theme.Ocean}
-              onChange={(event) => update((next) => ((next.gui ??= {}).theme = event.target.value as never))}
-              sx={{ minWidth: 180, display: 'block' }}
-              inputProps={{ 'aria-label': t('settings.theme') }}
-            >
-              {Protocol.THEMES.map((theme) => (
-                <MenuItem key={theme} value={theme}>
-                  {theme}
-                </MenuItem>
-              ))}
-            </Select>
-          </Box>
-          <Box>
-            <Typography variant="caption" color="text.secondary">
-              {t('settings.language')}
-            </Typography>
-            <Select
-              value={gui.language ?? Protocol.Language.EnUS}
-              onChange={(event) => update((next) => ((next.gui ??= {}).language = event.target.value))}
-              sx={{ minWidth: 180, display: 'block' }}
-              inputProps={{ 'aria-label': t('settings.language') }}
-            >
-              <MenuItem value={Protocol.Language.EnUS}>English (US)</MenuItem>
-            </Select>
-          </Box>
-        </Box>
-      </Stack>
+      </SettingRow>
+      <SettingRow label={t('settings.theme')}>
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <Select
+            value={gui.theme ?? Protocol.Theme.Ocean}
+            onChange={(event) => update((next) => ((next.gui ??= {}).theme = event.target.value as never))}
+            inputProps={{ 'aria-label': t('settings.theme') }}
+          >
+            {Protocol.THEMES.map((theme) => (
+              <MenuItem key={theme} value={theme}>
+                {t(`settings.themes.${theme}`)}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </SettingRow>
+      <SettingRow label={t('settings.language')}>
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <Select
+            value={resolveLanguage(gui.language)}
+            onChange={(event) => update((next) => ((next.gui ??= {}).language = event.target.value))}
+            inputProps={{ 'aria-label': t('settings.language') }}
+          >
+            {Protocol.LANGUAGES.map((language) => (
+              <MenuItem key={language} value={language} lang={language}>
+                {Protocol.LANGUAGE_LABELS[language]}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </SettingRow>
     </Box>
   );
 
@@ -684,7 +686,7 @@ export default function Config() {
           {t('settings.checkInterval')}
         </Typography>
         <Select
-          value={draft.update?.checkInterval ?? Protocol.UpdateCheckInterval.Weekly}
+          value={config.update?.checkInterval ?? Protocol.UpdateCheckInterval.Weekly}
           onChange={(event) => update((next) => ((next.update ??= {}).checkInterval = event.target.value as never))}
           sx={{ minWidth: 180 }}
           inputProps={{ 'aria-label': t('settings.checkInterval') }}
@@ -721,111 +723,81 @@ export default function Config() {
   );
 
   const panels: Record<ConfigCategory, React.ReactNode> = {
+    [ConfigCategory.Appearance]: appearancePanel,
     [ConfigCategory.Broker]: brokerPanel,
     [ConfigCategory.Topics]: topicsPanel,
     [ConfigCategory.Notifications]: notificationsPanel,
-    [ConfigCategory.Appearance]: appearancePanel,
     [ConfigCategory.History]: historyPanel,
     [ConfigCategory.Update]: updatePanel,
     [ConfigCategory.Advanced]: advancedPanel,
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, p: 1 }}>
-      <Box sx={{ display: 'flex', gap: 2, flex: 1, minHeight: 0 }}>
-        <Tabs
-          orientation="vertical"
-          variant="scrollable"
-          value={category}
-          onChange={(_, value: ConfigCategory) => setCategory(value)}
-          aria-label={t('settings.categories')}
-          sx={{
-            borderRight: 1,
-            borderColor: 'divider',
-            flexShrink: 0,
-            minWidth: 180,
-            '& .MuiTab-root': {
-              minHeight: 40,
-              alignItems: 'center',
-              justifyContent: 'flex-start',
-              textAlign: 'left',
-            },
-          }}
-        >
-          <Tab
-            value={ConfigCategory.Broker}
-            icon={<CloudIcon sx={{ fontSize: 18 }} />}
-            iconPosition="start"
-            label={t('settings.broker')}
-          />
-          <Tab
-            value={ConfigCategory.Topics}
-            icon={<TopicIcon sx={{ fontSize: 18 }} />}
-            iconPosition="start"
-            label={t('settings.topics')}
-          />
-          <Tab
-            value={ConfigCategory.Notifications}
-            icon={<NotificationsIcon sx={{ fontSize: 18 }} />}
-            iconPosition="start"
-            label={t('settings.notifications')}
-          />
-          <Tab
-            value={ConfigCategory.Appearance}
-            icon={<PaletteIcon sx={{ fontSize: 18 }} />}
-            iconPosition="start"
-            label={t('settings.appearance')}
-          />
-          <Tab
-            value={ConfigCategory.History}
-            icon={<HistoryIcon sx={{ fontSize: 18 }} />}
-            iconPosition="start"
-            label={t('settings.history')}
-          />
-          <Tab
-            value={ConfigCategory.Update}
-            icon={<UpdateIcon sx={{ fontSize: 18 }} />}
-            iconPosition="start"
-            label={t('settings.update')}
-          />
-          <Tab
-            value={ConfigCategory.Advanced}
-            icon={<TuneIcon sx={{ fontSize: 18 }} />}
-            iconPosition="start"
-            label={t('settings.advanced')}
-          />
-        </Tabs>
-        <Box sx={{ flex: 1, minWidth: 0, overflow: 'auto', pr: 1, pb: 1 }}>{panels[category]}</Box>
-      </Box>
-
-      <Box
+    <Box sx={{ width: '100%', maxWidth: 960, mx: 'auto', py: 2, px: 1, display: 'flex', gap: 2, height: '100%', minHeight: 0 }}>
+      <Tabs
+        orientation="vertical"
+        variant="scrollable"
+        value={category}
+        onChange={(_, value: ConfigCategory) => setCategory(value)}
+        aria-label={t('settings.categories')}
         sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1,
-          flexShrink: 0,
-          borderTop: 1,
+          borderRight: 1,
           borderColor: 'divider',
-          pt: 1,
-          mt: 1,
+          flexShrink: 0,
+          minWidth: 180,
+          '& .MuiTab-root': {
+            minHeight: 40,
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            textAlign: 'left',
+          },
         }}
       >
-        <Button variant="contained" onClick={save} disabled={saving}>
-          {t('settings.save')}
-        </Button>
-        <Button variant="outlined" onClick={() => reload(config)}>
-          {t('settings.revert')}
-        </Button>
-        <Box sx={{ flex: 1 }} />
-        <Tooltip title={about?.configPath ?? ''}>
-          <Button
-            variant="text"
-            startIcon={<FolderOpenIcon />}
-            onClick={() => openConfigFile().catch(notifyError)}
-          >
-            {t('settings.openConfigFile')}
-          </Button>
-        </Tooltip>
+        <Tab
+          value={ConfigCategory.Appearance}
+          icon={<PaletteIcon sx={{ fontSize: 18 }} />}
+          iconPosition="start"
+          label={t('settings.appearance')}
+        />
+        <Tab
+          value={ConfigCategory.Broker}
+          icon={<CloudIcon sx={{ fontSize: 18 }} />}
+          iconPosition="start"
+          label={t('settings.broker')}
+        />
+        <Tab
+          value={ConfigCategory.Topics}
+          icon={<TopicIcon sx={{ fontSize: 18 }} />}
+          iconPosition="start"
+          label={t('settings.topics')}
+        />
+        <Tab
+          value={ConfigCategory.Notifications}
+          icon={<NotificationsIcon sx={{ fontSize: 18 }} />}
+          iconPosition="start"
+          label={t('settings.notifications')}
+        />
+        <Tab
+          value={ConfigCategory.History}
+          icon={<HistoryIcon sx={{ fontSize: 18 }} />}
+          iconPosition="start"
+          label={t('settings.history')}
+        />
+        <Tab
+          value={ConfigCategory.Update}
+          icon={<UpdateIcon sx={{ fontSize: 18 }} />}
+          iconPosition="start"
+          label={t('settings.update')}
+        />
+        <Tab
+          value={ConfigCategory.Advanced}
+          icon={<TuneIcon sx={{ fontSize: 18 }} />}
+          iconPosition="start"
+          label={t('settings.advanced')}
+        />
+      </Tabs>
+      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
+        {panels[category]}
       </Box>
     </Box>
   );

@@ -140,7 +140,7 @@ mod tests {
     std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()))
   }
 
-  /// The contents of the `text hiveme:help` block, with line endings normalised.
+  /// The contents of the `text hiveme:help` block, with line endings normalized.
   fn help_from_spec() -> String {
     let text = spec().replace("\r\n", "\n");
     let start = text

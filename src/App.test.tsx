@@ -23,9 +23,12 @@
 // backend log looks healthy while the user sees an empty rectangle. Only the rendered
 // output says whether the layout is there.
 
-import { render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
 import App from './App';
+import i18n from './i18n';
 import { INITIAL_STATUS, useAppStore } from './lib/store';
 import * as Protocol from './lib/protocol';
 
@@ -49,13 +52,20 @@ const topics: Protocol.TopicNode[] = [
   },
 ];
 
+let backendConfig: Protocol.Config;
+let failSave = false;
+
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(async (command: string) => {
+  invoke: vi.fn(async (command: string, args?: { config?: Protocol.Config }) => {
     switch (command) {
       case 'get_about':
         return about;
       case 'get_config':
-        return { version: 1, broker: {}, topics: { prefix: 'hiveme' }, gui: {} };
+        return backendConfig;
+      case 'set_config':
+        if (failSave) throw new Error('Cannot write config');
+        backendConfig = args?.config as Protocol.Config;
+        return backendConfig;
       case 'get_status':
         return { ...INITIAL_STATUS, state: 'Connected', host: 'abc.s1.eu.hivemq.cloud', port: 8883 };
       case 'list_topics':
@@ -75,6 +85,9 @@ vi.mock('@tauri-apps/api/event', () => ({
 }));
 
 beforeEach(() => {
+  vi.clearAllMocks();
+  failSave = false;
+  backendConfig = { version: 1, broker: {}, topics: { prefix: 'hiveme' }, gui: { language: 'en-US' } };
   useAppStore.setState({
     config: null,
     about: null,
@@ -84,6 +97,11 @@ beforeEach(() => {
     tabAboutStatus: Protocol.ControlStatus.Hidden,
     tabSettingsStatus: Protocol.ControlStatus.Hidden,
   });
+});
+
+afterEach(async () => {
+  cleanup();
+  await useAppStore.getState().flushConfig();
 });
 
 describe('the application window', () => {
@@ -111,5 +129,64 @@ describe('the application window', () => {
     expect(screen.getByText('info')).toBeInTheDocument();
     expect(screen.getByText('abc.s1.eu.hivemq.cloud:8883')).toBeInTheDocument();
     expect(screen.getByText(/Select a topic/)).toBeInTheDocument();
+  });
+
+  it.each(Protocol.LANGUAGES)('loads the saved %s language throughout the window', async (language) => {
+    backendConfig.gui = { language };
+    render(<App />);
+
+    await waitFor(() => expect(useAppStore.getState().config?.gui?.language).toBe(language));
+    expect(document.documentElement.lang).toBe(language);
+    const t = i18n.getFixedT(language);
+    expect(screen.getByRole('tab', { name: t('tabs.messages') })).toBeInTheDocument();
+    expect(screen.getByLabelText(t('toolbar.settings'))).toBeInTheDocument();
+    expect(screen.getByText(t('footer.state.Connected'))).toBeInTheDocument();
+    expect(screen.getByLabelText(t('topics.filter'))).toBeInTheDocument();
+    expect(screen.getByLabelText(t('composer.send'))).toBeInTheDocument();
+    expect(screen.getByText('info')).toBeInTheDocument(); // A topic name is user data.
+  });
+
+  it('applies language and theme immediately, then saves their wire values automatically', async () => {
+    render(<App />);
+    await waitFor(() => expect(useAppStore.getState().config).not.toBeNull());
+    await userEvent.click(screen.getByLabelText('Settings (F10)'));
+    await userEvent.click(screen.getByRole('tab', { name: 'Appearance' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Language' }));
+    expect(screen.getAllByRole('option')).toHaveLength(9);
+    await userEvent.click(screen.getByRole('option', { name: 'Deutsch' }));
+    expect(i18n.resolvedLanguage).toBe('de');
+    expect(backendConfig.gui?.language).toBe('en-US');
+    expect(screen.getByRole('tab', { name: 'Nachrichten' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Farbschema' })).toHaveTextContent('Ozean');
+    expect(screen.getAllByLabelText('Schließen').length).toBeGreaterThan(0);
+    expect(document.documentElement.lang).toBe('de');
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Farbschema' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Wald' }));
+    expect(useAppStore.getState().config?.gui?.theme).toBe('Forest');
+    await waitFor(() => expect(backendConfig.gui?.theme).toBe('Forest'));
+    expect(invoke).toHaveBeenCalledWith('set_config', expect.objectContaining({
+      config: expect.objectContaining({ gui: expect.objectContaining({ language: 'de', theme: 'Forest' }) }),
+    }));
+    expect(useAppStore.getState().dialogNotification).toBeNull();
+  });
+
+  it('keeps immediate changes visible on a save failure and retries on the next edit', async () => {
+    render(<App />);
+    await waitFor(() => expect(useAppStore.getState().config).not.toBeNull());
+    await userEvent.click(screen.getByLabelText('Settings (F10)'));
+    await userEvent.click(screen.getByRole('tab', { name: 'Appearance' }));
+    failSave = true;
+    await userEvent.click(screen.getByRole('combobox', { name: 'Language' }));
+    await userEvent.click(screen.getByRole('option', { name: '日本語' }));
+    expect(i18n.resolvedLanguage).toBe('ja');
+    expect(await screen.findByText('Cannot write config')).toBeInTheDocument();
+    expect(backendConfig.gui?.language).toBe('en-US');
+    expect(screen.getByRole('tab', { name: 'メッセージ' })).toBeInTheDocument();
+    failSave = false;
+    await userEvent.click(screen.getByRole('combobox', { name: 'テーマ' }));
+    await userEvent.click(screen.getByRole('option', { name: '森' }));
+    await waitFor(() => expect(backendConfig.gui?.language).toBe('ja'));
+    expect(backendConfig.gui?.theme).toBe('Forest');
   });
 });

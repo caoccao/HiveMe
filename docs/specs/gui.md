@@ -29,7 +29,7 @@ Its layout and architecture deliberately mirror the sibling project
 | `src/lib/message.ts` | The reader that renders the parse tiers |
 | `src/lib/format.ts` | Times, sizes, and the hex preview |
 | `src/lib/constants.ts` | Names, links, and the layout constants |
-| `src/i18n/` | react-i18next with `en-US` |
+| `src/i18n/` | react-i18next with nine locales; see [Languages](#languages) |
 
 ## Layout
 
@@ -60,7 +60,7 @@ Its layout and architecture deliberately mirror the sibling project
 | Group | Action | Notes |
 |-------|--------|-------|
 | Connection | Connect / Disconnect | Icon reflects the current state |
-| Notifications | Pause notifications | Toggle, uses the active colour while paused |
+| Notifications | Pause notifications | Toggle, uses the active color while paused |
 | History | Clear selected topic | Deletes the stored history of the selected topic |
 | Tabs | Settings (F10) | Opens or focuses the Settings tab |
 | Tabs | About | Opens or focuses the About tab |
@@ -93,12 +93,12 @@ matches, and expands what it found.
 The component is `SimpleTreeView` with hand-written `TreeItem` children rather than
 `RichTreeView`, which the plan left open. `TreeItem` takes a `label` of arbitrary
 content, which is what the unread badge needs, and the topic count of a desktop client
-is small enough that virtualising the tree would buy nothing. The message list, which
-can hold thousands of rows, is virtualised instead.
+is small enough that virtualizing the tree would buy nothing. The message list, which
+can hold thousands of rows, is virtualized instead.
 
 ### Message view
 
-`MessageView.tsx` is a chat view for the selected topic, virtualised, newest at the
+`MessageView.tsx` is a chat view for the selected topic, virtualized, newest at the
 bottom, auto-scrolling unless the user has scrolled up.
 
 | Message | Rendering |
@@ -130,20 +130,44 @@ id rather than opening a second one.
 
 ### Footer
 
-`Footer.tsx` is the status bar: connection state with a colour, broker host,
+`Footer.tsx` is the status bar: connection state with a color, broker host,
 reconnect countdown, subscription count, messages received this session, last error
 (clicking shows the detail), and database size.
 
-The state is a `Chip` whose colour is read before its word is: green for `Connected`,
-amber for `Connecting` and `Reconnecting`, and grey for `Disconnected` and for
+The state is a `Chip` whose color is read before its word is: green for `Connected`,
+amber for `Connecting` and `Reconnecting`, and gray for `Disconnected` and for
 anything else. The label comes from `footer.state.<state>`, so the four names arrive
 as `connected`, `connecting`, `reconnecting`, and `disconnected`.
 
 ### Snackbar
 
-`NotificationSnackbar.tsx` is a top-centre `Snackbar` with an `Alert`, driven by the
+`NotificationSnackbar.tsx` is a top-center `Snackbar` with an `Alert`, driven by the
 store's `dialogNotification`. It reports command errors and confirmations. It is
 in-app feedback and unrelated to OS notifications.
+
+## Languages
+
+The frontend ships German (`de`), US English (`en-US`), Spanish (`es`), French (`fr`),
+Italian (`it`), Japanese (`ja`), Simplified Chinese (`zh-CN`), and Traditional Chinese
+for Hong Kong (`zh-HK`) and Taiwan (`zh-TW`). Appearance lists each language by its
+native name. A selection applies throughout the window immediately and is saved
+automatically, without restarting or pressing a confirmation button.
+Startup uses the saved language. English is the default and the fallback for
+unsupported tags. Regional tags such as `de-DE` resolve to their bundled language;
+Chinese script and region tags resolve to the corresponding Chinese locale.
+All English UI text uses US English spelling and terminology.
+
+All frontend labels, tooltips, accessible names, theme and severity labels,
+confirmations, empty states, and encrypted-message placeholders use the catalogs.
+Counts have the locale's plural forms, and dates, times, numbers, byte sizes, and
+reconnect durations follow the selected language. The document language updates too.
+Protocol values, topic names, JSON keys and values, message content, device names,
+identifiers, URLs, and backend diagnostic details remain as received. OS notification
+templates and backend-generated notification summaries are outside these frontend
+catalogs.
+
+Catalog tests check key coverage, interpolation variables, and plural forms in every
+locale, including keys selected dynamically by connection state, theme, and severity.
 
 ## Theme
 
@@ -164,7 +188,7 @@ buttons, text fields, selects, checkboxes, radios, and icon buttons, and a 36 pi
 minimum height for tabs. `typography.button` sets `textTransform: 'none'`, which is
 where buttons, tabs, and toggle buttons all read it from, so a label reads as it was
 written and no component has to say so itself. Components use theme values through the
-`sx` prop or the `styled` API, never hard coded colours.
+`sx` prop or the `styled` API, never hard coded colors.
 
 ## Notifications
 
@@ -239,7 +263,8 @@ The manual checklist per OS:
 2. Publish ten messages to one of them in a second, and see one notification that ends
    with "and N more messages".
 3. Turn the toolbar toggle on, publish again, and see nothing.
-4. Turn `notifications.enabled` off in Settings, save, publish again, and see nothing.
+4. Turn `notifications.enabled` off in Settings, wait for the automatic save, publish
+   again, and see nothing.
 5. Publish from the composer of the same installation and see nothing, unless
    `notifyOwnMessages` is on.
 
@@ -273,7 +298,7 @@ links SQLite. The database runs in WAL mode.
 
 - `schema_version` holds the version of the layout above. Version 0 means a database
   this build has not stamped, whether it is brand new or older than the table itself,
-  so the tables are created with `IF NOT EXISTS` and the version is written afterwards.
+  so the tables are created with `IF NOT EXISTS` and the version is written afterward.
   A database from a newer build is refused rather than guessed at.
 - Inserts de-duplicate on `(topic_id, msg_id)`, which is how a message the composer
   sent and the copy the broker echoes back collapse into one bubble. The second insert
@@ -402,18 +427,24 @@ once. Each panel is built from the reference project's `SectionHeader` pattern, 
 panel with more than one group of fields puts every group after the first into an
 outlined card with a header of its own.
 
+Appearance is the first category and opens by default. The page uses the reference
+project's centered, 960 px maximum width and sidebar spacing. Appearance follows its
+`SettingRow` layout: Mode, Theme, and Language labels on the left, controls aligned
+on the right, and horizontal dividers between rows. Mode uses compact Auto Mode,
+Light Mode, and Dark Mode buttons with icons; Theme and Language use dropdown lists.
+
 | Category | Config path | Groups and fields |
 |----------|-------------|-------------------|
+| Appearance | `gui` | `displayMode`, `theme`, `language` |
 | Broker | `broker` | `url` as a protocol list and the rest of the URL, then `username` and `password` on one row, with a visibility toggle and **Copy CLI setup**; **Connection** with `clientIdPrefix`, `keepAliveSecs`, `sessionExpirySecs`, `connectTimeoutSecs`; **Reconnect** with `reconnect.initialDelayMs`, `reconnect.maxDelayMs` |
 | Topics | `topics` | `prefix`, `default`; **Subscriptions**, where each row is a filter and an "absolute" box |
 | Notifications | `notifications` | `enabled`, `notifyOwnMessages`; **Rules**, a table of `id`, `topic`, `level`, `enabled`, `title`, `body` with add and delete |
-| Appearance | `gui` | `displayMode`, `theme`, `language` |
 | History | `gui.history` | `maxMessagesPerTopic`, `retentionDays` |
 | Update | `update` | `checkInterval` |
 | Advanced | `encryption`, `cloudApi` | Read only placeholders until phase 6 |
 
 `broker.url` is one string in the config file, and `src/lib/brokerUrl.ts` takes the
-scheme off the front of it for the form and puts it back afterwards. That is the whole
+scheme off the front of it for the form and puts it back afterward. That is the whole
 of what it does: the protocol is a list, and the rest of the URL is one box holding
 exactly what the user put there.
 
@@ -432,22 +463,24 @@ box with the rest. Under the box is the URL that will be saved and the port it w
 connect on, which is worth saying because a URL that carries no port connects on the
 protocol's default and nothing on screen would otherwise say which port that is.
 
-The page opens on Broker, because a cluster is what has to be filled in before the rest
-of the application does anything. The draft is one object for the whole page rather than
-one per category, so an edit survives a move to another category and is written by the
-same **Save**.
+Select Broker to configure a cluster. All edits update the shared application state
+immediately, including language, theme, and display mode. They survive switching
+categories or closing and reopening the Settings tab.
 
 A subscription row is written back as a bare string when it is relative and as
 `{ "filter": "...", "absolute": true }` when it is not, which is the shape
-[config.md](config.md#topic-resolution) describes. A row left blank is dropped rather
-than written as an empty filter.
+[config.md](config.md#topic-resolution) describes. Clearing a filter keeps its row
+editable so it can be replaced. An invalid filter is rejected by backend validation;
+the row's remove button deletes an unwanted subscription.
 
-**Save** and **Revert** sit below the panel, on every category, next to a button that
-shows the config file in the file manager. Reverting takes the form back to what the
-backend holds.
-
-Saving calls `set_config`. Validation errors surface in the snackbar. The backend
-reconnects when broker or subscription fields changed.
+Settings use automatic saving, following BetterMediaInfo: edits are persisted through
+`set_config` after a 500 ms pause. There are no Save, Revert, or Open config buttons.
+The store owns the timer, so closing the Settings tab does not cancel a pending save.
+Writes run one at a time, with newer edits saved after a write already in progress;
+an older response never replaces newer values on screen. Successful saves are silent.
+Validation or write failures surface in the snackbar and keep the edited values
+visible; the next edit retries the latest configuration. The backend applies accepted
+changes and reconnects when broker or subscription fields changed.
 
 TLS has no fields. A HiveMQ Cloud cluster presents a certificate that chains to a
 public authority, which the operating system already trusts, so there is nothing for a
@@ -470,15 +503,17 @@ be applied is worse than no string. The password is in it, in plain text, and th
 button says so.
 
 The backend command is `get_broker_init`; `hiveme-core` renders the string, so the two
-applications cannot disagree about the format.
+applications cannot disagree about the format. Copy CLI setup first flushes pending
+settings and waits for the write to finish, so the copied string uses the current
+credentials. A failed save prevents copying an older setup string.
 
 ## Window
 
 `window.rs` owns window state, as in the reference project. `setup` sets the title to
-`HiveMe v<version>`, restores the size and position from `gui.window`, centres the
+`HiveMe v<version>`, restores the size and position from `gui.window`, centers the
 window when the stored position is negative, shows the window, and starts the update
 check when it is due. `on_window_event` persists size and position on move and
-resize, ignoring minimised windows and sizes below 600 x 450.
+resize, ignoring minimized windows and sizes below 600 x 450.
 
 ## Build and run
 
@@ -509,5 +544,5 @@ workspace member, so the bundles are under `target/release/bundle/`.
 At startup `hmg` reads the config, opens the history database beside it, restores the
 window, connects when a broker is configured, and starts the release check when it is
 due. A config file that cannot be read is reported rather than replaced: the window
-opens on defaults, the status bar says so, and nothing is written until the user saves
-the Settings tab.
+opens on defaults, the status bar says so, and nothing is written until the user edits
+a setting.

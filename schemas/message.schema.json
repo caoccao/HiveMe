@@ -1,7 +1,7 @@
 {
   "$defs": {
     "Enc": {
-      "description": "How a message was encrypted.\n\nDesigned but not implemented; see `docs/specs/message.md`. Readers already\nrecognise the shape so that an encrypted message is displayed as a placeholder\nrather than as unreadable JSON.",
+      "description": "How a message was encrypted.\n\nDesigned but not implemented; see `docs/specs/message.md`. Readers already\nrecognize the shape so that an encrypted message is displayed as a placeholder\nrather than as unreadable JSON.",
       "properties": {
         "alg": {
           "description": "The AEAD algorithm. An open enum; `A256GCM` is the first one.",

@@ -15,7 +15,7 @@
 * limitations under the License.
 */
 
-//! The config behaviour promised by `docs/specs/config.md`.
+//! The config behavior promised by `docs/specs/config.md`.
 
 use std::path::{Path, PathBuf};
 
@@ -374,7 +374,7 @@ fn every_validation_rule_rejects_its_own_mistake() {
       "cloudApi.baseUrl",
     ),
     case(
-      "an organisation id of the wrong length",
+      "an organization id of the wrong length",
       |c: &mut Config| {
         c.cloud_api = Some(hiveme_core::config::CloudApi {
           org_id: "toolong".to_owned(),
@@ -568,7 +568,7 @@ fn a_rule_written_the_short_way_takes_the_documented_defaults() {
 
 /// Sets an environment variable for the duration of `body`.
 ///
-/// The tests that need this are serialised by a mutex, because the environment is
+/// The tests that need this are serialized by a mutex, because the environment is
 /// shared by every test in the binary.
 fn temporarily_set(name: &str, value: Option<&str>, body: impl FnOnce()) {
   static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

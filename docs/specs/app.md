@@ -17,7 +17,7 @@ with TLS.
 |----------|--------|
 | [config.md](config.md) | The shared JSON config: location, fields, versioning, secrets, topic resolution |
 | [message.md](message.md) | The JSON message envelope, its payload, parse tiers, compatibility rules, and the encryption design |
-| [cli.md](cli.md) | `hmc`: usage, behaviour, exit codes |
+| [cli.md](cli.md) | `hmc`: usage, behavior, exit codes |
 | [gui.md](gui.md) | `hmg`: layout, notifications, storage, IPC, settings, window |
 | [hivemq-cloud.md](hivemq-cloud.md) | What the broker offers, how HiveMe connects, and the REST API |
 
@@ -78,7 +78,7 @@ revises them.
 |---|----------|----------|
 | 1 | HiveMQ Cloud plan and the role of the REST API | A Serverless cluster, and only that for now. The applications are MQTT only. Everything a Starter plan or above adds, the REST API included, is designed and reserved but implemented later. |
 | 1a | Where a cluster is configured | In `hmg`. Its Settings tab takes the URL, username, and password, and renders them as a one line setup string. `hmc --init '<json>'` turns that string back into a config, so `hmc` needs nothing typed into it. See [config.md](config.md#the-setup-string). |
-| 1b | TLS | Automatic and not configurable for the supported plan. A Serverless cluster chains to a public authority the OS already trusts, so neither application generates, enrols, or asks about a certificate. `broker.tls` remains for a local test broker. |
+| 1b | TLS | Automatic and not configurable for the supported plan. A Serverless cluster chains to a public authority the OS already trusts, so neither application generates, enrolls, or asks about a certificate. `broker.tls` remains for a local test broker. |
 | 2 | Config location and password storage | The per-OS config directory, with `--config` and `HIVEME_CONFIG` overrides. The password is plain text in the file, mode 0600 on Unix, with `passwordRef` reserved for the OS keychain. |
 | 3 | Producers and GUI strictness | Producers are the HiveMe tools plus the user's own scripts. The GUI is lenient: it parses the envelope when valid and otherwise shows the raw payload. |
 | 4 | Encryption key model | A symmetric pre-shared key, AES-256-GCM, HKDF derived, with a key id for rotation. Designed now, implemented in phase 6. |
@@ -104,7 +104,7 @@ set of habits.
 | BetterMediaInfo | HiveMe | Notes |
 |-----------------|--------|-------|
 | `src-tauri/` as a single Cargo package | `src-tauri/` as the package `hmg` inside a root workspace | The workspace is needed because `hmc` and `hiveme-core` are separate crates. The Cargo target directory moves to the repository root. |
-| `lib.rs` with alphabetised `#[tauri::command]` wrappers, `convert_error`, and a `run()` that hands Tauri a tokio runtime | the same | Commands delegate to `controller.rs`. Logging through `log` and `env_logger`, controlled by `RUST_LOG`. |
+| `lib.rs` with alphabetized `#[tauri::command]` wrappers, `convert_error`, and a `run()` that hands Tauri a tokio runtime | the same | Commands delegate to `controller.rs`. Logging through `log` and `env_logger`, controlled by `RUST_LOG`. |
 | `controller.rs` holds the business logic | `controller.rs` orchestrates only | The logic lives in `hiveme-core` so `hmc` shares it. |
 | `protocol.rs` and `protocol.ts` hand-synced | the same, for IPC-only types | Config and message types are generated from the schemas instead. |
 | `config.rs` with `#[serde(default)]`, camelCase keys, `OnceLock<RwLock<Config>>`, and `<App>.json` in the per-OS config directory | a thin wrapper over `hiveme_core::config` | The file is `HiveMe/HiveMe.json`. `hmc` uses the same resolution code. |
@@ -117,8 +117,8 @@ set of habits.
 | `Toolbar.tsx` icon button groups with tooltips | the same | |
 | `NotificationSnackbar.tsx` driven by the store | the same | |
 | `lib/store.tsx` Zustand, `lib/service.ts` invoke wrappers, `lib/constants.ts`, `lib/format.ts` | the same | Components never call Tauri APIs directly. |
-| `src/i18n` with react-i18next and nine locales | the same structure, `en-US` only in phase 1 | |
-| `Config.tsx` settings tab with a vertical category strip and `SectionHeader` sections | the same, with HiveMe's categories | Broker, Topics, Notifications, Appearance, History, Update, Advanced. |
+| `src/i18n` with react-i18next and nine locales | the same structure and locale set | |
+| `Config.tsx` settings tab with a vertical category strip, `SectionHeader` sections, and `SettingRow` appearance controls | the same, with HiveMe's categories | Appearance (default), Broker, Topics, Notifications, History, Update, Advanced. |
 | `About.tsx` | the same | |
 | Update check against GitHub releases | the same, for `caoccao/HiveMe` | |
 | Three per-OS build workflows | the same, plus lint, test, and spec checks | |
@@ -147,7 +147,7 @@ HiveMe/
                                   # Messages, TopicTree, MessageView, Composer, Config, About
     lib/                          # store.tsx, service.ts, protocol.ts, constants.ts, format.ts, types.ts, message.ts
     generated/                    # config.ts, message.ts generated from schemas/ (committed)
-    i18n/                         # index.ts, locales/en-US.json
+    i18n/                         # index.ts, locales/*.json (nine locales)
   src-tauri/                      # Tauri 2 app, package `hmg`, lib `hmg_lib`, binary `hmg`
     Cargo.toml, tauri.conf.json, build.rs, capabilities/default.json, icons/
     tauri.windows.conf.json       # Windows only: the bundle entry that carries hmc
@@ -214,13 +214,13 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Message storage | [gui.md](gui.md#storage) | `hiveme-core::storage` | 4.2 | done |
 | Backend commands and events | [gui.md](gui.md#ipc) | `src-tauri` | 4.3 | done |
 | Messages tab | [gui.md](gui.md#layout) | `src/components` | 4.4 | done |
-| Settings tab | [gui.md](gui.md#settings) | `src/components/Config.tsx` | 4.5 | done |
+| Settings tab opening on Appearance, with immediate changes and automatic saving | [gui.md](gui.md#settings) | `src/components/Config.tsx`, `src/lib/store.tsx` | 4.5 | done |
 | OS notifications | [gui.md](gui.md#notifications) | `src-tauri/notification.rs` | 4.6 | done |
 | Update check and packaging | [app.md](#install) | `src-tauri/update.rs` | 5.1 | done |
 | Documentation and onboarding | [README](../../README.md) | `README.md`, `docs/` | 5.2 | done, except the screenshots |
 | Encryption | [message.md](message.md#encryption) | `hiveme-core::crypto` | 6 | designed, types and parsing in place |
 | REST API client | [hivemq-cloud.md](hivemq-cloud.md#rest-api) | `hiveme-core::cloud` | 6 | designed |
-| Additional locales | [gui.md](gui.md) | `src/i18n` | 6 | designed |
+| Frontend localization in nine languages | [gui.md](gui.md#languages) | `src/i18n`, `src/components`, `src/lib/format.ts` | 6 | done |
 
 ## Build and release
 
@@ -348,8 +348,8 @@ Recorded so the plan and the tree can be reconciled later.
 13. The topic tree is `SimpleTreeView` with hand-written `TreeItem` children rather
     than `RichTreeView`, which section 14 of the plan left to step 4.4. `TreeItem`
     takes a label of arbitrary content, which the unread badge needs, and a desktop
-    client has few enough topics that virtualising the tree would buy nothing. The
-    message list is virtualised instead.
+    client has few enough topics that virtualizing the tree would buy nothing. The
+    message list is virtualized instead.
 14. The composer stores its bubble once the broker has accepted the message, not
     before. The plan said the bubble appears immediately; a publish that failed would
     then leave a bubble claiming it was sent, and there is no event that could take it
