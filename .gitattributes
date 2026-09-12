@@ -1,0 +1,13 @@
+# Normalise line endings so that a checkout is byte identical on every platform.
+# This is load bearing: CI compares the generated files under schemas/ and
+# src/generated/ against freshly generated ones, and a CRLF checkout would look like
+# drift. See docs/specs/app.md, "Spec sync".
+* text=auto eol=lf
+
+# Fixtures and assets that must never be rewritten.
+*.bin binary
+*.png binary
+*.ico binary
+*.icns binary
+*.7z binary
+*.dmg binary

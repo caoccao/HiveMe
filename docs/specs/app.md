@@ -135,6 +135,7 @@ HiveMe/
   rust-toolchain.toml             # channel pinned (1.96.0 at bootstrap), clippy + rustfmt, minimal profile
   .rustfmt.toml                   # max_width = 120, tab_spaces = 2
   .cargo/config.toml              # the `cargo xtask` alias
+  .gitattributes                  # LF checkouts everywhere, so generated files compare equal
   package.json, pnpm-workspace.yaml, pnpm-lock.yaml
   index.html, vite.config.js, tsconfig.json
   public/                         # favicon, images used by About
@@ -184,6 +185,11 @@ rather than rely on memory.
 
 Bypass the pairing check with the `spec-sync-exempt` pull request label when a change
 is a pure refactor.
+
+Mechanisms 1 and 5 compare generated files against freshly generated ones, so the
+working tree has to hold the same bytes on every platform. `.gitattributes` sets
+`text=auto eol=lf` to guarantee that, and the schema comparison ignores line endings as
+well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 
 ## Status
 

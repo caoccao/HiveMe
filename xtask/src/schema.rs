@@ -51,6 +51,14 @@ pub fn write(root: &Path) -> std::io::Result<Vec<PathBuf>> {
   Ok(written)
 }
 
+/// Compares two schema documents, ignoring how their lines end.
+///
+/// A Windows checkout can hold CRLF even with `.gitattributes` in place, for example
+/// when an editor rewrites the file, and that is not drift from the Rust types.
+fn same_ignoring_line_endings(left: &str, right: &str) -> bool {
+  left.replace("\r\n", "\n") == right.replace("\r\n", "\n")
+}
+
 /// A committed schema that does not match what this build would generate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stale {
@@ -66,7 +74,7 @@ pub fn stale(root: &Path) -> Vec<Stale> {
     let path = directory.join(name);
     let expected = text(&schema);
     match std::fs::read_to_string(&path) {
-      Ok(found) if found == expected => {}
+      Ok(found) if same_ignoring_line_endings(&found, &expected) => {}
       Ok(_) => stale.push(Stale {
         name,
         reason: "differs from what the Rust types generate".to_owned(),
@@ -89,4 +97,38 @@ pub fn load(root: &Path, name: &str) -> Result<serde_json::Value, String> {
   let path = root.join(SCHEMA_DIRECTORY).join(name);
   let text = std::fs::read_to_string(&path).map_err(|error| format!("cannot read {}: {error}", path.display()))?;
   serde_json::from_str(&text).map_err(|error| format!("{} is not valid JSON: {error}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// A CRLF checkout is not drift. This is what broke the Windows build of 7f97cd1.
+  #[test]
+  fn line_endings_alone_are_not_drift() {
+    let scratch = tempfile::tempdir().expect("a temporary directory");
+    let root = scratch.path();
+    write(root).expect("the schemas write");
+    assert!(stale(root).is_empty(), "a freshly written set is current");
+
+    for (name, schema) in generated() {
+      let path = root.join(SCHEMA_DIRECTORY).join(name);
+      std::fs::write(&path, text(&schema).replace('\n', "\r\n")).expect("the rewrite succeeds");
+    }
+    assert!(
+      stale(root).is_empty(),
+      "the same schemas with CRLF endings should still count as current"
+    );
+  }
+
+  /// A real change is still caught.
+  #[test]
+  fn a_changed_schema_is_still_drift() {
+    let scratch = tempfile::tempdir().expect("a temporary directory");
+    let root = scratch.path();
+    write(root).expect("the schemas write");
+    let path = root.join(SCHEMA_DIRECTORY).join("config.schema.json");
+    std::fs::write(&path, "{}\n").expect("the rewrite succeeds");
+    assert_eq!(stale(root).len(), 1);
+  }
 }
