@@ -64,3 +64,8 @@
   desktop notification in six steps, a troubleshooting section for the ways that path
   goes wrong, and an installation guide covering every published artifact, where each
   one installs, and where the config and the history live on each platform.
+* Put `hmc` inside every installer, beside `hmg`, so that installing the desktop
+  application installs the command line one that reads the same config file. The deb
+  and the rpm put it on `PATH` at `/usr/bin/hmc`; the macOS bundle and both Windows
+  installers put it next to `hmg`. `hmc` is still published on its own, for a machine
+  with no desktop.

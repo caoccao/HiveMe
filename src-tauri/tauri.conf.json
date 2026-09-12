@@ -5,9 +5,9 @@
   "version": "0.1.0",
   "identifier": "com.caoccao.hiveme",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "cargo build -r -p hmc && pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "cargo build -r -p hmc && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -37,7 +37,25 @@
     ],
     "linux": {
       "appimage": {
-        "bundleMediaFramework": false
+        "bundleMediaFramework": false,
+        "files": {
+          "/usr/bin/hmc": "../target/release/hmc"
+        }
+      },
+      "deb": {
+        "files": {
+          "/usr/bin/hmc": "../target/release/hmc"
+        }
+      },
+      "rpm": {
+        "files": {
+          "/usr/bin/hmc": "../target/release/hmc"
+        }
+      }
+    },
+    "macOS": {
+      "files": {
+        "MacOS/hmc": "../target/release/hmc"
       }
     },
     "windows": {

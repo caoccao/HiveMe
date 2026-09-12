@@ -1,8 +1,8 @@
 # Installation
 
 HiveMe ships two programs from one repository: `hmg`, the desktop application, and
-`hmc`, the command line publisher. They share a config file, so installing both and
-setting up the cluster once is enough for both.
+`hmc`, the command line publisher. They share a config file, and every installer
+carries both, so setting the cluster up once is enough for both.
 
 Download the latest release from the
 [Releases](https://github.com/caoccao/HiveMe/releases) page.
@@ -16,13 +16,25 @@ Download the latest release from the
 | macOS Apple silicon | `HiveMe*.dmg` | `hmc` |
 | Windows x86_64 | `HiveMe*.msi`, `HiveMe*-setup.exe` (NSIS), `HiveMe*-portable.7z` | `hmc.exe` |
 
-`hmc` is published as a plain executable for every platform, because a command line
-tool is easier to put where a shell can find it than to install. The Windows portable
-archive is the one artifact that carries both: it contains `hmg.exe` and `hmc.exe`
-side by side, unpacks anywhere, and installs nothing.
+Every GUI artifact carries `hmc` as well, beside `hmg`:
 
-The installers carry `hmg` only. Download `hmc` alongside whichever installer you
-choose, or take the portable archive.
+| OS | Where the GUI artifact puts `hmc` | On `PATH` |
+|----|-----------------------------------|-----------|
+| Linux, deb and rpm | `/usr/bin/hmc` | yes |
+| Linux, AppImage | inside the image, at `usr/bin/hmc` | no |
+| macOS | `HiveMe.app/Contents/MacOS/hmc` | no |
+| Windows, msi | `%ProgramFiles%\HiveMe\hmc.exe` | no |
+| Windows, nsis | `%LOCALAPPDATA%\HiveMe\hmc.exe` | no |
+| Windows, portable | beside `hmg.exe`, wherever the archive was unpacked | no |
+
+Only the Linux packages land it somewhere a shell already looks. Everywhere else, call
+it by its full path, add that folder to `PATH`, or take the standalone `hmc` and put it
+where you want it. An AppImage is one file that mounts itself when it runs, so the copy
+inside is out of reach until the image is unpacked with `--appimage-extract`;
+downloading `hmc` is easier.
+
+`hmc` is published on its own as well, as a plain executable for every platform, for a
+machine that runs scripts and has no desktop to install a GUI on.
 
 ## Installing the GUI
 
@@ -34,17 +46,18 @@ sudo dnf install ./HiveMe-0.1.0-1.x86_64.rpm   # Fedora, RHEL
 chmod +x HiveMe_0.1.0_amd64.AppImage && ./HiveMe_0.1.0_amd64.AppImage
 ```
 
-The packages put the binary at `/usr/bin/hmg` and a desktop entry at
-`/usr/share/applications/`, so HiveMe appears in the application menu. The AppImage
-runs from wherever it sits and installs nothing.
+The packages put the binaries at `/usr/bin/hmg` and `/usr/bin/hmc`, and a desktop
+entry at `/usr/share/applications/`, so HiveMe appears in the application menu and
+`hmc` is on `PATH` straight away. The AppImage runs from wherever it sits and installs
+nothing, which is also why its copy of `hmc` is only reachable by unpacking it.
 
 Notifications need a running notification daemon, which every desktop environment
 provides; a bare window manager may not.
 
 ### macOS
 
-Open the `.dmg` and drag HiveMe to Applications. The binary is inside the bundle at
-`HiveMe.app/Contents/MacOS/hmg`.
+Open the `.dmg` and drag HiveMe to Applications. The binaries are inside the bundle,
+at `HiveMe.app/Contents/MacOS/hmg` and `HiveMe.app/Contents/MacOS/hmc`.
 
 The build is not signed or notarised, so the first launch has to be through the
 right-click Open menu, or Gatekeeper will refuse it.
@@ -53,15 +66,18 @@ right-click Open menu, or Gatekeeper will refuse it.
 
 Run the `.msi` or the NSIS `-setup.exe`. The MSI installs for the machine under
 `%ProgramFiles%\HiveMe`, the NSIS installer for the current user under
-`%LOCALAPPDATA%\HiveMe`; both add a Start menu entry.
+`%LOCALAPPDATA%\HiveMe`; both add a Start menu entry, and both put `hmc.exe` in that
+same folder, which is not on `PATH`.
 
-For the portable archive, unpack it anywhere and run `hmg.exe`. Nothing is written
-outside the folder it sits in, which is what makes it portable. See
-[Where the config lives](#where-the-config-lives).
+For the portable archive, unpack it anywhere and run `hmg.exe`. `hmc.exe` is beside
+it. Nothing is written outside the folder it sits in, which is what makes it portable.
+See [Where the config lives](#where-the-config-lives).
 
 ## Installing the CLI
 
-`hmc` is a single executable with no dependencies. Put it somewhere on `PATH`:
+Installing the GUI installs `hmc` too, so this is for a machine that wants only the
+CLI, or for putting `hmc` where a shell can find it on the platforms whose installer
+does not. It is a single executable with no dependencies:
 
 ```sh
 # Linux and macOS

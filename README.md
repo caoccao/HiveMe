@@ -44,8 +44,8 @@ Take the artifacts for your platform from the
 
 ```sh
 pnpm install
-pnpm tauri build       # the GUI bundle for this OS, under target/release/bundle/
 cargo build -r -p hmc  # the CLI, at target/release/hmc
+pnpm tauri build       # the bundle for this OS, carrying both, under target/release/bundle/
 ```
 
 [docs/development.md](docs/development.md#commands) has the rest of the commands, and
@@ -76,6 +76,10 @@ hmc --init '<paste>'
 That writes the CLI's config, which is the same file the GUI just wrote. The string
 carries the password in plain text, so paste it and do not commit it or leave it in a
 shared shell history.
+
+Installing HiveMe installed `hmc` too, beside `hmg`. On Linux that is `/usr/bin/hmc`
+and a shell finds it already; elsewhere it is in the install folder, and
+[docs/installation.md](docs/installation.md#what-is-published) says where.
 
 ### 6. Send a message
 

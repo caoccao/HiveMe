@@ -454,6 +454,11 @@ of `hmg` gives a window that is still looking for the Vite server whatever the p
 Both builds run the same backend. See
 [development.md](../development.md#running-hmg).
 
+The bundle carries `hmc` beside `hmg`, taken from `target/release/hmc`, so that
+installing the GUI installs the CLI that reads the config it writes. The hook commands
+of `tauri.conf.json` build it, and each bundler is told where to put it. See
+[development.md](../development.md#packaging-hmc) and [app.md](app.md#install).
+
 `pnpm test` runs the frontend tests with vitest, configured in `vitest.config.ts`.
 `RUST_LOG=debug` turns on backend logging.
 

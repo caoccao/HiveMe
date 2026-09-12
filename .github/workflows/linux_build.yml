@@ -67,6 +67,9 @@ jobs:
     - name: Check Rust formatting
       run: cargo fmt --all -- --check
 
+    - name: Build hmc, which hmg bundles
+      run: cargo build -r -p hmc
+
     - name: Lint Rust
       run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -102,9 +105,6 @@ jobs:
 
     - name: Test HiveMe
       run: cargo test -r --workspace
-
-    - name: Build hmc
-      run: cargo build -r -p hmc
 
     - name: Build HiveMe
       run: pnpm tauri build

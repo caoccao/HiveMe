@@ -135,3 +135,7 @@ The specifications describe the code as built, and CI enforces it. See
    applications are MQTT only.
 5. **Client identifier collisions.** `hmc` and `hmg` must use different client
    identifiers or the broker disconnects one of them.
+6. **Building `hmg` before `hmc`.** Every bundle carries `hmc` from
+   `target/release/hmc`. On Windows that entry is a `resources` one, which
+   `tauri-build` reads, so `cargo build -r -p hmc` has to come first or nothing that
+   touches `hmg` compiles.

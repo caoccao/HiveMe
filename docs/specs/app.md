@@ -150,6 +150,7 @@ HiveMe/
     i18n/                         # index.ts, locales/en-US.json
   src-tauri/                      # Tauri 2 app, package `hmg`, lib `hmg_lib`, binary `hmg`
     Cargo.toml, tauri.conf.json, build.rs, capabilities/default.json, icons/
+    tauri.windows.conf.json       # Windows only: the bundle entry that carries hmc
     src/                          # main.rs, lib.rs, controller.rs, protocol.rs, config.rs, constants.rs,
                                   # window.rs, mqtt.rs, notification.rs, storage.rs, update.rs
   crates/
@@ -238,6 +239,11 @@ A GUI binary comes from the Tauri CLI and nowhere else: it passes the
 does not, so a `cargo build` of `hmg` leaves an executable that expects the Vite server.
 See [gui.md](gui.md#build-and-run).
 
+Every bundle carries `hmc` beside `hmg`, taken from `target/release/hmc`, so
+`cargo build -r -p hmc` runs before `pnpm tauri build`: the Tauri hook commands do it,
+and the workflows have a step for it. See
+[development.md](../development.md#packaging-hmc).
+
 One GitHub Actions workflow per OS runs the lint, check, test, and build steps and
 uploads artifacts: `.deb`, `.rpm`, and `.AppImage` on Linux, `.dmg` on macOS (Intel
 and Apple silicon), `.msi`, NSIS `.exe`, and a portable `.7z` on Windows, plus the
@@ -262,14 +268,14 @@ A release installs only the application. The config, the history, and the update
 live elsewhere and survive an uninstall, which is what lets an upgrade keep a
 configured cluster.
 
-| OS | Where the GUI lands | Config and history |
-|----|---------------------|--------------------|
-| Linux, deb and rpm | `/usr/bin/hmg`, desktop entry in `/usr/share/applications/` | `$XDG_CONFIG_HOME/HiveMe/`, else `$HOME/.config/HiveMe/` |
-| Linux, AppImage | wherever the file is | the same |
-| macOS | `/Applications/HiveMe.app`, binary at `Contents/MacOS/hmg` | `$HOME/Library/Application Support/HiveMe/` |
-| Windows, msi | `%ProgramFiles%\HiveMe` | `%APPDATA%\HiveMe\` |
-| Windows, nsis | `%LOCALAPPDATA%\HiveMe` | `%APPDATA%\HiveMe\` |
-| Windows, portable | wherever the archive is unpacked | beside the executable |
+| OS | Where the programs land | Config and history |
+|----|-------------------------|--------------------|
+| Linux, deb and rpm | `/usr/bin/hmg` and `/usr/bin/hmc`, desktop entry in `/usr/share/applications/` | `$XDG_CONFIG_HOME/HiveMe/`, else `$HOME/.config/HiveMe/` |
+| Linux, AppImage | wherever the file is, with `hmc` inside it | the same |
+| macOS | `/Applications/HiveMe.app`, binaries at `Contents/MacOS/hmg` and `Contents/MacOS/hmc` | `$HOME/Library/Application Support/HiveMe/` |
+| Windows, msi | `%ProgramFiles%\HiveMe`, both executables | `%APPDATA%\HiveMe\` |
+| Windows, nsis | `%LOCALAPPDATA%\HiveMe`, both executables | `%APPDATA%\HiveMe\` |
+| Windows, portable | wherever the archive is unpacked, both executables | beside the executable |
 
 Windows tells an installed build from a portable one by where the executable is: under
 `%LOCALAPPDATA%`, `%ProgramFiles%`, or `%ProgramFiles(x86)%` it is installed and uses
@@ -278,9 +284,13 @@ one of those, so an installed `hmg` and an installed `hmc` share a config while 
 on a memory stick carries its own. The rules are in
 [config.md](config.md#location-and-precedence).
 
-`hmc` is not inside the installers. It is published as a plain executable for each
-platform, and the Windows portable archive is the one artifact carrying both programs.
-Full instructions in [installation.md](../installation.md).
+Every installer carries `hmc` beside `hmg`, because the two share a config file and
+are of little use apart, and only the Linux packages land it on `PATH`. Each bundler
+places it through a file map of its own, in `bundle.linux.*.files` and
+`bundle.macOS.files`; Windows has no such map, so `bundle.resources` of
+`src-tauri/tauri.windows.conf.json` does it there. `hmc` is published as a plain
+executable for each platform as well, for a machine with no desktop to install a GUI
+on. Full instructions in [installation.md](../installation.md).
 
 ## Deviations from the plan
 
@@ -370,3 +380,8 @@ Recorded so the plan and the tree can be reconciled later.
     README is what a user reads to get their first message through, and a list of the
     ways a build, a certificate, or a client identifier can go wrong belongs with the
     other things a contributor needs. The README links to it.
+22. The installers carry `hmc`, which step 5.1 did not ask for: it planned one
+    executable per artifact and a separate download for the CLI. Two programs that
+    share a config file and a message format are a pair, and a user who installs the
+    desktop application should not have to fetch the other half by hand. The standalone
+    `hmc` is still published, for machines with no desktop.

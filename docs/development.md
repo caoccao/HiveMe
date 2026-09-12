@@ -53,6 +53,9 @@ pnpm tauri build                                # the release bundle for this OS
 
 `pnpm test` runs the frontend tests with vitest, configured in `vitest.config.ts`.
 
+On Windows, `cargo build -r -p hmc` comes before anything that compiles `hmg`, because
+the bundle carries `hmc`. See [Packaging `hmc`](#packaging-hmc).
+
 ## Running `hmg`
 
 ```sh
@@ -97,6 +100,39 @@ string; the format is in [specs/config.md](specs/config.md#the-setup-string).
 Publishing before any `--init` writes a default config and exits 3. Full reference in
 [specs/cli.md](specs/cli.md).
 
+## Packaging `hmc`
+
+Every installer carries `hmc` beside `hmg`, so that installing the desktop application
+installs the command line one, reading the config file the desktop one writes. What
+goes in is `target/release/hmc`, which is what `cargo build -r -p hmc` leaves behind,
+and nothing renames or stages it on the way.
+
+`pnpm tauri dev` and `pnpm tauri build` run that build themselves, from
+`beforeDevCommand` and `beforeBuildCommand`, so a bundle needs no extra step. The
+workflows run it as a step of their own, before anything that compiles `hmg`, and the
+`hmc` they publish on its own is that same file.
+
+Each bundler is told where to put it:
+
+| Bundle | Where it is configured | Where `hmc` lands |
+|--------|------------------------|-------------------|
+| deb, rpm | `bundle.linux.deb.files`, `bundle.linux.rpm.files` | `/usr/bin/hmc`, on `PATH` |
+| AppImage | `bundle.linux.appimage.files` | `usr/bin/hmc`, inside the image |
+| macOS app | `bundle.macOS.files` | `HiveMe.app/Contents/MacOS/hmc` |
+| msi, nsis | `bundle.resources` of `src-tauri/tauri.windows.conf.json` | beside `hmg.exe` in the install folder |
+
+Windows is the odd one out, because its bundlers have no file map of their own.
+`bundle.resources` does the same job there, and it sits in the Windows only config file
+rather than in `tauri.conf.json` because it is not a per-platform setting: in the shared
+config it would put a second copy of `hmc` inside the macOS bundle and the Linux
+packages as well.
+
+That has one consequence on Windows. `tauri-build` reads `resources` from the build
+script of `hmg`, so `target/release/hmc.exe` has to be there before anything compiles
+`hmg`, `cargo clippy --workspace` and `cargo test --workspace` included. Run
+`cargo build -r -p hmc` first and the rest follows; on Linux and macOS the file maps
+are read by the bundler alone, so it only has to exist before `pnpm tauri build`.
+
 ## Logging
 
 `hmc` prints warnings to stderr and nothing to stdout. `--verbose` adds the connection
@@ -138,6 +174,11 @@ adds everything.
 daemon, which a bare window manager may not have. Everywhere, check that the toolbar
 bell is not toggled off and that Notifications are enabled in Settings; a message this
 device sent raises nothing unless **notify own messages** is on.
+
+**A build of `hmg` on Windows stops on a resource path that does not exist.** The
+message names `..\target\release\hmc.exe`: the installers carry `hmc`, and it has
+not been built yet. Run `cargo build -r -p hmc`. See
+[Packaging `hmc`](#packaging-hmc).
 
 **The GUI says `localhost refused to connect`.** That is an `hmg` built by cargo
 rather than by the Tauri CLI, which expects a Vite server to serve it whatever the
