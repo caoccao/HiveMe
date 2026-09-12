@@ -447,6 +447,10 @@ pnpm tauri dev       # hot reloading dev build, frontend on http://localhost:142
 pnpm tauri build     # release bundle for the current OS
 ```
 
+A development build loads the frontend from `devUrl`, so it needs the Vite server that
+`pnpm tauri dev` starts; a bundled build carries the frontend inside the binary. Both
+run the same backend. See [development.md](../development.md#running-hmg).
+
 `pnpm test` runs the frontend tests with vitest, configured in `vitest.config.ts`.
 `RUST_LOG=debug` turns on backend logging.
 

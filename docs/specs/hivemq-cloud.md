@@ -262,12 +262,25 @@ All paths are relative to `/api/v2/orgs/{orgId}/clusters/{clusterId}`.
 
 ## Console walkthrough
 
-1. Create an account at [hivemq.com](https://www.hivemq.com/) and create a Serverless
-   cluster.
-2. On the cluster Overview tab, copy the URL and the TLS MQTT port (8883).
-3. On the Access Management tab, select Edit in the Credentials section, then Add
-   Credentials, and save a username and password.
-4. Put the URL, username, and password into the `broker` block of the HiveMe config
-   (see [config.md](config.md)) or into the Broker section of the `hmg` Settings tab.
-5. Wait up to one minute for the new credentials to become active, then send a test
-   message with `hmc`.
+The [HiveMe README](../../README.md#quick-start) walks a new user through this with
+what to do when a step does not work. The HiveMQ documentation for each step:
+
+1. Create an account at [hivemq.com](https://www.hivemq.com/) and create a **Serverless**
+   cluster. See the
+   [quick start guide](https://docs.hivemq.com/hivemq-cloud/quick-start-guide.html).
+2. On the cluster **Overview** tab, copy the hostname. The TLS MQTT port is 8883, and
+   the URL HiveMe wants is `mqtts://<hostname>:8883`. See
+   [the console](https://docs.hivemq.com/hivemq-cloud/console.html).
+3. On the **Access Management** tab, select **Edit** in the Credentials section, then
+   **Add Credentials**, and save a username and password. On Serverless the permissions
+   are attached to the credential and default to publish and subscribe on `#`, which is
+   what HiveMe needs. See
+   [authentication and authorization](https://docs.hivemq.com/hivemq-cloud/authn-authz.html).
+4. Put the URL, the username, and the password into the Broker section of the `hmg`
+   Settings tab, and save. Editing the `broker` block of the config file by hand does
+   the same thing; see [config.md](config.md).
+5. Press **Copy CLI setup** and run `hmc --init '<paste>'`, which is all `hmc` needs.
+   See [config.md](config.md#the-setup-string).
+6. Credentials take up to a minute to become active, so a refusal straight afterwards
+   usually means waiting rather than a wrong password. Then send a test message with
+   `hmc` and watch it arrive in `hmg`.

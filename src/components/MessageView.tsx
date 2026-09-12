@@ -39,6 +39,16 @@ import {
 } from '../lib/message';
 import { useAppStore } from '../lib/store';
 
+/**
+ * The page a topic with no history has.
+ *
+ * One shared array, because a selector that builds a new one each time it is called
+ * hands the store a different snapshot on every render. React compares snapshots by
+ * reference, so it would re-render for ever and then tear the tree down, leaving an
+ * empty window with a backend that looks perfectly healthy.
+ */
+const NO_MESSAGES: Protocol.MessageRow[] = [];
+
 /** How close to the bottom still counts as "following the conversation". */
 const STICK_THRESHOLD_PX = 48;
 
@@ -232,7 +242,9 @@ export function Bubble({ row }: { row: Protocol.MessageRow }) {
 export default function MessageView() {
   const { t } = useTranslation();
   const selectedTopic = useAppStore((state) => state.selectedTopic);
-  const messages = useAppStore((state) => (selectedTopic ? (state.messages.get(selectedTopic) ?? []) : []));
+  const messages = useAppStore((state) =>
+    selectedTopic ? (state.messages.get(selectedTopic) ?? NO_MESSAGES) : NO_MESSAGES
+  );
   const hasOlder = useAppStore((state) => (selectedTopic ? (state.hasOlder.get(selectedTopic) ?? false) : false));
   const loadOlderMessages = useAppStore((state) => state.loadOlderMessages);
 

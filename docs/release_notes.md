@@ -60,3 +60,7 @@
   and a command prompt for `hmc`. On Windows `hmc.exe` carries its own icon and version
   information, so Explorer and the taskbar name it rather than showing a blank
   executable.
+* Wrote the onboarding: a README that goes from creating a HiveMQ Cloud cluster to a
+  desktop notification in six steps, a troubleshooting section for the ways that path
+  goes wrong, and an installation guide covering every published artifact, where each
+  one installs, and where the config and the history live on each platform.

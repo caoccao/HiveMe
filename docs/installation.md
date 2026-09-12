@@ -1,25 +1,132 @@
 # Installation
 
-> HiveMe has no release yet. This page describes what the release will contain, and is
-> finished in step 5.1 of [the initialization plan](plans/plan-initialization.md).
+HiveMe ships two programs from one repository: `hmg`, the desktop application, and
+`hmc`, the command line publisher. They share a config file, so installing both and
+setting up the cluster once is enough for both.
 
 Download the latest release from the
 [Releases](https://github.com/caoccao/HiveMe/releases) page.
 
-| OS | Artifacts |
-|----|-----------|
-| Linux | `HiveMe*.deb`, `HiveMe*.rpm`, `HiveMe*.AppImage` |
-| macOS | `HiveMe*.dmg` for Intel and Apple silicon |
-| Windows | `HiveMe*.msi`, `HiveMe*setup.exe`, and a portable `.7z` |
+## What is published
 
-The `hmc` command line binary is published for every platform, and the Windows
-portable archive contains both `hmg.exe` and `hmc.exe`.
+| OS | GUI | CLI |
+|----|-----|-----|
+| Linux x86_64 | `HiveMe*.deb`, `HiveMe*.rpm`, `HiveMe*.AppImage` | `hmc` |
+| macOS Intel | `HiveMe*.dmg` | `hmc` |
+| macOS Apple silicon | `HiveMe*.dmg` | `hmc` |
+| Windows x86_64 | `HiveMe*.msi`, `HiveMe*-setup.exe` (NSIS), `HiveMe*-portable.7z` | `hmc.exe` |
+
+`hmc` is published as a plain executable for every platform, because a command line
+tool is easier to put where a shell can find it than to install. The Windows portable
+archive is the one artifact that carries both: it contains `hmg.exe` and `hmc.exe`
+side by side, unpacks anywhere, and installs nothing.
+
+The installers carry `hmg` only. Download `hmc` alongside whichever installer you
+choose, or take the portable archive.
+
+## Installing the GUI
+
+### Linux
+
+```sh
+sudo apt install ./HiveMe_0.1.0_amd64.deb      # Debian, Ubuntu
+sudo dnf install ./HiveMe-0.1.0-1.x86_64.rpm   # Fedora, RHEL
+chmod +x HiveMe_0.1.0_amd64.AppImage && ./HiveMe_0.1.0_amd64.AppImage
+```
+
+The packages put the binary at `/usr/bin/hmg` and a desktop entry at
+`/usr/share/applications/`, so HiveMe appears in the application menu. The AppImage
+runs from wherever it sits and installs nothing.
+
+Notifications need a running notification daemon, which every desktop environment
+provides; a bare window manager may not.
+
+### macOS
+
+Open the `.dmg` and drag HiveMe to Applications. The binary is inside the bundle at
+`HiveMe.app/Contents/MacOS/hmg`.
+
+The build is not signed or notarised, so the first launch has to be through the
+right-click Open menu, or Gatekeeper will refuse it.
+
+### Windows
+
+Run the `.msi` or the NSIS `-setup.exe`. The MSI installs for the machine under
+`%ProgramFiles%\HiveMe`, the NSIS installer for the current user under
+`%LOCALAPPDATA%\HiveMe`; both add a Start menu entry.
+
+For the portable archive, unpack it anywhere and run `hmg.exe`. Nothing is written
+outside the folder it sits in, which is what makes it portable. See
+[Where the config lives](#where-the-config-lives).
+
+## Installing the CLI
+
+`hmc` is a single executable with no dependencies. Put it somewhere on `PATH`:
+
+```sh
+# Linux and macOS
+chmod +x hmc && sudo mv hmc /usr/local/bin/
+
+# Windows, PowerShell, for the current user
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\HiveMe" | Out-Null
+Move-Item hmc.exe "$env:LOCALAPPDATA\Programs\HiveMe\"
+# then add that folder to PATH, or call the executable by its full path
+```
+
+Check it with `hmc --version`.
+
+## Where the config lives
+
+Both programs read the same file, and neither has an installer that writes it: it is
+created on first run.
+
+| OS | Config file |
+|----|-------------|
+| Linux | `$XDG_CONFIG_HOME/HiveMe/HiveMe.json`, or `$HOME/.config/HiveMe/HiveMe.json` |
+| macOS | `$HOME/Library/Application Support/HiveMe/HiveMe.json` |
+| Windows, installed | `%APPDATA%\HiveMe\HiveMe.json` |
+| Windows, portable | beside the executable |
+
+Windows decides between the last two by where the executable is: under
+`%LOCALAPPDATA%`, `%ProgramFiles%`, or `%ProgramFiles(x86)%` it is an installed build
+and uses `%APPDATA%`; anywhere else it is portable and keeps the config next to
+itself. So an installed `hmg` and an installed `hmc` share a config, and a portable
+copy on a memory stick carries its own.
+
+`--config <path>` and the `HIVEME_CONFIG` environment variable override all of it, for
+either program. The message history, `HiveMe.db`, always sits beside the config file.
+Full rules in [specs/config.md](specs/config.md#location-and-precedence).
 
 ## After installing
 
 1. Create a HiveMQ Cloud cluster and a set of MQTT credentials. See
    [specs/hivemq-cloud.md](specs/hivemq-cloud.md#console-walkthrough).
-2. Start `hmg` and fill in the Broker section of the Settings tab, or edit the config
-   file directly. See [specs/config.md](specs/config.md#location-and-precedence) for
-   where it lives on each platform.
-3. Send a test message: `hmc "hello"`.
+2. Start `hmg`, open the Settings tab, and fill in the Broker section with the cluster
+   URL, the username, and the password. Save.
+3. Press **Copy CLI setup** in that same section and run
+   `hmc --init '<paste>'`, which is the whole of setting up the CLI.
+4. Send a test message: `hmc "hello"`. It appears in the GUI.
+
+The [README](../README.md#quick-start) walks through the same path in more detail,
+with what to do when a step does not work.
+
+## Updating
+
+`hmg` checks the GitHub releases on the interval in the Settings tab, weekly by
+default, and shows a bar at the top of the window when there is a newer version, with
+a box to skip that version for good. It downloads and installs nothing: follow the
+link, take the new artifacts, and install them over the old ones. The config and the
+history are untouched by an install, because neither lives in the install directory.
+
+## Uninstalling
+
+| OS | How |
+|----|-----|
+| Linux | Remove the HiveMe package with the package manager that installed it; delete the AppImage |
+| macOS | Drag HiveMe out of Applications |
+| Windows | Apps and Features, or delete the portable folder |
+
+That leaves the config and the message history, which are not in the install
+directory. Delete the `HiveMe` folder listed under
+[Where the config lives](#where-the-config-lives) to remove those as well. It holds
+the broker password, so it is worth removing from a machine that is being handed on.

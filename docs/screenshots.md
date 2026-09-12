@@ -1,12 +1,49 @@
 # Screenshots
 
-> No screenshots yet. The GUI is built as of phase 4; the screenshots are taken in
-> step 5.2 of
-> [the initialization plan](plans/plan-initialization.md). This page is filled in by
-> step 5.2, alongside the README.
+> None yet. They have to be taken by hand on a desktop session, so they are the one
+> piece of step 5.2 that is still open. The recipe below produces the state to shoot.
 
-Planned shots:
+Wanted, to be saved under `docs/screenshots/` and linked from here and from the
+[README](../README.md):
 
-* The main window: toolbar, topic tree, chat style message view, status bar.
-* An OS notification raised by the built-in `error` rule.
-* The Settings tab, Broker section.
+| File | Shot |
+|------|------|
+| `messages.png` | The main window: toolbar, topic tree with unread badges, chat view of a selected topic, status bar |
+| `settings.png` | The Settings tab, Broker section, with **Copy CLI setup** |
+| `notification.png` | A desktop notification raised by the built-in `error` rule |
+
+## Setting up the shot
+
+A local broker gives a repeatable set of messages without touching a real cluster:
+
+```sh
+docker run -d --rm --name hiveme-shots -p 21883:1883 hivemq/hivemq-ce
+```
+
+Point a throwaway config at it, so the screenshots do not carry real credentials:
+
+```json
+{
+  "version": 1,
+  "device": { "id": "0f7a1c2e-5d4b-4a6e-9c1d-2b3e4f5a6b7c", "name": "sams-desktop" },
+  "broker": { "url": "mqtt://127.0.0.1:21883", "username": "demo", "password": "demo" },
+  "topics": { "prefix": "hiveme", "default": "info", "subscriptions": ["#"] },
+  "gui": { "displayMode": "Light", "theme": "Amber" }
+}
+```
+
+```sh
+HIVEME_CONFIG=/tmp/HiveMe.json pnpm tauri dev
+```
+
+Then fill the tree from another terminal, with a config pointing at the same broker:
+
+```sh
+hmc -c /tmp/hmc.json -t info  --title CI     "Nightly build 482 finished in 6m 12s"
+hmc -c /tmp/hmc.json -t info  --title Deploy "Deployed hiveme 0.1.0 to staging"
+hmc -c /tmp/hmc.json -t warn  --title Disk   "Disk usage on build-02 is at 87%"
+hmc -c /tmp/hmc.json -t error --title CI     "Nightly build 483 failed: 2 tests red"
+hmc -c /tmp/hmc.json -t build/ci --json '{"build":483,"branch":"main","failed":["config::migrate"]}'
+```
+
+Select `error` in the tree for the main shot, and `docker stop hiveme-shots` afterwards.

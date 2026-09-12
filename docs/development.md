@@ -48,8 +48,33 @@ pnpm tauri dev                                  # the GUI with hot reload
 pnpm tauri build                                # the release bundle for this OS
 ```
 
-`pnpm test` runs `vitest run --passWithNoTests`; the flag comes out once the first
-frontend test lands in step 4.3.
+`pnpm test` runs the frontend tests with vitest, configured in `vitest.config.ts`.
+
+## Running `hmg`
+
+```sh
+pnpm tauri dev      # what to use while working on it
+pnpm tauri build    # the bundle, with the frontend compiled into the binary
+```
+
+**Do not run `target/debug/hmg.exe` by hand.** `cargo build -p hmg` produces a
+development build, and a development build loads the frontend from the `devUrl` in
+`tauri.conf.json`, which is the Vite server at `http://localhost:1420`. Started on its
+own, with no server behind that address, it opens a window showing
+*"localhost refused to connect"*. `pnpm tauri dev` starts Vite first, which is why it
+is the command to use.
+
+To run the binary directly, build it so the frontend is inside it:
+
+```sh
+pnpm tauri build --debug --no-bundle   # then target/debug/hmg.exe runs on its own
+```
+
+The window is a WebView2 (Windows), WebKitGTK (Linux), or WKWebView (macOS) surface,
+so a frontend failure looks like an empty window rather than a crash, and the backend
+log still reads perfectly normally. `src/App.test.tsx` mounts the whole application in
+jsdom against a mocked backend for exactly that reason: it is the only check that says
+whether anything was rendered at all.
 
 ## Running `hmc`
 
@@ -62,9 +87,10 @@ echo hello | cargo run -p hmc -- --config ./HiveMe.json
 cargo run -p hmc -- --help
 ```
 
-Until `hmg` exists, write the string by hand; the format is in
-[specs/config.md](specs/config.md#the-setup-string). Publishing before any `--init`
-writes a default config and exits 3. Full reference in [specs/cli.md](specs/cli.md).
+Press **Copy CLI setup** in the Broker section of the `hmg` Settings tab to get the
+string; the format is in [specs/config.md](specs/config.md#the-setup-string).
+Publishing before any `--init` writes a default config and exits 3. Full reference in
+[specs/cli.md](specs/cli.md).
 
 ## Logging
 

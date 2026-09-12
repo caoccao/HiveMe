@@ -215,7 +215,8 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Messages tab | [gui.md](gui.md#layout) | `src/components` | 4.4 | done |
 | Settings tab | [gui.md](gui.md#settings) | `src/components/Config.tsx` | 4.5 | done |
 | OS notifications | [gui.md](gui.md#notifications) | `src-tauri/notification.rs` | 4.6 | done |
-| Update check and packaging | [app.md](#build-and-release) | `src-tauri/update.rs` | 5.1 | planned |
+| Update check and packaging | [app.md](#install) | `src-tauri/update.rs` | 5.1 | done |
+| Documentation and onboarding | [README](../../README.md) | `README.md`, `docs/` | 5.2 | done, except the screenshots |
 | Encryption | [message.md](message.md#encryption) | `hiveme-core::crypto` | 6 | designed, types and parsing in place |
 | REST API client | [hivemq-cloud.md](hivemq-cloud.md#rest-api) | `hiveme-core::cloud` | 6 | designed |
 | Additional locales | [gui.md](gui.md) | `src/i18n` | 6 | designed |
@@ -235,7 +236,46 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 One GitHub Actions workflow per OS runs the lint, check, test, and build steps and
 uploads artifacts: `.deb`, `.rpm`, and `.AppImage` on Linux, `.dmg` on macOS (Intel
 and Apple silicon), `.msi`, NSIS `.exe`, and a portable `.7z` on Windows, plus the
-`hmc` binary on all three.
+`hmc` binary on all three. The workflows run on every push, so pushing a tag builds
+the same set of artifacts for that commit; nothing is published automatically.
+
+Releasing a version:
+
+1. Edit the two version constants at the end of `scripts/ts/change-version.ts` and run
+   `deno task -c scripts/ts/deno.json version`. That rewrites `package.json`, the
+   workspace `Cargo.toml`, `src-tauri/tauri.conf.json`, and the `HIVEME_VERSION` of
+   the three workflows. Every crate inherits the workspace version, which is also what
+   `sender.appVersion` carries into every message.
+2. Run any cargo command so that `Cargo.lock` picks the new version up, and commit.
+3. Add the release notes, tag, and push. Take the artifacts from the three workflow
+   runs and attach them to the GitHub release, which is what the update check in `hmg`
+   reads.
+
+## Install
+
+A release installs only the application. The config, the history, and the update state
+live elsewhere and survive an uninstall, which is what lets an upgrade keep a
+configured cluster.
+
+| OS | Where the GUI lands | Config and history |
+|----|---------------------|--------------------|
+| Linux, deb and rpm | `/usr/bin/hmg`, desktop entry in `/usr/share/applications/` | `$XDG_CONFIG_HOME/HiveMe/`, else `$HOME/.config/HiveMe/` |
+| Linux, AppImage | wherever the file is | the same |
+| macOS | `/Applications/HiveMe.app`, binary at `Contents/MacOS/hmg` | `$HOME/Library/Application Support/HiveMe/` |
+| Windows, msi | `%ProgramFiles%\HiveMe` | `%APPDATA%\HiveMe\` |
+| Windows, nsis | `%LOCALAPPDATA%\HiveMe` | `%APPDATA%\HiveMe\` |
+| Windows, portable | wherever the archive is unpacked | beside the executable |
+
+Windows tells an installed build from a portable one by where the executable is: under
+`%LOCALAPPDATA%`, `%ProgramFiles%`, or `%ProgramFiles(x86)%` it is installed and uses
+`%APPDATA%`; anywhere else it keeps the config beside itself. Both installers land in
+one of those, so an installed `hmg` and an installed `hmc` share a config while a copy
+on a memory stick carries its own. The rules are in
+[config.md](config.md#location-and-precedence).
+
+`hmc` is not inside the installers. It is published as a plain executable for each
+platform, and the Windows portable archive is the one artifact carrying both programs.
+Full instructions in [installation.md](../installation.md).
 
 ## Deviations from the plan
 
@@ -312,3 +352,11 @@ Recorded so the plan and the tree can be reconciled later.
     `crates/hmc/build.rs` embeds them with `winresource` on Windows. It is the only
     thing that build script does, and on every other platform it does nothing. See
     [cli.md](cli.md#appearance).
+19. The screenshots of step 5.2 are not taken. They need a desktop session, which the
+    rest of the work did not, so [screenshots.md](../screenshots.md) carries the recipe
+    for the state to shoot rather than the images. Everything else in 5.2 is done.
+20. `src/App.test.tsx` mounts the whole application against a mocked backend. A
+    frontend that fails after its first render leaves a window that is simply empty,
+    while every effect has already run and the backend log reads normally, so the
+    rendered output is the only thing that can tell the two apart. It is what step
+    4.1 called the smoke test, written once there was a window to smoke test.
