@@ -225,13 +225,18 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 
 | Command | Effect |
 |---------|--------|
-| `cargo build --workspace` | Build every Rust crate |
+| `cargo build --workspace` | Build every Rust crate; `hmg` needs `pnpm tauri build` to be usable |
 | `cargo test -r --workspace` | Run the Rust tests |
 | `cargo fmt --check` and `cargo clippy --workspace -- -D warnings` | Lint |
 | `cargo xtask schema` and `cargo xtask check-spec` | Regenerate schemas, validate spec examples |
 | `pnpm install`, `pnpm typecheck`, `pnpm test` | Frontend dependencies, types, tests |
 | `pnpm tauri dev` and `pnpm tauri build` | Run and bundle the GUI |
 | `deno task -c scripts/ts/deno.json version` | Bump the version across the project |
+
+A GUI binary comes from the Tauri CLI and nowhere else: it passes the
+`tauri/custom-protocol` feature that compiles the frontend into the binary, and cargo
+does not, so a `cargo build` of `hmg` leaves an executable that expects the Vite server.
+See [gui.md](gui.md#build-and-run).
 
 One GitHub Actions workflow per OS runs the lint, check, test, and build steps and
 uploads artifacts: `.deb`, `.rpm`, and `.AppImage` on Linux, `.dmg` on macOS (Intel
@@ -360,3 +365,8 @@ Recorded so the plan and the tree can be reconciled later.
     while every effect has already run and the backend log reads normally, so the
     rendered output is the only thing that can tell the two apart. It is what step
     4.1 called the smoke test, written once there was a window to smoke test.
+21. The troubleshooting section step 5.2 asked for is in
+    [development.md](../development.md#troubleshooting) rather than in the README. The
+    README is what a user reads to get their first message through, and a list of the
+    ways a build, a certificate, or a client identifier can go wrong belongs with the
+    other things a contributor needs. The README links to it.

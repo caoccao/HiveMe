@@ -24,6 +24,9 @@ sudo apt-get install -y libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libwebkit2g
 
 ## Commands
 
+Building from source is these and nothing else. There is no native library to fetch or
+compile first, and no generated file to produce by hand.
+
 ```sh
 # Rust
 cargo build --workspace
@@ -53,22 +56,24 @@ pnpm tauri build                                # the release bundle for this OS
 ## Running `hmg`
 
 ```sh
-pnpm tauri dev      # what to use while working on it
-pnpm tauri build    # the bundle, with the frontend compiled into the binary
+pnpm tauri dev                         # what to use while working on it
+pnpm tauri build                       # the installers for this OS
+pnpm tauri build --debug --no-bundle   # a target/debug/hmg.exe that runs on its own
 ```
 
-**Do not run `target/debug/hmg.exe` by hand.** `cargo build -p hmg` produces a
-development build, and a development build loads the frontend from the `devUrl` in
-`tauri.conf.json`, which is the Vite server at `http://localhost:1420`. Started on its
-own, with no server behind that address, it opens a window showing
-*"localhost refused to connect"*. `pnpm tauri dev` starts Vite first, which is why it
-is the command to use.
+**A cargo build does not produce a usable GUI, in either profile.** `tauri` chooses
+between the dev server and a frontend compiled into the binary from its
+`custom-protocol` feature, not from the profile, and the Tauri CLI is what turns that
+feature on: every `pnpm tauri build` passes `--features tauri/custom-protocol` to
+cargo, and cargo on its own never does. So the `target/release/hmg.exe` that
+`cargo build -r --workspace` leaves behind loads the `devUrl` of `tauri.conf.json`,
+the Vite server at `http://localhost:1420`, and opens on
+*"localhost refused to connect"* when nothing is listening there. The window is the
+only place that says so: the backend starts, connects, and logs exactly as it does in
+a bundled build.
 
-To run the binary directly, build it so the frontend is inside it:
-
-```sh
-pnpm tauri build --debug --no-bundle   # then target/debug/hmg.exe runs on its own
-```
+`cargo build -r --workspace` is still how `hmc` is built and how `hmg` is compile
+checked, and the Rust tests need nothing else. It is simply not how the GUI is built.
 
 The window is a WebView2 (Windows), WebKitGTK (Linux), or WKWebView (macOS) surface,
 so a frontend failure looks like an empty window rather than a crash, and the backend
@@ -101,6 +106,47 @@ details, and `RUST_LOG` overrides both.
 RUST_LOG=debug cargo run -p hmc -- "hello"      # Unix
 set RUST_LOG=debug                              # Windows
 ```
+
+## Troubleshooting
+
+**The GUI says disconnected, and the error mentions the password.** Credentials take up
+to a minute to become active after you create them in the console. If it persists,
+check the username and password in Settings, and that they belong to the cluster in the
+URL.
+
+**The connection fails during the TLS handshake.** The cluster hostname has to be the
+one the console shows, because HiveMQ Cloud selects the certificate from the name the
+client sends during the handshake (SNI). An IP address, or a hostname with the port
+left in it, will not work. HiveMQ Cloud accepts TLS only, so the URL starts with
+`mqtts://`, never `mqtt://`.
+
+**Messages arrive and then the connection drops, over and over.** Two clients cannot
+share a client identifier: the broker disconnects the older one, which reconnects, and
+so on. HiveMe gives `hmg` and each `hmc` run different identifiers by construction, so
+this usually means a second copy of `hmg` running against the same config, or another
+MQTT client of yours using the same id. A Serverless cluster also allows 100
+concurrent connections in total.
+
+**`hmc` exits 3 and prints a config path.** There is no config yet, so it wrote a
+default one. Run `hmc --init '<paste>'` with the string from the GUI.
+
+**`hmc` exits 4 or 5.** 4 is the broker refusing or being unreachable, 5 is a message
+the broker never acknowledged. `hmc -v` adds the connection details, and `RUST_LOG=debug`
+adds everything.
+
+**No desktop notifications.** On Linux, notifications need a running notification
+daemon, which a bare window manager may not have. Everywhere, check that the toolbar
+bell is not toggled off and that Notifications are enabled in Settings; a message this
+device sent raises nothing unless **notify own messages** is on.
+
+**The GUI says `localhost refused to connect`.** That is an `hmg` built by cargo
+rather than by the Tauri CLI, which expects a Vite server to serve it whatever the
+profile was. Run it with `pnpm tauri dev`, or build it with `pnpm tauri build`. An
+empty window with no message is a different fault, in the frontend itself. See
+[Running `hmg`](#running-hmg).
+
+More detail lives in [specs/hivemq-cloud.md](specs/hivemq-cloud.md) and
+[specs/cli.md](specs/cli.md#exit-codes).
 
 ## Layout notes
 

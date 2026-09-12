@@ -48,6 +48,9 @@ pnpm tauri build       # the GUI bundle for this OS, under target/release/bundle
 cargo build -r -p hmc  # the CLI, at target/release/hmc
 ```
 
+[docs/development.md](docs/development.md#commands) has the rest of the commands, and
+what each one is for.
+
 ### 4. Tell the GUI about the cluster
 
 Start HiveMe, press **F10** for the Settings tab, and fill in the Broker section:
@@ -90,59 +93,8 @@ publish back to it.
 That is the whole loop. Put `hmc` at the end of a long build, a backup script, or a
 cron job, and the machine tells you when it is done.
 
-## Troubleshooting
-
-**The GUI says disconnected, and the error mentions the password.** Credentials take up
-to a minute to become active after you create them in the console. If it persists,
-check the username and password in Settings, and that they belong to the cluster in the
-URL.
-
-**The connection fails during the TLS handshake.** The cluster hostname has to be the
-one the console shows, because HiveMQ Cloud selects the certificate from the name the
-client sends during the handshake (SNI). An IP address, or a hostname with the port
-left in it, will not work. HiveMQ Cloud accepts TLS only, so the URL starts with
-`mqtts://`, never `mqtt://`.
-
-**Messages arrive and then the connection drops, over and over.** Two clients cannot
-share a client identifier: the broker disconnects the older one, which reconnects, and
-so on. HiveMe gives `hmg` and each `hmc` run different identifiers by construction, so
-this usually means a second copy of `hmg` running against the same config, or another
-MQTT client of yours using the same id. A Serverless cluster also allows 100
-concurrent connections in total.
-
-**`hmc` exits 3 and prints a config path.** There is no config yet, so it wrote a
-default one. Run `hmc --init '<paste>'` with the string from the GUI.
-
-**`hmc` exits 4 or 5.** 4 is the broker refusing or being unreachable, 5 is a message
-the broker never acknowledged. `hmc -v` adds the connection details, and `RUST_LOG=debug`
-adds everything.
-
-**No desktop notifications.** On Linux, notifications need a running notification
-daemon, which a bare window manager may not have. Everywhere, check that the toolbar
-bell is not toggled off and that Notifications are enabled in Settings; a message this
-device sent raises nothing unless **notify own messages** is on.
-
-**The GUI window is empty, or says `localhost refused to connect`.** That is a
-development build started without its Vite server. Use `pnpm tauri dev`, or build with
-`pnpm tauri build`. See
-[docs/development.md](docs/development.md#running-hmg).
-
-More detail lives in [docs/specs/hivemq-cloud.md](docs/specs/hivemq-cloud.md) and
-[docs/specs/cli.md](docs/specs/cli.md#exit-codes).
-
-## Building from source
-
-```sh
-cargo build --workspace     # build the Rust crates
-cargo test --workspace      # run the Rust tests
-cargo xtask check-spec      # validate the examples in docs/specs
-pnpm install                # frontend dependencies
-pnpm test                   # run the frontend tests
-pnpm tauri dev              # run the GUI with hot reload
-pnpm tauri build            # bundle the GUI for this OS
-```
-
-See [docs/development.md](docs/development.md) for the rest.
+When something does not work, [docs/development.md](docs/development.md#troubleshooting)
+lists what usually goes wrong and what to do about it.
 
 ## Documentation
 

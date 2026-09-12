@@ -108,7 +108,8 @@ Full rules in [specs/config.md](specs/config.md#location-and-precedence).
 4. Send a test message: `hmc "hello"`. It appears in the GUI.
 
 The [README](../README.md#quick-start) walks through the same path in more detail,
-with what to do when a step does not work.
+and [development.md](development.md#troubleshooting) lists what to do when a step does
+not work.
 
 ## Updating
 
