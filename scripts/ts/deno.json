@@ -1,0 +1,13 @@
+{
+  "imports": {
+    "json-schema-to-typescript": "npm:json-schema-to-typescript@16"
+  },
+  "nodeModulesDir": "none",
+  "tasks": {
+    "check": "deno check *.ts",
+    "check-license-headers": "deno run --allow-read check-license-headers.ts",
+    "check-spec-sync": "deno run --allow-read --allow-env --allow-run=git check-spec-sync.ts",
+    "gen-types": "deno run --allow-read --allow-write --allow-env --allow-sys gen-types.ts",
+    "version": "deno run --allow-read --allow-write change-version.ts"
+  }
+}

@@ -1,0 +1,143 @@
+name: MacOS Build
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+
+env:
+  HIVEME_VERSION: 0.1.0
+  # The MQTT integration tests need Docker, which the macOS runners do not provide.
+  HIVEME_SKIP_DOCKER: 1
+
+jobs:
+  build_package:
+    strategy:
+      matrix:
+        include:
+          - image: macos-15-intel
+            os: macos
+            arch: x86_64
+          - image: macos-15
+            os: macos
+            arch: arm64
+
+    name: Build for ${{ matrix.os }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.image }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Set git to use LF
+      run: |
+        git config --global core.autocrlf false
+        git config --global core.eol lf
+
+    - name: Checkout the code
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v5
+      with:
+        version: 11
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
+        cache: pnpm
+
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+
+    - name: Setup Deno
+      uses: denoland/setup-deno@v2
+      with:
+        deno-version: v2.x
+
+    - name: Type check the Deno scripts
+      run: deno task -c scripts/ts/deno.json check
+
+    - name: Check licence headers
+      run: deno task -c scripts/ts/deno.json check-license-headers
+
+    - name: Check specification sync
+      env:
+        SPEC_SYNC_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        SPEC_SYNC_EXEMPT: ${{ contains(github.event.pull_request.labels.*.name, 'spec-sync-exempt') && '1' || '0' }}
+      run: deno task -c scripts/ts/deno.json check-spec-sync
+
+    - name: Check Rust formatting
+      run: cargo fmt --all -- --check
+
+    - name: Lint Rust
+      run: cargo clippy --workspace --all-targets -- -D warnings
+
+    - name: Validate the specification examples
+      run: cargo xtask check-spec
+
+    - name: Check that the schemas are current
+      run: |
+        cargo xtask schema
+        git diff --exit-code -- schemas || {
+          echo "schemas/ is stale, run 'cargo xtask schema' and commit the result" >&2
+          exit 1
+        }
+
+    - name: Install the frontend dependencies
+      run: pnpm install --frozen-lockfile
+
+    - name: Check that the generated types are current
+      run: |
+        deno task -c scripts/ts/deno.json gen-types
+        git diff --exit-code -- src/generated || {
+          echo "src/generated/ is stale, run 'pnpm gen:types' and commit the result" >&2
+          exit 1
+        }
+
+    - name: Typecheck the frontend
+      run: pnpm typecheck
+
+    - name: Test the frontend
+      run: pnpm test
+
+    - name: Test HiveMe
+      run: cargo test -r --workspace
+
+    - name: Build hmc
+      run: cargo build -r -p hmc
+
+    - name: Detect the Tauri application
+      id: tauri
+      run: |
+        # src-tauri is scaffolded in step 4.1 of docs/plans/plan-initialization.md.
+        # Remove this guard, and the `if:` conditions below, once it exists.
+        if [ -f src-tauri/tauri.conf.json ]; then
+          echo "present=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "present=false" >> "$GITHUB_OUTPUT"
+          echo "src-tauri is not scaffolded yet (step 4.1), skipping the bundle."
+        fi
+
+    - name: Build HiveMe
+      if: steps.tauri.outputs.present == 'true'
+      run: pnpm tauri build
+
+    - name: Upload hmc
+      uses: actions/upload-artifact@v7
+      with:
+        name: HiveMe-${{ matrix.os }}-${{ matrix.arch }}-${{ env.HIVEME_VERSION }}-hmc
+        path: |
+          target/release/hmc
+
+    - name: Upload the dmg
+      if: steps.tauri.outputs.present == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: HiveMe-${{ matrix.os }}-${{ matrix.arch }}-${{ env.HIVEME_VERSION }}
+        path: |
+          target/release/bundle/dmg/*.dmg

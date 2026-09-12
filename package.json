@@ -1,0 +1,29 @@
+{
+  "name": "hiveme",
+  "version": "0.1.0",
+  "description": "HiveMe GUI, a desktop client for MQTT on HiveMQ Cloud",
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "typecheck": "tsc -b",
+    "test": "vitest run --passWithNoTests",
+    "gen:types": "deno task -c scripts/ts/deno.json gen-types"
+  },
+  "dependencies": {
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^5.9.2",
+    "vite": "^8.0.13",
+    "vitest": "^5.0.0"
+  }
+}

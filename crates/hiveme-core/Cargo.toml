@@ -1,0 +1,18 @@
+[package]
+name = "hiveme-core"
+description = "Shared core of the HiveMe applications: config, message format, topics, rules, MQTT, storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+# Enabled by hmg only; pulls in the bundled SQLite library.
+storage = []
+# Enabled once the HiveMQ Cloud REST client lands in phase 6.
+cloud-api = []
+
+[dependencies]

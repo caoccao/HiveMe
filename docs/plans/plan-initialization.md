@@ -150,8 +150,8 @@ HiveMe/
   xtask/                          # `cargo xtask schema`, `cargo xtask check-spec`
   schemas/                        # config.schema.json, message.schema.json (generated, committed)
   scripts/
-    ts/                           # change-version.ts (Deno)
-    check-spec-sync.sh
+    ts/                           # Deno scripts: change-version.ts, check-license-headers.ts,
+                                  # check-spec-sync.ts, gen-types.ts
   docs/
     specs/                        # app.md, config.md, message.md, cli.md, gui.md, hivemq-cloud.md
     plans/                        # this file
@@ -641,8 +641,8 @@ The specs must describe the code as built. These mechanisms make drift fail CI r
 2. Validated spec examples. Fenced code blocks in `docs/specs/*.md` whose info string is `json hiveme:config`, `json hiveme:message`, or `json hiveme:message-encrypted` are extracted by test `spec_examples_are_valid`, validated against the matching schema with the `jsonschema` crate, and round-tripped through the Rust types. The examples in sections 4.2, 5.2, and 5.4 are copied into the specs and therefore checked.
 3. Fixture-backed compatibility rules. Every rule in section 5.6 has at least one fixture in `crates/hiveme-core/tests/fixtures/message/` (`unknown_fields.json`, `newer_version.json`, `unknown_alg.json`, `raw_json.json`, `raw_text.txt`, ...). `message.md` lists the fixtures next to the rules.
 4. CLI help snapshot. Test `cli_help_matches_spec` renders clap's help and compares it with the ```` ```text hiveme:help ```` block in `cli.md`.
-5. TypeScript types. `pnpm gen:types` runs `json-schema-to-typescript` over `schemas/` into `src/generated/`. CI fails if the output is not committed. Frontend tests parse the same fixture files through `src/lib/message.ts` to keep both readers in agreement.
-6. Protocol pairing. `protocol.rs` and `protocol.ts` stay hand-synced as in BetterMediaInfo; `scripts/check-spec-sync.sh` fails when one changes without the other in the same diff range, and when `crates/hiveme-core/src/{config,message}/**`, `crates/hmc/src/cli.rs`, or `src-tauri/src/{lib,protocol}.rs` change without a matching file under `docs/specs/`. Bypass with the `spec-sync-exempt` PR label for refactors.
+5. TypeScript types. `pnpm gen:types` runs `scripts/ts/gen-types.ts`, a Deno script wrapping `json-schema-to-typescript`, over `schemas/` into `src/generated/`. CI fails if the output is not committed. Frontend tests parse the same fixture files through `src/lib/message.ts` to keep both readers in agreement.
+6. Protocol pairing. `protocol.rs` and `protocol.ts` stay hand-synced as in BetterMediaInfo; `scripts/ts/check-spec-sync.ts` fails when one changes without the other in the same diff range, and when `crates/hiveme-core/src/{config,message}/**`, `crates/hmc/src/cli.rs`, or `src-tauri/src/{lib,protocol}.rs` change without a matching file under `docs/specs/`. Bypass with the `spec-sync-exempt` PR label for refactors.
 7. Status table. `docs/specs/app.md` ends with a table: feature, spec section, implementing module, phase, status (`planned`, `in progress`, `done`). Each phase updates it as its last task.
 8. Definition of done for every step: code, tests, spec update, schema regeneration, status table row, and `docs/release_notes.md` entry for user-visible changes. A step without a spec change must say so in its PR description.
 
@@ -660,13 +660,13 @@ Each step lists tasks, spec sync, tests, and the done condition. Steps inside a 
 - Done when: every design question in this plan has a home in a spec file, and `app.md` lists all files.
 
 **Step 0.2 Workspace and conventions.**
-- Tasks: root `Cargo.toml` workspace (`src-tauri`, `crates/hiveme-core`, `crates/hmc`, `xtask`) with `[workspace.package]` version, edition 2024, licence, authors; `rust-toolchain.toml` pinned; `.rustfmt.toml`; clippy `-D warnings`; Apache-2.0 header template and a `scripts/check-license-headers.sh`; `package.json` (`dev`, `build`, `tauri`, `typecheck`, `test`, `gen:types`), `pnpm-workspace.yaml` (`onlyBuiltDependencies: [esbuild]`), `index.html`, `vite.config.js` (port 1420, ignore `src-tauri`), `tsconfig.json` copied from BetterMediaInfo; `.gitignore` union of BetterMediaInfo's and cargo's; `README.md` with badges; `CLAUDE.md` and `AGENTS.md` (identical) describing layout, commands, protocol-sync and spec-sync rules; `docs/development.md`, `docs/installation.md`, `docs/release_notes.md`, `docs/todos.md`, `docs/screenshots.md` stubs.
+- Tasks: root `Cargo.toml` workspace (`src-tauri`, `crates/hiveme-core`, `crates/hmc`, `xtask`) with `[workspace.package]` version, edition 2024, licence, authors; `rust-toolchain.toml` pinned; `.rustfmt.toml`; clippy `-D warnings`; Apache-2.0 header template and a `scripts/ts/check-license-headers.ts`; `package.json` (`dev`, `build`, `tauri`, `typecheck`, `test`, `gen:types`), `pnpm-workspace.yaml` (`onlyBuiltDependencies: [esbuild]`), `index.html`, `vite.config.js` (port 1420, ignore `src-tauri`), `tsconfig.json` copied from BetterMediaInfo; `.gitignore` union of BetterMediaInfo's and cargo's; `README.md` with badges; `CLAUDE.md` and `AGENTS.md` (identical) describing layout, commands, protocol-sync and spec-sync rules; `docs/development.md`, `docs/installation.md`, `docs/release_notes.md`, `docs/todos.md`, `docs/screenshots.md` stubs.
 - Spec sync: `app.md` "Repository layout" section identical to 3.2.
 - Tests: `cargo build --workspace`, `pnpm install`.
 - Done when: `cargo build --workspace` succeeds on the developer machine.
 
 **Step 0.3 Build workflows.**
-- Tasks: `.github/workflows/linux_build.yml`, `macos_build.yml` (macos-15-intel and macos-15 matrix), `windows_build.yml` following BetterMediaInfo step for step (LF config, checkout, Node 24, Rust from `rust-toolchain.toml`, pnpm 11, Linux webkit packages) with added steps: `cargo fmt --check`, `cargo clippy --workspace -- -D warnings`, `cargo test -r --workspace`, `pnpm typecheck`, `pnpm test`, schema and generated-types freshness, `scripts/check-spec-sync.sh`; then `pnpm tauri build`; upload deb/rpm/AppImage, dmg, msi/nsis plus a portable 7z that contains `hmg.exe` and `hmc.exe`; upload `hmc` for every OS. Docker-based tests only on the Linux job. `env: HIVEME_VERSION`. `scripts/ts/change-version.ts` covering `package.json`, root `Cargo.toml`, `src-tauri/tauri.conf.json`, and the three workflows.
+- Tasks: `.github/workflows/linux_build.yml`, `macos_build.yml` (macos-15-intel and macos-15 matrix), `windows_build.yml` following BetterMediaInfo step for step (LF config, checkout, Node 24, Rust from `rust-toolchain.toml`, pnpm 11, Linux webkit packages) with added steps: `cargo fmt --check`, `cargo clippy --workspace -- -D warnings`, `cargo test -r --workspace`, `pnpm typecheck`, `pnpm test`, schema and generated-types freshness, `scripts/ts/check-spec-sync.ts`; then `pnpm tauri build`; upload deb/rpm/AppImage, dmg, msi/nsis plus a portable 7z that contains `hmg.exe` and `hmc.exe`; upload `hmc` for every OS. Docker-based tests only on the Linux job. `env: HIVEME_VERSION`. `scripts/ts/change-version.ts` covering `package.json`, root `Cargo.toml`, `src-tauri/tauri.conf.json`, and the three workflows.
 - Done when: all three workflows are green on a PR that touches nothing.
 
 ### Phase 1: Core model
@@ -690,7 +690,7 @@ Each step lists tasks, spec sync, tests, and the done condition. Steps inside a 
 - Done when: rule behaviour in the spec is executable as tests.
 
 **Step 1.4 Schema and spec tooling.**
-- Tasks: `xtask schema`; `xtask check-spec` (extract fenced blocks and validate); `scripts/check-spec-sync.sh`; `spec_examples_are_valid`, `schemas_are_current` tests; `pnpm gen:types`; PR template with the definition-of-done checklist.
+- Tasks: `xtask schema`; `xtask check-spec` (extract fenced blocks and validate); `scripts/ts/check-spec-sync.ts`; `spec_examples_are_valid`, `schemas_are_current` tests; `pnpm gen:types`; PR template with the definition-of-done checklist.
 - Spec sync: `app.md` documents the tooling and the fenced-block tags.
 - Done when: deleting a field from a schema file makes CI fail, and an invalid example in a spec makes CI fail.
 
@@ -780,7 +780,7 @@ Each of these already has its config fields and spec sections reserved so adding
 | Layer | Tool | Where it runs |
 |-------|------|---------------|
 | Rust unit | `cargo test -r --workspace` | all three workflows |
-| Schema and spec checks | tests from section 10, `xtask check-spec`, `scripts/check-spec-sync.sh` | all three workflows |
+| Schema and spec checks | tests from section 10, `xtask check-spec`, `scripts/ts/check-spec-sync.ts` | all three workflows |
 | MQTT integration | `testcontainers` + `hivemq/hivemq-ce` | Linux workflow, local with Docker |
 | Real cloud | opt-in env vars | local only |
 | CLI behaviour | `assert_cmd` | all three workflows |

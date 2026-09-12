@@ -1,0 +1,45 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/hiveme-core",
+  "crates/hmc",
+  "xtask",
+  # "src-tauri" joins the workspace in step 4.1 of docs/plans/plan-initialization.md.
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+authors = ["Sam Cao"]
+license = "Apache-2.0"
+repository = "https://github.com/caoccao/HiveMe"
+homepage = "https://github.com/caoccao/HiveMe"
+
+# Shared dependency versions. A crate opts in with `foo = { workspace = true }`,
+# so an entry here costs nothing until a member uses it.
+[workspace.dependencies]
+anyhow = "1.0.102"
+chrono = "0.4.45"
+clap = { version = "4.6", features = ["derive"] }
+directories = "6.0"
+env_logger = "0.11"
+hostname = "0.4"
+jsonschema = "0.56"
+log = "0.4"
+rumqttc = { version = "0.25", features = ["use-rustls"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
+rustls-native-certs = "0.8"
+schemars = "1.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+ureq = { version = "2", features = ["json"] }
+uuid = { version = "1.26", features = ["v7", "serde"] }
+
+[workspace.dependencies.hiveme-core]
+path = "crates/hiveme-core"
+
+[profile.release]
+strip = true
