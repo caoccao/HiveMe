@@ -79,6 +79,9 @@ pub enum Error {
   #[error("the broker did not acknowledge the subscription within {0}s")]
   SubscribeTimeout(u64),
 
+  #[error("the message store cannot {operation}: {reason}")]
+  Storage { operation: String, reason: String },
+
   #[error("{0}")]
   NotImplemented(String),
 }

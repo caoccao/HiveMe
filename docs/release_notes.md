@@ -35,3 +35,28 @@
   automatic for them: the cluster certificate chains to a public authority the
   operating system already trusts, so neither application generates, enrols, or asks
   about a certificate.
+* Added `hmg`, the desktop application: a topic tree with unread badges on the left, a
+  chat view of the selected topic on the right, and an input box that publishes through
+  the same path `hmc` does. Messages arrive live, and a message this device sent is
+  shown once whether it came from the composer or came back from the broker.
+* Gave `hmg` a local history in SQLite beside the config file, so topics and messages
+  survive a restart. It is bounded per topic and by age, and pruned at startup and
+  every ten minutes.
+* Rendered every kind of payload rather than only the ones HiveMe wrote: an envelope
+  shows its title, body, level, and a collapsible `data` tree; JSON from another tool
+  shows as a tree; text shows as text; anything else shows as hex with its size; and an
+  encrypted message shows as a lock with its key id.
+* Made the Settings tab the one place a cluster is set up, with a **Copy CLI setup**
+  button that puts the `hmc --init` string on the clipboard. Saving reconnects only
+  when something the connection is built from changed.
+* Turned the notification rules into OS notifications on all three platforms, with the
+  rate limit, the "and N more messages" summary, and a toolbar toggle that holds them
+  back for the session. On Windows the notification is labelled HiveMe, because the
+  application registers an identity of its own instead of borrowing the one of whatever
+  process raised the toast.
+* Added a status bar that shows the connection, the broker, the reconnect countdown,
+  the subscriptions, the messages this session, and the size of the history.
+* Drew the pair an icon: a honey coloured hive cell holding a message bubble for `hmg`
+  and a command prompt for `hmc`. On Windows `hmc.exe` carries its own icon and version
+  information, so Explorer and the taskbar name it rather than showing a blank
+  executable.

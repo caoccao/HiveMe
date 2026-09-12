@@ -112,6 +112,13 @@ credentials travel in the CONNECT packet, so an unverified connection would hand
 to whatever answered, and the certificate is verified anyway with a warning in the
 log. Turning it off anywhere logs a warning.
 
+The cryptography rustls uses is chosen rather than inferred. rustls picks a provider on
+its own only when exactly one is compiled in, and panics rather than guessing when
+there are two; `hmg` reaches the GitHub releases API through `ureq`, which brings its
+own rustls with `ring` alongside the `aws-lc-rs` that `rumqttc` is built against. The
+client installs aws-lc-rs once per process before it builds any TLS configuration, so
+neither application depends on which crates happen to be linked beside it.
+
 ### Session settings
 
 * Keep alive is `broker.keepAliveSecs`, 30 seconds by default.

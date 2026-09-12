@@ -41,6 +41,7 @@ use crate::error::{Error, Result};
 /// whoever answered. The setting is honoured for any other host, where a local broker
 /// with a self-signed certificate is a reasonable thing to have, and logs a warning.
 pub fn client_config(tls: &Tls, url: &BrokerUrl) -> Result<Arc<ClientConfig>> {
+  install_crypto_provider();
   let roots = root_store(tls.ca_file.as_deref())?;
   let builder = ClientConfig::builder();
 
@@ -67,6 +68,27 @@ pub fn client_config(tls: &Tls, url: &BrokerUrl) -> Result<Arc<ClientConfig>> {
   };
 
   Ok(Arc::new(config))
+}
+
+/// Chooses the cryptography rustls uses, once per process.
+///
+/// rustls picks a provider on its own only when exactly one is compiled in, and panics
+/// rather than guessing when there are two. `hmg` links a second one through `ureq`,
+/// which brings its own rustls with `ring`, so the choice is made here instead of being
+/// left to a guess. aws-lc-rs is the provider `rumqttc` is built against.
+fn install_crypto_provider() {
+  static ONCE: std::sync::Once = std::sync::Once::new();
+  ONCE.call_once(|| {
+    if CryptoProvider::get_default().is_some() {
+      return;
+    }
+    if rumqttc::tokio_rustls::rustls::crypto::aws_lc_rs::default_provider()
+      .install_default()
+      .is_err()
+    {
+      log::debug!("another rustls crypto provider was installed first");
+    }
+  });
 }
 
 /// The native trust store, plus the certificates of `ca_file` when one is configured.
@@ -191,6 +213,15 @@ mod tests {
 
   fn local_url() -> BrokerUrl {
     BrokerUrl::parse("mqtts://localhost:8883").unwrap()
+  }
+
+  #[test]
+  fn the_crypto_provider_is_chosen_rather_than_guessed_at() {
+    // A build that links two providers panics inside rustls when it has to pick one,
+    // so this is what keeps every TLS connection in `hmg` working.
+    install_crypto_provider();
+    assert!(CryptoProvider::get_default().is_some());
+    install_crypto_provider();
   }
 
   #[test]

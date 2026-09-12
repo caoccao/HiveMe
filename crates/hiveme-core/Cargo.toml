@@ -11,7 +11,7 @@ repository.workspace = true
 [features]
 default = []
 # Enabled by hmg only; pulls in the bundled SQLite library.
-storage = []
+storage = ["dep:rusqlite"]
 # Enabled once the HiveMQ Cloud REST client lands in phase 6.
 cloud-api = []
 # MQTT over WebSocket. Off by default because HiveMQ Cloud serves plain MQTT over
@@ -24,6 +24,7 @@ chrono = { workspace = true }
 hostname = { workspace = true }
 log = { workspace = true }
 rumqttc = { workspace = true }
+rusqlite = { workspace = true, optional = true }
 rustls-native-certs = { workspace = true }
 rustls-pemfile = { workspace = true }
 schemars = { workspace = true }
@@ -34,6 +35,8 @@ tokio = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+# The storage tests need the feature the GUI turns on.
+hiveme-core = { workspace = true, features = ["storage"] }
 tempfile = { workspace = true }
 testcontainers = { workspace = true }
 tokio = { workspace = true }

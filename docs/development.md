@@ -44,8 +44,8 @@ pnpm typecheck
 pnpm test
 pnpm gen:types
 pnpm dev                                        # vite on http://localhost:1420
-pnpm tauri dev                                  # from step 4.1
-pnpm tauri build                                # from step 4.1
+pnpm tauri dev                                  # the GUI with hot reload
+pnpm tauri build                                # the release bundle for this OS
 ```
 
 `pnpm test` runs `vitest run --passWithNoTests`; the flag comes out once the first
@@ -83,7 +83,9 @@ set RUST_LOG=debug                              # Windows
 
 * The Cargo target directory is the repository root `target/`, because `src-tauri` is
   a workspace member rather than a standalone package.
-* `src-tauri` joins the workspace in step 4.1; until then it is commented out in
+* `src-tauri` is a workspace member, which is why the target directory is the
+  repository root `target/` rather than `src-tauri/target/`. It used to be commented
+  out in
   `Cargo.toml` so that `cargo build --workspace` succeeds.
 * `schemas/` and `src/generated/` are generated and committed. Never edit them by
   hand.

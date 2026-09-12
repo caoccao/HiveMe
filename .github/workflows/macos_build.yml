@@ -113,20 +113,7 @@ jobs:
     - name: Build hmc
       run: cargo build -r -p hmc
 
-    - name: Detect the Tauri application
-      id: tauri
-      run: |
-        # src-tauri is scaffolded in step 4.1 of docs/plans/plan-initialization.md.
-        # Remove this guard, and the `if:` conditions below, once it exists.
-        if [ -f src-tauri/tauri.conf.json ]; then
-          echo "present=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "present=false" >> "$GITHUB_OUTPUT"
-          echo "src-tauri is not scaffolded yet (step 4.1), skipping the bundle."
-        fi
-
     - name: Build HiveMe
-      if: steps.tauri.outputs.present == 'true'
       run: pnpm tauri build
 
     - name: Upload hmc
@@ -137,7 +124,6 @@ jobs:
           target/release/hmc
 
     - name: Upload the dmg
-      if: steps.tauri.outputs.present == 'true'
       uses: actions/upload-artifact@v7
       with:
         name: HiveMe-${{ matrix.os }}-${{ matrix.arch }}-${{ env.HIVEME_VERSION }}

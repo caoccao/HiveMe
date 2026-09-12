@@ -46,8 +46,8 @@ pnpm typecheck                                  # tsc -b
 pnpm test                                       # vitest
 pnpm gen:types                                  # schemas/ -> src/generated/, runs the Deno task
 pnpm dev                                        # vite on http://localhost:1420
-pnpm tauri dev                                  # GUI with hot reload (from step 4.1)
-pnpm tauri build                                # release bundle (from step 4.1)
+pnpm tauri dev                                  # GUI with hot reload
+pnpm tauri build                                # release bundle
 
 # Version bump
 deno task -c scripts/ts/deno.json version
@@ -64,7 +64,7 @@ Cargo.toml           workspace root, [workspace.package] version and shared deps
 crates/hiveme-core   config, message, topic, rules, mqtt, storage, cloud
 crates/hmc           the CLI binary
 xtask                repository automation
-src-tauri            the Tauri backend of hmg (joins the workspace in step 4.1)
+src-tauri            the Tauri backend of hmg
 src                  the React frontend of hmg
 schemas              generated JSON schemas, committed
 ```

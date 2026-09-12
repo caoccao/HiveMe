@@ -7,8 +7,6 @@ page collects what the plan deliberately left open.
 
 * Whether the `wss://` transport ships with the MQTT client in phase 2 or waits for
   phase 6 depends on the quality of `rumqttc`'s WebSocket support with rustls.
-* Whether `RichTreeView` or `SimpleTreeView` is the right MUI tree component, decided
-  in step 4.4 by how well each virtualises.
 * The `$id` URLs in the generated schemas are placeholders until a documentation site
   exists.
 * Whether `pnpm tauri build` inside a Cargo workspace needs extra configuration for

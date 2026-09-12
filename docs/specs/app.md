@@ -155,6 +155,7 @@ HiveMe/
   crates/
     hiveme-core/                  # config, message, topic, rules, mqtt, storage (feature), cloud (feature, later)
     hmc/                          # CLI binary `hmc`
+      build.rs, icons/            # the Windows executable icon and version information
   xtask/                          # `cargo xtask schema`, `cargo xtask check-spec`
   schemas/                        # broker-init, config, message .schema.json (generated, committed), README.md
   scripts/
@@ -208,12 +209,12 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Schema and spec tooling | [app.md](#spec-sync) | `xtask`, `scripts` | 1.4 | done |
 | MQTT client | [hivemq-cloud.md](hivemq-cloud.md#how-hiveme-connects) | `hiveme-core::mqtt` | 2.1 | done |
 | CLI | [cli.md](cli.md) | `crates/hmc` | 3.1 | done |
-| Tauri scaffold | [gui.md](gui.md#build-and-run) | `src-tauri`, `src` | 4.1 | planned |
-| Message storage | [gui.md](gui.md#storage) | `hiveme-core::storage` | 4.2 | planned |
-| Backend commands and events | [gui.md](gui.md#ipc) | `src-tauri` | 4.3 | planned |
-| Messages tab | [gui.md](gui.md#layout) | `src/components` | 4.4 | planned |
-| Settings tab | [gui.md](gui.md#settings) | `src/components/Config.tsx` | 4.5 | planned |
-| OS notifications | [gui.md](gui.md#notifications) | `src-tauri/notification.rs` | 4.6 | planned |
+| Tauri scaffold | [gui.md](gui.md#build-and-run) | `src-tauri`, `src` | 4.1 | done |
+| Message storage | [gui.md](gui.md#storage) | `hiveme-core::storage` | 4.2 | done |
+| Backend commands and events | [gui.md](gui.md#ipc) | `src-tauri` | 4.3 | done |
+| Messages tab | [gui.md](gui.md#layout) | `src/components` | 4.4 | done |
+| Settings tab | [gui.md](gui.md#settings) | `src/components/Config.tsx` | 4.5 | done |
+| OS notifications | [gui.md](gui.md#notifications) | `src-tauri/notification.rs` | 4.6 | done |
 | Update check and packaging | [app.md](#build-and-release) | `src-tauri/update.rs` | 5.1 | planned |
 | Encryption | [message.md](message.md#encryption) | `hiveme-core::crypto` | 6 | designed, types and parsing in place |
 | REST API client | [hivemq-cloud.md](hivemq-cloud.md#rest-api) | `hiveme-core::cloud` | 6 | designed |
@@ -240,17 +241,16 @@ and Apple silicon), `.msi`, NSIS `.exe`, and a portable `.7z` on Windows, plus t
 
 Recorded so the plan and the tree can be reconciled later.
 
-1. `src-tauri` is not yet a workspace member. It is commented out in `Cargo.toml` and
-   is added by step 4.1, so that `cargo build --workspace` succeeds today.
+1. Resolved in step 4.1: `src-tauri` is a workspace member and the Cargo target
+   directory is the repository root `target/`.
 2. Every repository script is Deno TypeScript under `scripts/ts/`, so that the
    project stays cross platform. The plan wrote `scripts/check-spec-sync.sh`; there
    are no shell scripts. The set is `check-license-headers.ts`, `check-spec-sync.ts`,
    `gen-types.ts`, and `change-version.ts`, plus the `scripts/license-header.txt`
    template. The `cargo xtask` alias needs `.cargo/config.toml`, and
    `schemas/README.md` keeps the generated directory present in a fresh clone.
-3. The workflows guard the `pnpm tauri build` and bundle upload steps behind the
-   existence of `src-tauri/tauri.conf.json`, so CI is green during phases 1 to 3. Step
-   4.1 removes the guard.
+3. Resolved in step 4.1: the workflows build and upload the bundles unconditionally.
+   The guard that skipped them while `src-tauri` did not exist is gone.
 4. The workflows do not use `paths-ignore`, unlike the reference project, because the
    specifications are load bearing here and their examples are validated in CI.
 5. `cargo xtask` needs a library target as well as a binary, so that the checks and the
@@ -280,3 +280,35 @@ Recorded so the plan and the tree can be reconciled later.
     anyway. `Config::validate` insists on credentials, `MqttClient::connect` validates,
     and the HiveMQ CE allow-all extension accepts whatever it is sent, so the config a
     test writes is the shape a real one has.
+12. `hiveme-core` chooses the rustls cryptography provider explicitly rather than
+    letting rustls infer it. `hmg` reaches the GitHub releases API through `ureq`,
+    which brings its own rustls with `ring`, so two providers are compiled into the
+    same binary and rustls panics rather than guessing between them. `mqtt::tls`
+    installs aws-lc-rs, the provider `rumqttc` is built against, once per process.
+13. The topic tree is `SimpleTreeView` with hand-written `TreeItem` children rather
+    than `RichTreeView`, which section 14 of the plan left to step 4.4. `TreeItem`
+    takes a label of arbitrary content, which the unread badge needs, and a desktop
+    client has few enough topics that virtualising the tree would buy nothing. The
+    message list is virtualised instead.
+14. The composer stores its bubble once the broker has accepted the message, not
+    before. The plan said the bubble appears immediately; a publish that failed would
+    then leave a bubble claiming it was sent, and there is no event that could take it
+    back. Reconciliation with the broker echo by message id is unchanged.
+15. `set_notifications_paused` was added to the command list of
+    [gui.md](gui.md#commands). The toolbar pause toggle is backend state, because the
+    rules and the rate limiter are, and the plan's command list did not name it.
+16. The frontend tests are configured in `vitest.config.ts` rather than in
+    `vite.config.js`, so that the application build has nothing to do with the test
+    environment. `hiveme-core` dev-depends on itself with `features = ["storage"]`,
+    which is how its own tests reach a module that only `hmg` turns on.
+17. On Windows, `hmg` raises its notifications through `tauri-winrt-notification`
+    against an `AppUserModelId` it registers itself, rather than through the
+    notification plugin. Windows labels a toast with the identity of the process that
+    raised it, and without one of our own that label reads PowerShell. The approach is
+    taken from the sibling project `../BatchMkvMerge`. Every other platform still goes
+    through the plugin. See [gui.md](gui.md#platform-notes).
+18. `hmc` has a build script, which the plan did not call for. `hmg` gets its icon and
+    version information from `tauri_build`, and `hmc` has no equivalent, so
+    `crates/hmc/build.rs` embeds them with `winresource` on Windows. It is the only
+    thing that build script does, and on every other platform it does nothing. See
+    [cli.md](cli.md#appearance).

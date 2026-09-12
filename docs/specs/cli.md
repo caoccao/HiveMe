@@ -134,6 +134,22 @@ authority, which the operating system already trusts. See
   details, and `RUST_LOG` overrides both.
 - On Windows `hmc` is a console application, so it never opens a window.
 
+## Appearance
+
+`hmc` has an icon of its own: the same honey coloured hive cell as `hmg`, holding a
+command prompt rather than a message bubble, so the pair reads as a pair. The source
+is `crates/hmc/icons/hmc.png` and the packed sizes are `crates/hmc/icons/hmc.ico`.
+
+Windows reads an icon and a version out of the executable itself, so
+`crates/hmc/build.rs` puts them there: the icon, `HiveMe` as the product, the crate
+description as the file description, and the workspace version. A build machine with
+no resource compiler produces an executable without them and a warning, rather than no
+executable at all.
+
+Linux and macOS carry no icon inside a binary; an icon belongs to a desktop entry or
+an application bundle, and a command line tool has neither. `hmg` supplies both on
+those platforms.
+
 ## Client identifier
 
 `<broker.clientIdPrefix>-hmc-<first 8 alphanumerics of device.id>-<8 random

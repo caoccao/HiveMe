@@ -7,6 +7,30 @@ as a chat, and raises OS notifications from rules.
 Its layout and architecture deliberately mirror the sibling project
 `../BetterMediaInfo`. See [app.md](app.md#reference-architecture) for the mapping.
 
+## Components
+
+| File | What it is |
+|------|------------|
+| `src/App.tsx` | The MUI theme, the display mode, and the listeners for the backend events |
+| `src/components/Layout.tsx` | The `auto 1fr auto` grid: toolbar, tabs, status bar |
+| `src/components/Toolbar.tsx` | Connect, pause notifications, clear the topic, Settings, About |
+| `src/components/MainContent.tsx` | The tab machinery and the update notice |
+| `src/components/Messages.tsx` | Tab 0: the split pane and its draggable divider |
+| `src/components/TopicTree.tsx` | The topic hierarchy and its filter |
+| `src/components/MessageView.tsx` | The chat view, its bubbles, and the JSON tree |
+| `src/components/Composer.tsx` | The input box, the send button, and its options menu |
+| `src/components/Config.tsx` | The Settings tab |
+| `src/components/About.tsx` | The About tab |
+| `src/components/Footer.tsx` | The status bar |
+| `src/components/NotificationSnackbar.tsx` | In-app errors and confirmations |
+| `src/lib/store.tsx` | The Zustand store, the only caller of `service.ts` |
+| `src/lib/service.ts` | One wrapper per `invoke`; components never call Tauri APIs |
+| `src/lib/protocol.ts` | The IPC types, hand synced with `protocol.rs` |
+| `src/lib/message.ts` | The reader that renders the parse tiers |
+| `src/lib/format.ts` | Times, sizes, and the hex preview |
+| `src/lib/constants.ts` | Names, links, and the layout constants |
+| `src/i18n/` | react-i18next with `en-US` |
+
 ## Layout
 
 `Layout.tsx` is a CSS grid with rows `auto 1fr auto` inside a `100vh` box.
@@ -53,10 +77,24 @@ Shortcuts: `Ctrl+1` to `Ctrl+9` select a tab, `Ctrl+W` closes the current tab,
 ### Topic tree
 
 `TopicTree.tsx` renders `@mui/x-tree-view` with the topic hierarchy split on `/`. The
-root node is `topics.prefix`. A node appears when the first message on that topic
-arrives or when a message is sent to it, and it persists in SQLite so the tree
-survives a restart. Each node carries an unread badge. A filter field sits above the
-tree.
+root node is `topics.prefix`, and a topic outside it, such as one under `$SYS`, is a
+root of its own. A node appears when the first message on that topic arrives or when a
+message is sent to it, and it persists in SQLite so the tree survives a restart. Each
+node carries an unread badge, rolled up from everything below it, so a collapsed
+branch still shows that something in it is unread.
+
+A node that stands only for a segment of a path, such as `hiveme/build` when the
+messages are on `hiveme/build/ci`, is shown in italics and cannot be selected: there
+is no history under it to show.
+
+The filter field above the tree matches on the whole path, keeps a parent whose child
+matches, and expands what it found.
+
+The component is `SimpleTreeView` with hand-written `TreeItem` children rather than
+`RichTreeView`, which the plan left open. `TreeItem` takes a `label` of arbitrary
+content, which is what the unread badge needs, and the topic count of a desktop client
+is small enough that virtualising the tree would buy nothing. The message list, which
+can hold thousands of rows, is virtualised instead.
 
 ### Message view
 
@@ -83,8 +121,12 @@ send `IconButton`. Enter sends, Shift+Enter inserts a newline. A small menu on t
 send button toggles "send as raw JSON" and overrides QoS and retain for that one
 message. The composer is disabled while disconnected or while no topic is selected.
 
-Sending publishes through the same core path as `hmc`. The bubble appears
-immediately as outgoing and is reconciled with the broker echo by `id`.
+Sending publishes through the same core path as `hmc`, so a message from the composer
+is indistinguishable from one `hmc` sent. The bubble appears as soon as the broker has
+accepted the message, and not before: a publish that failed must not leave a bubble
+claiming it was sent, and the failure goes to the snackbar instead. The copy the broker
+echoes back onto the GUI's own subscription collapses into that bubble by its message
+id rather than opening a second one.
 
 ### Footer
 
@@ -149,8 +191,11 @@ empty string. There are no expressions.
 4. Rate limit to one notification per rule per second. The next notification that rule
    raises carries the count that was held back, as "and N more messages".
 
-Clicking a notification focuses the window and selects the topic, on the platforms
-that support it.
+A notification carries the rendered title and body and nothing else. The Tauri
+notification plugin surfaces no click on the desktop platforms, so focusing the window
+and selecting the topic is reserved rather than implemented; the frontend already
+hears `notification-fired` and will use it when the plugin can say which notification
+was clicked.
 
 ### Defaults
 
@@ -167,9 +212,29 @@ overrides a built-in by reusing its `id`.
 
 ### Platform notes
 
-Windows requires an installed application identity for notifications, which the Tauri
-bundle provides; a `cargo tauri dev` build may not show them. Linux needs a running
-notification daemon. A per-OS manual test checklist is added in step 4.6.
+Windows labels a toast with the identity of the process that raised it, and a Tauri
+application raising one through the Windows Runtime has none of its own, so the label
+would read PowerShell. `hmg` registers an `AppUserModelId` of its own under
+`HKCU\SOFTWARE\Classes\AppUserModelId\HiveMe` at startup, with the display name and,
+in a development build, the path of the application icon, and raises its toasts against
+that identity rather than through the notification plugin. An installed build takes its
+icon from the Start menu shortcut the bundle creates. Every other platform goes through
+the plugin, which already labels a notification with the bundle it came from.
+
+Linux needs a running notification daemon. A desktop without one is a reason for a
+message to be silent, not for it to be lost: the failure is logged and the message is
+still stored and shown.
+
+The manual checklist per OS:
+
+1. Publish to `<prefix>/info`, `<prefix>/warn`, and `<prefix>/error` with `hmc` from
+   another terminal, and see three notifications.
+2. Publish ten messages to one of them in a second, and see one notification that ends
+   with "and N more messages".
+3. Turn the toolbar toggle on, publish again, and see nothing.
+4. Turn `notifications.enabled` off in Settings, save, publish again, and see nothing.
+5. Publish from the composer of the same installation and see nothing, unless
+   `notifyOwnMessages` is on.
 
 ## Storage
 
@@ -177,19 +242,50 @@ SQLite, through `rusqlite` with the bundled library, in `HiveMe.db` next to the 
 file.
 
 ```sql
-topics(id INTEGER PRIMARY KEY, topic TEXT UNIQUE, first_seen_ts, last_seen_ts, unread INTEGER)
-messages(id INTEGER PRIMARY KEY, topic_id, msg_id TEXT, ts TEXT, received_ts TEXT,
+schema_version(version INTEGER NOT NULL)
+
+topics(id INTEGER PRIMARY KEY, topic TEXT NOT NULL UNIQUE,
+       first_seen_ts TEXT NOT NULL, last_seen_ts TEXT NOT NULL,
+       unread INTEGER NOT NULL DEFAULT 0)
+
+messages(id INTEGER PRIMARY KEY,
+         topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+         msg_id TEXT NOT NULL, ts TEXT NOT NULL, received_ts TEXT NOT NULL,
          sender_id TEXT, sender_name TEXT, app TEXT,
-         tier TEXT CHECK(tier IN ('envelope','json','text','bytes')),
-         level TEXT, title TEXT, body TEXT, raw BLOB,
-         qos INTEGER, retain INTEGER, outgoing INTEGER,
+         tier TEXT NOT NULL CHECK(tier IN ('envelope','json','text','bytes')),
+         level TEXT, title TEXT, body TEXT NOT NULL, raw BLOB NOT NULL,
+         qos INTEGER NOT NULL, retain INTEGER NOT NULL, outgoing INTEGER NOT NULL,
          UNIQUE(topic_id, msg_id))
-schema_version(version INTEGER)
+
+CREATE INDEX messages_topic_id_id ON messages(topic_id, id)
+CREATE INDEX messages_received_ts ON messages(received_ts)
 ```
 
-Inserts de-duplicate on `(topic_id, msg_id)`, which is how a GUI-sent message and its
-broker echo collapse into one row. Pruning runs at startup and every ten minutes,
-using `gui.history.maxMessagesPerTopic` and `gui.history.retentionDays`.
+The module is `hiveme_core::storage`, behind the `storage` feature so that `hmc` never
+links SQLite. The database runs in WAL mode.
+
+- `schema_version` holds the version of the layout above. Version 0 means a database
+  this build has not stamped, whether it is brand new or older than the table itself,
+  so the tables are created with `IF NOT EXISTS` and the version is written afterwards.
+  A database from a newer build is refused rather than guessed at.
+- Inserts de-duplicate on `(topic_id, msg_id)`, which is how a message the composer
+  sent and the copy the broker echoes back collapse into one bubble. The second insert
+  refreshes only `qos` and `retain`, so the row stays the one this installation sent.
+- A payload that is not a HiveMe envelope has no identifier of its own, so one is
+  generated. Two identical third party messages are therefore two rows, which is right:
+  they are two messages, and only an envelope can claim otherwise.
+- `unread` counts a message that is new and came from the broker. What this
+  installation published has been seen by definition.
+- `raw` is the payload exactly as it arrived, which is what lets the view render every
+  tier from the stored row without asking the broker again.
+- History is read a page at a time from the newest end and handed back oldest first.
+  The cursor is the row id, so paging upwards asks for what is `before` the oldest row
+  on screen.
+- Clearing a topic deletes its messages and keeps the node, because the user is still
+  subscribed to it and asked to forget the messages, not the topic.
+- Pruning runs at startup and every ten minutes, using
+  `gui.history.maxMessagesPerTopic` and `gui.history.retentionDays`. Either limit set
+  to 0 means no limit.
 
 ## IPC
 
@@ -202,48 +298,112 @@ hand-synced: camelCase in TypeScript, snake_case in Rust with `#[serde(rename)]`
 Config and message types are **not** hand-written; they are generated from the JSON
 schemas into `src/generated/` and re-exported from `protocol.ts`.
 
+Every command answers `Result<T, String>`, and the error is the one line the snackbar
+shows.
+
 ### Commands
 
-| Command | Purpose |
-|---------|---------|
-| `get_about` | App name, version, and links |
-| `get_config` | The effective config |
-| `set_config` | Validate, persist, and reconnect when broker or subscription fields changed |
-| `get_status` | Connection state snapshot |
-| `get_broker_init` | The setup string for `hmc --init`, from the saved broker settings |
-| `connect`, `disconnect` | Manual connection control |
-| `list_topics` | The topic tree with unread counts |
-| `get_messages` | One page of history for a topic: `(topic, before, limit)` |
-| `mark_read` | Clear the unread count of a topic |
-| `publish` | Publish to a topic: `(topic, body or json, options)` |
-| `clear_topic` | Delete the stored history of a topic |
-| `get_update_result`, `skip_version` | Update check |
-| `open_config_file` | Reveal the config file with the opener plugin |
+| Command | Request | Response |
+|---------|---------|----------|
+| `clear_topic` | `{ "topic": "hiveme/info" }` | how many messages were deleted |
+| `connect` | none | `Status` |
+| `disconnect` | none | none |
+| `get_about` | none | `About` |
+| `get_broker_init` | none | the setup string for `hmc --init` |
+| `get_config` | none | the config, as `schemas/config.schema.json` describes it |
+| `get_messages` | `{ "topic": "hiveme/info", "before": 42, "limit": 200 }` | `MessageRow[]`, oldest first |
+| `get_status` | none | `Status` |
+| `get_update_result` | none | `{ "hasUpdate": false, "latestVersion": null }`, or nothing while the check is still running |
+| `list_topics` | none | `TopicNode[]` |
+| `mark_read` | `{ "topic": "hiveme/info" }` | none |
+| `open_config_file` | none | none |
+| `publish` | `{ "topic": "hiveme/info", "body": "Build finished", "options": PublishOptions }` | the stored `MessageRow` |
+| `set_config` | `{ "config": Config }` | the config as it was saved |
+| `set_notifications_paused` | `{ "paused": true }` | `Status` |
+| `skip_version` | `{ "version": "0.2.0" }` | none |
+
+`before` and `limit` in `get_messages` may both be null: no cursor means the newest
+page, and no limit means the default of 200.
+
+`connect` replaces a connection that is already up, which is what a saved change to
+the broker or the subscriptions needs. `set_config` validates, writes, recompiles the
+notification rules, and reconnects only when something the CONNECT packet or the
+subscription list is built from changed: changing a theme does not drop the
+connection, and changing a password does.
+
+`get_broker_init` fails while the broker fields are not usable, because a setup string
+that cannot be applied is worse than no string. It carries the password in plain text,
+so it is never logged.
+
+`set_notifications_paused` is the toolbar toggle. The rules and the rate limiter live
+in the backend, so the pause does too; it lasts for the session and is not written to
+the config.
+
+### Types
+
+```
+About          = { appVersion, configPath, databasePath, deviceId, deviceName, githubUrl }
+Status         = { state, host, port, clientId, subscriptions, attempt, retryInMs,
+                   lastError, messagesReceived, databaseBytes, notificationsPaused, configError }
+TopicNode      = { id, label, topic, unread, messages, children: TopicNode[] }
+MessageRow     = { rowId, topic, id, ts, receivedTs, senderId, senderName, app,
+                   tier, level, title, body, raw, rawLength, qos, retain, outgoing }
+PublishOptions = { json?, qos?, retain?, title?, level? }
+```
+
+- `Status.state` is `Connecting`, `Connected`, `Reconnecting`, or `Disconnected`.
+  `retryInMs` is how long the pending reconnect waits at the moment the status
+  changed, so the footer counts down from it rather than being sent a stream of
+  events. `lastError` survives a recovery, so the reason a connection dropped, or the
+  filter a credential may not subscribe to, stays readable. `configError` is set when
+  the config file could not be read, which is why nothing is connected.
+- `TopicNode.topic` is set only on a node a message has been stored on. An
+  intermediate segment such as `hiveme/build` exists in the tree and cannot be
+  selected. `unread` and `messages` are rolled up, so a collapsed branch still shows
+  that something below it is unread.
+- `MessageRow.raw` is the payload as text, or as hex for the `bytes` tier, because a
+  payload that is not valid UTF-8 cannot travel as JSON text. `rawLength` is the byte
+  count. `src/lib/message.ts` reads `raw` again to render the envelope and the JSON
+  tree, which is what keeps the two readers comparable.
+- `PublishOptions.json` publishes the body as a raw JSON payload with no envelope, as
+  `hmc --json` does, and refuses input that is not JSON. An absent `qos` or `retain`
+  means the configured default, and an absent `level` means the level of the first
+  rule whose filter matches the topic.
 
 ### Events
 
 | Event | Payload |
 |-------|---------|
-| `status` | Connection state, host, subscription count, last error |
-| `message` | One stored message row plus its topic |
-| `topic-added` | A newly seen topic |
-| `notification-fired` | The rule id and the message id, for the UI to reflect |
+| `status` | `Status` |
+| `message` | `MessageRow` |
+| `topic-added` | `{ "topic": "hiveme/info" }` |
+| `notification-fired` | `{ "ruleId": "error", "messageId": "018f6b1e-...", "topic": "hiveme/error" }` |
 
-The exact request and response JSON for every command is added in step 4.3.
+A `message` event is emitted once per stored row, whether the message arrived or the
+composer sent it. The echo of a message this installation published raises no second
+event, because it collapses into the row that is already there.
 
 ## Settings
 
 `Config.tsx` renders sections with the reference project's `SectionHeader` pattern.
 
-| Section | Fields |
-|---------|--------|
-| Broker | URL, username, password with a visibility toggle, keep alive, session expiry, connect timeout, reconnect delays, and **Copy CLI setup** |
-| Topics | Prefix, default topic, subscriptions list editor |
-| Notifications | Enabled, notify own messages, rules table with add, edit, and delete |
-| Appearance | Display mode toggle, theme select, language select |
-| Update | Check interval |
-| Encryption | Read only placeholder until phase 6 |
-| Cloud API | Read only placeholder until phase 6 |
+| Section | Config path | Fields |
+|---------|-------------|--------|
+| Broker | `broker` | `url`, `username`, `password` with a visibility toggle, `clientIdPrefix`, `keepAliveSecs`, `sessionExpirySecs`, `connectTimeoutSecs`, `reconnect.initialDelayMs`, `reconnect.maxDelayMs`, and **Copy CLI setup** |
+| Topics | `topics` | `prefix`, `default`, and a `subscriptions` editor where each row is a filter and an "absolute" box |
+| Notifications | `notifications` | `enabled`, `notifyOwnMessages`, and a `rules` table of `id`, `topic`, `level`, `enabled`, `title`, `body` with add and delete |
+| Appearance | `gui` | `displayMode`, `theme`, `language`, `history.maxMessagesPerTopic`, `history.retentionDays` |
+| Update | `update` | `checkInterval` |
+| Encryption | `encryption` | Read only placeholder until phase 6 |
+| Cloud API | `cloudApi` | Read only placeholder until phase 6 |
+
+A subscription row is written back as a bare string when it is relative and as
+`{ "filter": "...", "absolute": true }` when it is not, which is the shape
+[config.md](config.md#topic-resolution) describes. A row left blank is dropped rather
+than written as an empty filter.
+
+**Save** and **Revert** sit at the bottom, next to a button that shows the config file
+in the file manager. Reverting takes the form back to what the backend holds.
 
 Saving calls `set_config`. Validation errors surface in the snackbar. The backend
 reconnects when broker or subscription fields changed.
@@ -287,5 +447,14 @@ pnpm tauri dev       # hot reloading dev build, frontend on http://localhost:142
 pnpm tauri build     # release bundle for the current OS
 ```
 
-`RUST_LOG=debug` turns on backend logging. The Tauri scaffold lands in step 4.1; until
-then the frontend is a placeholder.
+`pnpm test` runs the frontend tests with vitest, configured in `vitest.config.ts`.
+`RUST_LOG=debug` turns on backend logging.
+
+The Cargo target directory is the repository root `target/`, because `src-tauri` is a
+workspace member, so the bundles are under `target/release/bundle/`.
+
+At startup `hmg` reads the config, opens the history database beside it, restores the
+window, connects when a broker is configured, and starts the release check when it is
+due. A config file that cannot be read is reported rather than replaced: the window
+opens on defaults, the status bar says so, and nothing is written until the user saves
+the Settings tab.

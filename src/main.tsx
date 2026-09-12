@@ -15,24 +15,13 @@
 * limitations under the License.
 */
 
-// Placeholder entry point. Step 4.1 of docs/plans/plan-initialization.md replaces
-// this with the real application: the MUI theme provider, the layout, and the
-// Zustand store described in docs/specs/gui.md.
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-
-function Placeholder() {
-  return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', padding: '2rem' }}>
-      <h1>HiveMe</h1>
-      <p>The GUI is scaffolded in step 4.1. See docs/specs/gui.md.</p>
-    </main>
-  );
-}
+import './i18n';
+import App from './App';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <Placeholder />
+    <App />
   </React.StrictMode>
 );

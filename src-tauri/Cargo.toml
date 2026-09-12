@@ -1,0 +1,47 @@
+[package]
+name = "hmg"
+description = "HiveMe GUI: watch the MQTT broker, keep a local history, and raise notifications"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+# The `_lib` suffix keeps the library name from clashing with the binary name, which
+# only matters on Windows. See https://github.com/rust-lang/cargo/issues/8519.
+name = "hmg_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "hmg"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+env_logger = { workspace = true }
+# The GUI is the only user of the history database, so it is the only crate that
+# turns the storage feature, and the bundled SQLite library, on.
+hiveme-core = { workspace = true, features = ["storage"] }
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tauri = { workspace = true }
+tauri-plugin-clipboard-manager = { workspace = true }
+tauri-plugin-dialog = { workspace = true }
+tauri-plugin-notification = { workspace = true }
+tauri-plugin-opener = { workspace = true }
+tokio = { workspace = true }
+ureq = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+tauri-winrt-notification = { workspace = true }
+windows-registry = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -3,8 +3,8 @@ resolver = "3"
 members = [
   "crates/hiveme-core",
   "crates/hmc",
+  "src-tauri",
   "xtask",
-  # "src-tauri" joins the workspace in step 4.1 of docs/plans/plan-initialization.md.
 ]
 
 [workspace.package]
@@ -36,6 +36,16 @@ rustls-pemfile = "2.2"
 schemars = "1.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+tauri = { version = "2.11", features = [] }
+tauri-build = { version = "2.5", features = [] }
+tauri-plugin-clipboard-manager = "2.3"
+tauri-plugin-dialog = "2.7"
+tauri-plugin-notification = "2.3"
+tauri-plugin-opener = "2"
+# Windows only: the toast API, and the registry key that gives it an application
+# identity so the notification is labelled HiveMe rather than PowerShell.
+tauri-winrt-notification = "0.7"
+windows-registry = "0.6"
 tempfile = "3.27"
 # Default features pull in rustls/ring, which would make two crypto providers
 # compiled in at once and rustls refuses to pick one. Match rumqttc instead.
@@ -44,6 +54,8 @@ thiserror = "2.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 ureq = { version = "2", features = ["json"] }
 uuid = { version = "1.26", features = ["v7", "serde"] }
+# Windows only: puts the icon and the version information inside hmc.exe.
+winresource = "0.1"
 
 [workspace.dependencies.hiveme-core]
 path = "crates/hiveme-core"

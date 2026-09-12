@@ -12,6 +12,10 @@ repository.workspace = true
 name = "hmc"
 path = "src/main.rs"
 
+# Windows reads an icon out of the executable itself, so build.rs puts one there.
+[target.'cfg(windows)'.build-dependencies]
+winresource = { workspace = true }
+
 [dependencies]
 clap = { workspace = true }
 env_logger = { workspace = true }
