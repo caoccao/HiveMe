@@ -329,4 +329,34 @@ mod tests {
     assert_eq!(row.raw_length, 5);
     assert!(row.outgoing);
   }
+
+  #[test]
+  fn the_state_reaches_the_frontend_spelled_the_way_it_compares_it() {
+    // The frontend reads Status.state against ConnectionState in src/lib/protocol.ts,
+    // and enables the composer only on Connected, so these four spellings are a
+    // contract rather than display text. The footer translates them into its own words.
+    let states = [
+      (hiveme_core::State::Connecting, "Connecting"),
+      (hiveme_core::State::Connected, "Connected"),
+      (hiveme_core::State::Reconnecting, "Reconnecting"),
+      (hiveme_core::State::Disconnected, "Disconnected"),
+    ];
+
+    for (state, name) in states {
+      let status = Status::from_client(&hiveme_core::Status {
+        state,
+        host: "broker.example".to_owned(),
+        port: 8883,
+        client_id: "hiveme-gui".to_owned(),
+        subscriptions: 1,
+        attempt: 0,
+        retry_in_ms: None,
+        last_error: None,
+      });
+
+      assert_eq!(status.state, name);
+    }
+
+    assert_eq!(Status::disconnected().state, "Disconnected");
+  }
 }

@@ -117,8 +117,10 @@ Full rules in [specs/config.md](specs/config.md#location-and-precedence).
 
 1. Create a HiveMQ Cloud cluster and a set of MQTT credentials. See
    [specs/hivemq-cloud.md](specs/hivemq-cloud.md#console-walkthrough).
-2. Start `hmg`, open the Settings tab, and fill in the Broker section with the cluster
-   URL, the username, and the password. Save.
+2. Start `hmg`, open the Settings tab, and fill in the Broker category with the cluster
+   URL copied from the console as it is shown there, the username, and the password.
+   The protocol is the list beside the URL and starts on TLS MQTT, so there is no
+   `mqtts://` to add to what was copied. Save.
 3. Press **Copy CLI setup** in that same section and run
    `hmc --init '<paste>'`, which is the whole of setting up the CLI.
 4. Send a test message: `hmc "hello"`. It appears in the GUI.

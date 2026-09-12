@@ -47,7 +47,8 @@ pub const BROKER_INIT_VERSION: u32 = 1;
 pub struct BrokerInit {
   /// The format version. See [`BROKER_INIT_VERSION`].
   pub v: u32,
-  /// `mqtts://<cluster>.s1.eu.hivemq.cloud:8883` for a HiveMQ Cloud cluster.
+  /// `<cluster>.s1.eu.hivemq.cloud:8883` for a HiveMQ Cloud cluster, as the console
+  /// shows it. A URL that names no scheme is read as TLS MQTT.
   pub url: String,
   pub username: String,
   /// Plain text, because the CONNECT packet needs it in plain text.

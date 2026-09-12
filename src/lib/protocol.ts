@@ -65,7 +65,7 @@ export enum ConnectionState {
 
 /** What the status bar renders. */
 export interface Status {
-  state: string;
+  state: ConnectionState;
   host: string;
   port: number;
   clientId: string;

@@ -89,9 +89,57 @@ describe('the subscription editor', () => {
 describe('the settings tab', () => {
   it('fills the broker fields from the config', () => {
     render(<Config />);
-    expect(screen.getByDisplayValue('mqtts://abc123.s1.eu.hivemq.cloud:8883')).toBeInTheDocument();
+    expect(screen.getByLabelText('URL')).toHaveValue('abc123.s1.eu.hivemq.cloud:8883');
+    expect(screen.getByLabelText('Protocol')).toHaveTextContent('TLS MQTT');
     expect(screen.getByDisplayValue('hiveme-sam')).toBeInTheDocument();
     expect(screen.getByDisplayValue('s3cret')).toBeInTheDocument();
+  });
+
+  // The console shows three URLs, none of them with a scheme in front. Each is pasted
+  // into the box as it stands, and the protocol beside it is what says how to read it.
+  it.each([
+    ['MQTT', 'abc123.s1.eu.hivemq.cloud', 'mqtt://abc123.s1.eu.hivemq.cloud'],
+    ['TLS MQTT', 'abc123.s1.eu.hivemq.cloud:8883', 'mqtts://abc123.s1.eu.hivemq.cloud:8883'],
+    ['TLS WebSocket', 'abc123.s1.eu.hivemq.cloud:8884/mqtt', 'wss://abc123.s1.eu.hivemq.cloud:8884/mqtt'],
+  ])('saves the %s URL of the console as it was pasted', async (protocol, shown, saved) => {
+    const saveConfig = vi.fn().mockResolvedValue(true);
+    useAppStore.setState({ saveConfig });
+    render(<Config />);
+
+    await userEvent.click(screen.getByLabelText('Protocol'));
+    await userEvent.click(screen.getByRole('option', { name: protocol }));
+    await userEvent.clear(screen.getByLabelText('URL'));
+    await userEvent.type(screen.getByLabelText('URL'), shown);
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(saveConfig.mock.calls[0][0].broker.url).toBe(saved);
+  });
+
+  it('starts a broker that has none on TLS MQTT, which is the only one the cloud accepts', () => {
+    useAppStore.setState({ config: { ...structuredClone(CONFIG), broker: { url: '', username: '', password: '' } } });
+    render(<Config />);
+    expect(screen.getByLabelText('Protocol')).toHaveTextContent('TLS MQTT');
+    expect(screen.getByLabelText('URL')).toHaveValue('');
+  });
+
+  it('says which port a URL that names none will use, because the protocol decides it', async () => {
+    render(<Config />);
+    expect(screen.getByText(/Connects to mqtts:\/\/abc123.s1.eu.hivemq.cloud:8883, on port 8883/)).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByLabelText('URL'));
+    await userEvent.type(screen.getByLabelText('URL'), 'abc123.s1.eu.hivemq.cloud');
+
+    expect(screen.getByText(/Connects to mqtts:\/\/abc123.s1.eu.hivemq.cloud, on port 8883/)).toBeInTheDocument();
+  });
+
+  it('takes a scheme off a URL pasted with one rather than leaving it in the box', async () => {
+    render(<Config />);
+
+    await userEvent.clear(screen.getByLabelText('URL'));
+    await userEvent.type(screen.getByLabelText('URL'), 'mqtt://localhost:1884');
+
+    expect(screen.getByLabelText('URL')).toHaveValue('localhost:1884');
+    expect(screen.getByLabelText('Protocol')).toHaveTextContent('MQTT');
   });
 
   it('hides the password until the toggle is used', async () => {
@@ -144,8 +192,39 @@ describe('the settings tab', () => {
     expect(screen.getByRole('button', { name: /Copy CLI setup/ })).toBeDisabled();
   });
 
-  it('keeps the sections that are designed but not implemented visibly so', () => {
+  it('opens on the broker category, because that is what has to be filled in first', () => {
     render(<Config />);
+    expect(screen.getByRole('tab', { name: 'Broker', selected: true })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Messages per topic')).not.toBeInTheDocument();
+  });
+
+  it('shows one category at a time and switches on a click', async () => {
+    render(<Config />);
+    expect(screen.getByLabelText('Username')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('tab', { name: 'History' }));
+
+    expect(screen.queryByLabelText('Username')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Messages per topic')).toBeInTheDocument();
+  });
+
+  it('keeps an edit made in one category while the user is in another', async () => {
+    const saveConfig = vi.fn().mockResolvedValue(true);
+    useAppStore.setState({ saveConfig });
+    render(<Config />);
+
+    await userEvent.type(screen.getByLabelText('Username'), '-edited');
+    await userEvent.click(screen.getByRole('tab', { name: 'Update' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(saveConfig.mock.calls[0][0].broker.username).toBe('hiveme-sam-edited');
+  });
+
+  it('keeps the sections that are designed but not implemented visibly so', async () => {
+    render(<Config />);
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Advanced' }));
+
     expect(screen.getAllByText(/not implemented yet/)).toHaveLength(2);
   });
 });

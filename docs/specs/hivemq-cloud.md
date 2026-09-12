@@ -130,6 +130,27 @@ neither application depends on which crates happen to be linked beside it.
   refusal, a TLS failure, or the timeout running out is reported. Once the first
   connection is up it reconnects on its own for as long as it lives.
 
+### The URL
+
+The console shows a cluster three ways, and none of the three carries a scheme:
+`<cluster>.s1.eu.hivemq.cloud` under **MQTT URL**, the same with `:8883` under **TLS
+MQTT URL**, and the same with `:8884/mqtt` under **TLS Websocket URL**. Any of the three
+is a `broker.url` as it stands, because a URL that names no scheme is read as `mqtts`,
+which is the only transport a cluster accepts anyway. A scheme that is written is the
+one that is used, so a WebSocket says `wss://` and a local test broker says `mqtt://`.
+
+That rule belongs here rather than in the GUI, so that it holds for a config file
+edited by hand and for `hmc --init` as much as for the Settings form.
+
+### Connection state
+
+`State` is `Connecting`, `Connected`, `Reconnecting`, or `Disconnected`, and
+`State::as_str` spells them exactly so, because the name travels to `hmg` inside
+`Status.state` and the frontend compares it against `ConnectionState` in
+`protocol.ts`. It is a name on a wire, not a word on a screen: the status bar looks
+each one up in its own translation table, which is what lets the badge read
+`connected` in lower case while the value behind it stays `Connected`.
+
 ### Reconnect
 
 `broker.reconnect.initialDelayMs` doubles per attempt up to

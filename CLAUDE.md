@@ -121,6 +121,9 @@ The specifications describe the code as built, and CI enforces it. See
   PascalCase; values that also travel in messages keep their wire casing.
 * MUI components take colours from the theme through `sx` or `styled`, never hard
   coded, so both display modes work.
+* Text is never transformed. The theme sets `typography.button.textTransform` to
+  `none`, which covers buttons, tabs, and toggle buttons; do not add `textTransform`
+  to a component.
 
 ## Common Pitfalls
 

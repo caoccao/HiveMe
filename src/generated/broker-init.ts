@@ -34,7 +34,8 @@ export interface HiveMeBrokerSetupString {
    */
   prefix?: string | null;
   /**
-   * `mqtts://<cluster>.s1.eu.hivemq.cloud:8883` for a HiveMQ Cloud cluster.
+   * `<cluster>.s1.eu.hivemq.cloud:8883` for a HiveMQ Cloud cluster, as the console
+   * shows it. A URL that names no scheme is read as TLS MQTT.
    */
   url?: string;
   username?: string;

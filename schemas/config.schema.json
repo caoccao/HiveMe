@@ -61,7 +61,7 @@
         },
         "url": {
           "default": "",
-          "description": "`mqtts://host:8883` for HiveMQ Cloud. See `docs/specs/hivemq-cloud.md`.",
+          "description": "`host:8883` for HiveMQ Cloud, with or without the `mqtts://` in front of it: a URL\nthat names no scheme is read as TLS MQTT. See `docs/specs/hivemq-cloud.md`.",
           "type": "string"
         },
         "username": {

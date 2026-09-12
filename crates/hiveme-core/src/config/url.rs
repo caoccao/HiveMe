@@ -17,8 +17,9 @@
 
 //! Parsing of the broker URL.
 //!
-//! HiveMe accepts the handful of schemes listed in `docs/specs/config.md`, so a small
-//! parser is enough and the crate stays free of a URL dependency.
+//! HiveMe accepts the handful of schemes listed in `docs/specs/config.md`, and a URL
+//! that names none, so a small parser is enough and the crate stays free of a URL
+//! dependency.
 
 use std::fmt;
 
@@ -85,6 +86,9 @@ impl fmt::Display for Scheme {
 /// The WebSocket path HiveMQ Cloud serves MQTT on.
 pub const DEFAULT_WEBSOCKET_PATH: &str = "/mqtt";
 
+/// What a URL with no scheme is read as, because a HiveMQ Cloud cluster accepts nothing else.
+pub const DEFAULT_SCHEME: Scheme = Scheme::Mqtts;
+
 impl BrokerUrl {
   /// Reads a broker URL, describing the problem in a form fit for a user.
   pub fn parse(raw: &str) -> Result<Self, String> {
@@ -92,18 +96,26 @@ impl BrokerUrl {
     if raw.is_empty() {
       return Err("the broker URL is empty".to_owned());
     }
-    let Some((scheme, rest)) = raw.split_once("://") else {
-      return Err(format!("'{raw}' has no scheme, expected one of mqtts, mqtt, wss, ws"));
-    };
-    let scheme = match scheme.to_ascii_lowercase().as_str() {
-      "mqtts" | "ssl" | "mqtt+ssl" => Scheme::Mqtts,
-      "mqtt" | "tcp" => Scheme::Mqtt,
-      "wss" => Scheme::Wss,
-      "ws" => Scheme::Ws,
-      other => {
-        return Err(format!(
-          "'{other}' is not a broker scheme HiveMe speaks, expected one of mqtts, mqtt, wss, ws"
-        ));
+    // A URL with no scheme is the one the HiveMQ Cloud console shows, and it is read as
+    // TLS MQTT: the transport the cluster it came from accepts, and the one the Settings
+    // form of `hmg` starts on. So the same string works in the config file, in a setup
+    // string, and in the form, and none of the three asks for a scheme to be typed in
+    // front of what was copied. A scheme that is written is still the one that is used.
+    let (scheme, rest) = match raw.split_once("://") {
+      None => (DEFAULT_SCHEME, raw),
+      Some((scheme, rest)) => {
+        let scheme = match scheme.to_ascii_lowercase().as_str() {
+          "mqtts" | "ssl" | "mqtt+ssl" => Scheme::Mqtts,
+          "mqtt" | "tcp" => Scheme::Mqtt,
+          "wss" => Scheme::Wss,
+          "ws" => Scheme::Ws,
+          other => {
+            return Err(format!(
+              "'{other}' is not a broker scheme HiveMe speaks, expected one of mqtts, mqtt, wss, ws"
+            ));
+          }
+        };
+        (scheme, rest)
       }
     };
 
@@ -217,11 +229,32 @@ mod tests {
   }
 
   #[test]
+  fn a_url_with_no_scheme_is_read_as_tls_mqtt() {
+    // What the HiveMQ Cloud console shows, copied as it shows it. Nobody should have to
+    // type a scheme in front of it to set the CLI up, any more than in the GUI form.
+    let url = BrokerUrl::parse("abc123.s1.eu.hivemq.cloud:8883").unwrap();
+    assert_eq!(url.scheme, DEFAULT_SCHEME);
+    assert_eq!(url.scheme, Scheme::Mqtts);
+    assert_eq!(url.host, "abc123.s1.eu.hivemq.cloud");
+    assert_eq!(url.port, 8883);
+    assert!(url.is_hivemq_cloud());
+
+    // The port is still the scheme's own when the URL does not carry one.
+    let bare = BrokerUrl::parse("abc123.s1.eu.hivemq.cloud").unwrap();
+    assert_eq!(bare.port, 8883);
+
+    // A transport that is not the default is the one thing a URL still has to say, so a
+    // WebSocket is written with its scheme.
+    assert_eq!(BrokerUrl::parse("wss://host:8884/mqtt").unwrap().scheme, Scheme::Wss);
+  }
+
+  #[test]
   fn bad_urls_are_rejected_with_a_reason() {
     for raw in [
       "",
-      "abc123.s1.eu.hivemq.cloud:8883",
       "http://host",
+      "host:port",
+      "user:pass@host",
       "mqtts://",
       "mqtts://host:port",
       "mqtts://host:0",

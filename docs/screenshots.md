@@ -9,7 +9,7 @@ Wanted, to be saved under `docs/screenshots/` and linked from here and from the
 | File | Shot |
 |------|------|
 | `messages.png` | The main window: toolbar, topic tree with unread badges, chat view of a selected topic, status bar |
-| `settings.png` | The Settings tab, Broker section, with **Copy CLI setup** |
+| `settings.png` | The Settings tab, Broker category, with the category strip and **Copy CLI setup** |
 | `notification.png` | A desktop notification raised by the built-in `error` rule |
 
 ## Setting up the shot

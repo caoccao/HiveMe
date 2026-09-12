@@ -90,7 +90,8 @@ export interface Broker {
   sessionExpirySecs?: number;
   tls?: Tls;
   /**
-   * `mqtts://host:8883` for HiveMQ Cloud. See `docs/specs/hivemq-cloud.md`.
+   * `host:8883` for HiveMQ Cloud, with or without the `mqtts://` in front of it: a URL
+   * that names no scheme is read as TLS MQTT. See `docs/specs/hivemq-cloud.md`.
    */
   url?: string;
   username?: string;

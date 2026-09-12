@@ -323,7 +323,8 @@ impl Device {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Broker {
-  /// `mqtts://host:8883` for HiveMQ Cloud. See `docs/specs/hivemq-cloud.md`.
+  /// `host:8883` for HiveMQ Cloud, with or without the `mqtts://` in front of it: a URL
+  /// that names no scheme is read as TLS MQTT. See `docs/specs/hivemq-cloud.md`.
   pub url: String,
   pub username: String,
   /// Stored in plain text. The file is created with mode 0600 on Unix.

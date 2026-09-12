@@ -263,12 +263,27 @@ fn case(what: &'static str, break_it: impl Fn(&mut Config) + 'static, expected: 
 }
 
 #[test]
+fn a_broker_url_copied_from_the_console_needs_no_scheme_added_to_it() {
+  // The console shows a cluster as a host and a port, and both applications read one
+  // that way as TLS MQTT, so the string that is copied is the string that is pasted,
+  // into the config file, into a setup string, or into the Settings form of hmg.
+  let mut config = valid();
+  config.broker.url = "abc.s1.eu.hivemq.cloud:8883".to_owned();
+
+  config.validate().expect("a URL with no scheme is a URL");
+
+  let url = hiveme_core::config::BrokerUrl::parse(&config.broker.url).unwrap();
+  assert_eq!(url.scheme, hiveme_core::config::Scheme::Mqtts);
+  assert_eq!(url.port, 8883);
+}
+
+#[test]
 fn every_validation_rule_rejects_its_own_mistake() {
   let cases: Vec<BrokenCase> = vec![
     case("an empty device id", |c: &mut Config| c.device.id.clear(), "device.id"),
     case(
-      "a broker URL with no scheme",
-      |c: &mut Config| c.broker.url = "abc.hivemq.cloud:8883".to_owned(),
+      "a broker URL with a port that is not one",
+      |c: &mut Config| c.broker.url = "abc.hivemq.cloud:not-a-port".to_owned(),
       "broker.url",
     ),
     case(

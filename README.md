@@ -57,9 +57,14 @@ Start HiveMe, press **F10** for the Settings tab, and fill in the Broker section
 
 | Field | Value |
 |-------|-------|
-| URL | `mqtts://<your-cluster>.s1.eu.hivemq.cloud:8883` |
+| Protocol | TLS MQTT, which is what it starts on |
+| URL | the **TLS MQTT URL** from the console, copied as it is shown |
 | Username | the username from step 2 |
 | Password | the password from step 2 |
+
+The console shows that URL as `<your-cluster>.s1.eu.hivemq.cloud:8883`, with no scheme
+in front of it, and that is exactly what goes in the box. The protocol list beside it is
+where `mqtts://` comes from, so there is nothing to add, remove, or retype.
 
 Press **Save**. The status bar at the bottom turns to **connected**. There is nothing
 to configure for TLS: a HiveMQ Cloud certificate chains to an authority your operating

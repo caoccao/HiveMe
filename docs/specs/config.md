@@ -128,7 +128,7 @@ value the applications use when the key is absent.
 | `version` | integer | yes | 1 | Config schema version. The loader migrates older versions. |
 | `device.id` | UUID string | yes | generated | Stable identity of this installation. Used as `sender.id` and to derive client identifiers. |
 | `device.name` | string | no | hostname | Shown in the GUI as the sender name. |
-| `broker.url` | string | yes | none | `<scheme>://<host>[:<port>][/<path>]`. The schemes are `mqtts` (port 8883), `mqtt` (1883), `wss` (8884, path `/mqtt`), and `ws` (8083); `ssl` and `tcp` are accepted as aliases of `mqtts` and `mqtt`. The port defaults per scheme. Credentials in the URL are rejected: they belong in the fields below. |
+| `broker.url` | string | yes | none | `[<scheme>://]<host>[:<port>][/<path>]`. The schemes are `mqtts` (port 8883), `mqtt` (1883), `wss` (8884, path `/mqtt`), and `ws` (8083); `ssl` and `tcp` are accepted as aliases of `mqtts` and `mqtt`. A URL that names no scheme is read as `mqtts`, so a cluster can be written the way the HiveMQ Cloud console shows it. The port defaults per scheme. Credentials in the URL are rejected: they belong in the fields below. |
 | `broker.username` | string | yes | none | HiveMQ Cloud credential username. |
 | `broker.password` | string | yes | none | May be empty when `passwordRef` is set. |
 | `broker.passwordRef` | object or null | no | null | `{ "type": "Env", "name": "<VARIABLE>" }` is implemented. `{ "type": "Keychain", "service": "HiveMe", "account": "<username>" }` is reserved for phase 6 and reports that it is not implemented rather than failing silently. |
@@ -184,7 +184,7 @@ Settings tab open. Every problem is reported at once rather than one at a time.
 | Rule | Message mentions |
 |------|------------------|
 | `device.id` is not empty | `device.id` |
-| `broker.url` parses, and uses a known scheme with a host | `broker.url` |
+| `broker.url` parses, and uses a known scheme, or none, with a host | `broker.url` |
 | A `hivemq.cloud` host uses `mqtts` or `wss`, because the service accepts TLS only | `TLS only` |
 | `broker.username` is not empty | `broker.username` |
 | A password is reachable: the field, `passwordRef`, or `HIVEME_PASSWORD` | `broker.password` |
@@ -248,7 +248,7 @@ Settings tab renders the same three values as one line of JSON, the user copies 
 | Field | Config path | Notes |
 |-------|-------------|-------|
 | `v` | — | The format version, 1. A reader refuses a version it does not know rather than guessing at fields. |
-| `url` | `broker.url` | Must be `mqtts` for a `hivemq.cloud` host, which accepts TLS only. |
+| `url` | `broker.url` | Must be `mqtts` for a `hivemq.cloud` host, which accepts TLS only. Naming no scheme means `mqtts`, so the URL the console shows can be pasted in as it stands. |
 | `username` | `broker.username` | Required. |
 | `password` | `broker.password` | Required, plain text, because the CONNECT packet needs it in plain text. |
 | `prefix` | `topics.prefix` | Optional. Carried so that `hmc` publishes where `hmg` is listening. Absent leaves the receiving config's prefix alone. |

@@ -164,13 +164,15 @@ pub enum State {
 }
 
 impl State {
-  /// The word the `hmg` status bar shows.
+  /// The name the state travels under, which `Status.state` carries to `hmg` and
+  /// `ConnectionState` in `protocol.ts` compares against. The status bar renders a word
+  /// of its own for it, out of the translation table, so this one is not display text.
   pub fn as_str(&self) -> &'static str {
     match self {
-      Self::Connecting => "connecting",
-      Self::Connected => "connected",
-      Self::Reconnecting => "reconnecting",
-      Self::Disconnected => "disconnected",
+      Self::Connecting => "Connecting",
+      Self::Connected => "Connected",
+      Self::Reconnecting => "Reconnecting",
+      Self::Disconnected => "Disconnected",
     }
   }
 }
@@ -1193,11 +1195,13 @@ mod tests {
   }
 
   #[test]
-  fn the_state_words_are_the_ones_the_status_bar_shows() {
-    assert_eq!(State::Connecting.to_string(), "connecting");
-    assert_eq!(State::Connected.to_string(), "connected");
-    assert_eq!(State::Reconnecting.to_string(), "reconnecting");
-    assert_eq!(State::Disconnected.to_string(), "disconnected");
+  fn the_state_names_are_the_ones_the_frontend_compares_against() {
+    // ConnectionState in src/lib/protocol.ts holds these four spellings, and the GUI
+    // enables the composer on one of them. A lower case word here disables it forever.
+    assert_eq!(State::Connecting.to_string(), "Connecting");
+    assert_eq!(State::Connected.to_string(), "Connected");
+    assert_eq!(State::Reconnecting.to_string(), "Reconnecting");
+    assert_eq!(State::Disconnected.to_string(), "Disconnected");
   }
 
   #[test]

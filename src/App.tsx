@@ -120,7 +120,7 @@ function App() {
     () =>
       createTheme({
         palette: { ...getPaletteByTheme(selectedTheme as Protocol.Theme, mode) },
-        typography: { fontSize: 12 },
+        typography: { fontSize: 12, button: { textTransform: 'none' } },
         components: {
           MuiButton: { defaultProps: { size: 'small' } },
           MuiButtonGroup: { defaultProps: { size: 'small' } },

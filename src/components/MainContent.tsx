@@ -220,7 +220,7 @@ export default function MainContent() {
           onChange={(_, value) => setTabIndex(value)}
           variant="scrollable"
           scrollButtons="auto"
-          sx={{ mt: 0, minHeight: '24px', '& .MuiTab-root': { textTransform: 'none' } }}
+          sx={{ mt: 0, minHeight: '24px' }}
         >
           {tabControls.map((control) => (
             <Tab

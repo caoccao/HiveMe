@@ -314,8 +314,10 @@ mod tests {
 
   #[test]
   fn a_url_that_does_not_parse_is_a_config_error() {
+    // A URL with no scheme parses now, as TLS MQTT, so the one that does not is a URL
+    // with something wrong inside it.
     let mut config = config();
-    config.broker.url = "abc123.s1.eu.hivemq.cloud".to_owned();
+    config.broker.url = "abc123.s1.eu.hivemq.cloud:not-a-port".to_owned();
     let error = build(&config, Role::Cli).unwrap_err();
     assert!(error.is_config(), "{error}");
     assert!(error.to_string().contains("broker.url"), "{error}");

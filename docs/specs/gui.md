@@ -134,6 +134,11 @@ id rather than opening a second one.
 reconnect countdown, subscription count, messages received this session, last error
 (clicking shows the detail), and database size.
 
+The state is a `Chip` whose colour is read before its word is: green for `Connected`,
+amber for `Connecting` and `Reconnecting`, and grey for `Disconnected` and for
+anything else. The label comes from `footer.state.<state>`, so the four names arrive
+as `connected`, `connecting`, `reconnecting`, and `disconnected`.
+
 ### Snackbar
 
 `NotificationSnackbar.tsx` is a top-centre `Snackbar` with an `Alert`, driven by the
@@ -156,8 +161,10 @@ in-app feedback and unrelated to OS notifications.
 
 Typography is `fontSize: 12`, and the component defaults are compact: `small` for
 buttons, text fields, selects, checkboxes, radios, and icon buttons, and a 36 pixel
-minimum height for tabs. Components use theme values through the `sx` prop or the
-`styled` API, never hard coded colours.
+minimum height for tabs. `typography.button` sets `textTransform: 'none'`, which is
+where buttons, tabs, and toggle buttons all read it from, so a label reads as it was
+written and no component has to say so itself. Components use theme values through the
+`sx` prop or the `styled` API, never hard coded colours.
 
 ## Notifications
 
@@ -351,7 +358,10 @@ MessageRow     = { rowId, topic, id, ts, receivedTs, senderId, senderName, app,
 PublishOptions = { json?, qos?, retain?, title?, level? }
 ```
 
-- `Status.state` is `Connecting`, `Connected`, `Reconnecting`, or `Disconnected`.
+- `Status.state` is `Connecting`, `Connected`, `Reconnecting`, or `Disconnected`,
+  typed as `ConnectionState` rather than as a string, and compared by name: the
+  composer sends only on `Connected`, and the toolbar offers Disconnect on the other
+  three. `hiveme_core::State::as_str` is where those names are spelled.
   `retryInMs` is how long the pending reconnect waits at the moment the status
   changed, so the footer counts down from it rather than being sent a stream of
   events. `lastError` survives a recovery, so the reason a connection dropped, or the
@@ -385,25 +395,56 @@ event, because it collapses into the row that is already there.
 
 ## Settings
 
-`Config.tsx` renders sections with the reference project's `SectionHeader` pattern.
+`Config.tsx` divides the settings into categories, as the reference project does. A
+vertical `Tabs` strip on the left lists them and the panel beside it shows one at a
+time, so the page asks for a handful of related fields rather than for all of them at
+once. Each panel is built from the reference project's `SectionHeader` pattern, and a
+panel with more than one group of fields puts every group after the first into an
+outlined card with a header of its own.
 
-| Section | Config path | Fields |
-|---------|-------------|--------|
-| Broker | `broker` | `url`, `username`, `password` with a visibility toggle, `clientIdPrefix`, `keepAliveSecs`, `sessionExpirySecs`, `connectTimeoutSecs`, `reconnect.initialDelayMs`, `reconnect.maxDelayMs`, and **Copy CLI setup** |
-| Topics | `topics` | `prefix`, `default`, and a `subscriptions` editor where each row is a filter and an "absolute" box |
-| Notifications | `notifications` | `enabled`, `notifyOwnMessages`, and a `rules` table of `id`, `topic`, `level`, `enabled`, `title`, `body` with add and delete |
-| Appearance | `gui` | `displayMode`, `theme`, `language`, `history.maxMessagesPerTopic`, `history.retentionDays` |
+| Category | Config path | Groups and fields |
+|----------|-------------|-------------------|
+| Broker | `broker` | `url` as a protocol list and the rest of the URL, then `username` and `password` on one row, with a visibility toggle and **Copy CLI setup**; **Connection** with `clientIdPrefix`, `keepAliveSecs`, `sessionExpirySecs`, `connectTimeoutSecs`; **Reconnect** with `reconnect.initialDelayMs`, `reconnect.maxDelayMs` |
+| Topics | `topics` | `prefix`, `default`; **Subscriptions**, where each row is a filter and an "absolute" box |
+| Notifications | `notifications` | `enabled`, `notifyOwnMessages`; **Rules**, a table of `id`, `topic`, `level`, `enabled`, `title`, `body` with add and delete |
+| Appearance | `gui` | `displayMode`, `theme`, `language` |
+| History | `gui.history` | `maxMessagesPerTopic`, `retentionDays` |
 | Update | `update` | `checkInterval` |
-| Encryption | `encryption` | Read only placeholder until phase 6 |
-| Cloud API | `cloudApi` | Read only placeholder until phase 6 |
+| Advanced | `encryption`, `cloudApi` | Read only placeholders until phase 6 |
+
+`broker.url` is one string in the config file, and `src/lib/brokerUrl.ts` takes the
+scheme off the front of it for the form and puts it back afterwards. That is the whole
+of what it does: the protocol is a list, and the rest of the URL is one box holding
+exactly what the user put there.
+
+The HiveMQ Cloud console shows a cluster three ways, as `host`, as `host:8883`, and as
+`host:8884/mqtt`, and none of the three has a scheme in front of it. Each is pasted
+into the box as it stands and saved as it stands, which is why the port and the path
+are not boxes of their own: splitting them out would mean rebuilding a string the user
+had already written, and a URL that came back from HiveMe differing from the one that
+went in is a bug waiting for somebody to report it. `hiveme_core::config::url` is still
+the one thing that reads a host, a port, and a path out of a URL.
+
+The protocol list is the transports the backend speaks, headed by TLS MQTT, which a new
+install starts on because it is the only one a HiveMQ Cloud cluster accepts. A URL
+pasted with a scheme on it is read rather than refused, moving the list and leaving the
+box with the rest. Under the box is the URL that will be saved and the port it will
+connect on, which is worth saying because a URL that carries no port connects on the
+protocol's default and nothing on screen would otherwise say which port that is.
+
+The page opens on Broker, because a cluster is what has to be filled in before the rest
+of the application does anything. The draft is one object for the whole page rather than
+one per category, so an edit survives a move to another category and is written by the
+same **Save**.
 
 A subscription row is written back as a bare string when it is relative and as
 `{ "filter": "...", "absolute": true }` when it is not, which is the shape
 [config.md](config.md#topic-resolution) describes. A row left blank is dropped rather
 than written as an empty filter.
 
-**Save** and **Revert** sit at the bottom, next to a button that shows the config file
-in the file manager. Reverting takes the form back to what the backend holds.
+**Save** and **Revert** sit below the panel, on every category, next to a button that
+shows the config file in the file manager. Reverting takes the form back to what the
+backend holds.
 
 Saving calls `set_config`. Validation errors surface in the snackbar. The backend
 reconnects when broker or subscription fields changed.
@@ -416,7 +457,7 @@ user to configure and nothing for either application to generate. See
 ### Copy CLI setup
 
 `hmg` is where a cluster is set up, so it is also where `hmc` is set up. The Broker
-section has a **Copy CLI setup** button that puts the setup string of
+category has a **Copy CLI setup** button that puts the setup string of
 [config.md](config.md#the-setup-string) on the clipboard, next to the command that
 consumes it:
 

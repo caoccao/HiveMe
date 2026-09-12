@@ -69,3 +69,26 @@
   and the rpm put it on `PATH` at `/usr/bin/hmc`; the macOS bundle and both Windows
   installers put it next to `hmg`. `hmc` is still published on its own, for a machine
   with no desktop.
+* Read a broker URL that names no scheme as TLS MQTT, everywhere a URL is read: the
+  config file, `hmc --init`, and the Settings form alike. The HiveMQ Cloud console shows
+  a cluster as `host` or `host:8883`, and TLS MQTT is the only transport a cluster
+  accepts, so refusing that string for the scheme it does not have was a rule that
+  taught nobody anything. A scheme that is written is still the one that is used.
+* Moved the scheme of the broker URL out of the URL box and into a list beside it. The
+  HiveMQ Cloud console shows a cluster as `host`, `host:8883`, or `host:8884/mqtt`, and
+  every one of those is now copied straight across: the box keeps what was pasted, and
+  the list says whether it is MQTT, TLS MQTT, TLS WebSocket, or WebSocket. It starts on
+  TLS MQTT, which is all a cloud cluster accepts. A URL pasted with a scheme still on it
+  moves the list instead of being refused, and the line under the box says which URL
+  will be saved and which port it will connect on, since a URL that names no port
+  connects on the protocol's own.
+* Fixed a connected `hmg` that behaved as though it were not: the composer stayed
+  disabled, the badge stayed grey, and the toolbar still offered Connect. The backend
+  named the state `connected` while the frontend was looking for `Connected`, so the
+  one place the two ever compared it always disagreed. The state now travels under the
+  name both halves already documented, and a test on each side holds it there.
+* Divided the Settings tab into categories, listed down the left as the reference
+  project lists them: Broker, Topics, Notifications, Appearance, History, Update, and
+  Advanced. One page of every setting at once was more than anyone needed to read to
+  change one of them. Save and Revert stay below whichever category is open, and an
+  edit made in one survives a move to another.

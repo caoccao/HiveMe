@@ -58,7 +58,7 @@ export default function About() {
     transition: 'transform 0.2s, box-shadow 0.2s, border-color 0.2s',
     '&:hover': { transform: 'translateY(-2px)', borderColor: 'primary.main' },
   };
-  const labelSx = { textTransform: 'uppercase' as const, letterSpacing: 1, fontWeight: 600 };
+  const labelSx = { letterSpacing: 1, fontWeight: 600 };
 
   return (
     <Box sx={{ display: 'grid', gap: 2, p: 1 }}>

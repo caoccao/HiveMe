@@ -118,7 +118,7 @@ set of habits.
 | `NotificationSnackbar.tsx` driven by the store | the same | |
 | `lib/store.tsx` Zustand, `lib/service.ts` invoke wrappers, `lib/constants.ts`, `lib/format.ts` | the same | Components never call Tauri APIs directly. |
 | `src/i18n` with react-i18next and nine locales | the same structure, `en-US` only in phase 1 | |
-| `Config.tsx` settings tab with `SectionHeader` sections | the same, with HiveMe's sections | |
+| `Config.tsx` settings tab with a vertical category strip and `SectionHeader` sections | the same, with HiveMe's categories | Broker, Topics, Notifications, Appearance, History, Update, Advanced. |
 | `About.tsx` | the same | |
 | Update check against GitHub releases | the same, for `caoccao/HiveMe` | |
 | Three per-OS build workflows | the same, plus lint, test, and spec checks | |
