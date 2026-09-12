@@ -8,7 +8,7 @@
 | Node.js | 24 | |
 | pnpm | 11 | |
 | Deno | 2.x | Runs every repository script under `scripts/ts/` |
-| Docker | any recent | Only for the MQTT integration tests, from phase 2 |
+| Docker | any recent | Only for the MQTT integration tests |
 
 Unlike the reference project, HiveMe has no native library to build first. Clone and
 build.
@@ -84,13 +84,31 @@ The SQLite history database `HiveMe.db` sits in the same directory. Full referen
 
 ## Testing against a broker
 
-From phase 2, the integration tests start a `hivemq/hivemq-ce` container through
-`testcontainers`. They are skipped with a message when Docker is unavailable, and on
-the macOS and Windows workflows, which set `HIVEME_SKIP_DOCKER=1`.
+`crates/hiveme-core/tests/mqtt.rs` starts a `hivemq/hivemq-ce` container per test
+through `testcontainers`. The image takes a few seconds to come up, so the whole file
+runs in well under a minute.
 
-To test against a real HiveMQ Cloud cluster instead, set `HIVEME_TEST_BROKER_URL`,
-`HIVEME_TEST_USERNAME`, and `HIVEME_TEST_PASSWORD`. Those tests are opt in and never
-run in CI.
+```sh
+cargo test -p hiveme-core --test mqtt
+```
+
+Each test says why it did nothing and passes when Docker is unavailable, or when
+`HIVEME_SKIP_DOCKER=1` is set, as the macOS and Windows workflows do. The Linux
+workflow has Docker and runs them.
+
+The container speaks plain MQTT, so nothing there exercises the TLS handshake. To test
+against a real HiveMQ Cloud cluster, which does, set all three of:
+
+```sh
+export HIVEME_TEST_BROKER_URL=mqtts://<id>.s1.eu.hivemq.cloud:8883
+export HIVEME_TEST_USERNAME=<username>
+export HIVEME_TEST_PASSWORD=<password>
+cargo test -p hiveme-core --test mqtt -- a_real_cloud_cluster_accepts_a_message
+```
+
+That test publishes under `hiveme-test/<device>` rather than the usual prefix, so it
+cannot disturb the messages a real installation keeps on the same cluster. It is opt in
+and never runs in CI.
 
 ## Releasing
 

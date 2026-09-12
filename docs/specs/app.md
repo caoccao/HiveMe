@@ -179,7 +179,7 @@ rather than rely on memory.
 | 3 | Every compatibility rule in [message.md](message.md#compatibility-rules) names a fixture that proves it | `crates/hiveme-core/tests/fixtures/` |
 | 4 | `cli_help_matches_spec` compares clap's help with the `text hiveme:help` block | `crates/hmc`, [cli.md](cli.md) |
 | 5 | `pnpm gen:types` regenerates the TypeScript types from the schemas; CI fails when the output is not committed | `scripts/ts/gen-types.ts`, `src/generated/` |
-| 6 | `scripts/ts/check-spec-sync.ts` fails when the config, message, CLI, or IPC code changes without a matching change under `docs/specs/`, and when `protocol.rs` changes without `protocol.ts` | `scripts/ts/` |
+| 6 | `scripts/ts/check-spec-sync.ts` fails when the config, message, MQTT, CLI, or IPC code changes without a matching change under `docs/specs/`, and when `protocol.rs` changes without `protocol.ts` | `scripts/ts/` |
 | 7 | The status table below records what is built | this file |
 | 8 | Definition of done for every step: code, tests, spec update, regenerated schemas, a status table row, and a release note for user visible changes | the plan |
 
@@ -203,7 +203,7 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Topic resolution and filters | [config.md](config.md#topic-resolution) | `hiveme-core::topic` | 1.3 | done |
 | Notification rule engine | [gui.md](gui.md#notifications) | `hiveme-core::rules` | 1.3 | done |
 | Schema and spec tooling | [app.md](#spec-sync) | `xtask`, `scripts` | 1.4 | done |
-| MQTT client | [hivemq-cloud.md](hivemq-cloud.md#how-hiveme-connects) | `hiveme-core::mqtt` | 2.1 | planned |
+| MQTT client | [hivemq-cloud.md](hivemq-cloud.md#how-hiveme-connects) | `hiveme-core::mqtt` | 2.1 | done |
 | CLI | [cli.md](cli.md) | `crates/hmc` | 3.1 | planned |
 | Tauri scaffold | [gui.md](gui.md#build-and-run) | `src-tauri`, `src` | 4.1 | planned |
 | Message storage | [gui.md](gui.md#storage) | `hiveme-core::storage` | 4.2 | planned |
@@ -253,7 +253,19 @@ Recorded so the plan and the tree can be reconciled later.
 5. `cargo xtask` needs a library target as well as a binary, so that the checks and the
    tests in `xtask/tests/` run the same code.
 6. The `hiveme-core` tests keep their fixtures in
-   `crates/hiveme-core/tests/fixtures/`, split into `config/` and `message/`. The
-   validation rules are exercised from a table in the test rather than from one file
-   per rule, and a single `config/invalid.json` proves that every problem is reported
-   at once.
+   `crates/hiveme-core/tests/fixtures/`, split into `config/`, `message/`, and
+   `mqtt/`. The validation rules are exercised from a table in the test rather than
+   from one file per rule, and a single `config/invalid.json` proves that every
+   problem is reported at once.
+7. MQTT over WebSocket is behind the `websocket` feature of `hiveme-core`, which is
+   off by default. The plan allowed it to slip to phase 6; the transport mapping is
+   written and compiles under the feature, and a `wss://` URL without it fails with a
+   message naming the feature. Turning it on by default waits for a workflow that
+   builds and tests it.
+8. `testcontainers` is taken with `default-features = false, features = ["aws-lc-rs"]`.
+   Its default features pull in `rustls/ring`, and rustls refuses to pick a crypto
+   provider when two are compiled in, which would make every TLS connection panic in a
+   test build.
+9. The integration tests replace the broker container rather than restarting it, on a
+   host port the test picks, so that the client reconnects to a broker with no session
+   for it and the resubscribe path is what carries the subscription across.

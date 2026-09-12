@@ -14,17 +14,27 @@ default = []
 storage = []
 # Enabled once the HiveMQ Cloud REST client lands in phase 6.
 cloud-api = []
+# MQTT over WebSocket. Off by default because HiveMQ Cloud serves plain MQTT over
+# TLS on 8883 and the extra transport pulls in a WebSocket stack. See
+# docs/specs/hivemq-cloud.md.
+websocket = ["rumqttc/websocket"]
 
 [dependencies]
 chrono = { workspace = true }
 hostname = { workspace = true }
 log = { workspace = true }
+rumqttc = { workspace = true }
+rustls-native-certs = { workspace = true }
+rustls-pemfile = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+testcontainers = { workspace = true }
+tokio = { workspace = true }
 uuid = { workspace = true }

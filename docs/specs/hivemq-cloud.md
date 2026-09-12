@@ -44,19 +44,116 @@ Sources:
 
 ## How HiveMe connects
 
-Filled in by step 2.1 of [the initialization plan](../plans/plan-initialization.md).
-It will record the exact client identifier scheme, session settings, TLS
-configuration, reconnect policy, and the observed Serverless behaviour.
+Implemented in `hiveme-core::mqtt`, over [rumqttc](https://crates.io/crates/rumqttc)
+with the MQTT 5 module and rustls. Both applications share the module so that a
+message from the `hmg` composer is indistinguishable from one `hmc` sent.
 
-Planned behaviour, for reference until then:
+### Role
 
-| Concern | `hmc` | `hmg` |
-|---------|-------|-------|
+The only difference between the two applications is the role they connect as.
+
+| Concern | `hmc` (`Role::Cli`) | `hmg` (`Role::Gui`) |
+|---------|---------------------|---------------------|
 | Client id | `<prefix>-hmc-<8 of device.id>-<8 random>` | `<prefix>-hmg-<8 of device.id>` |
 | Clean start | yes | no |
 | Session expiry | 0 | `broker.sessionExpirySecs` |
-| Reconnect | none, one shot | exponential backoff with jitter |
+| Reconnect | none; the first drop ends the connection | exponential backoff with jitter |
 | Subscriptions | none | `topics.subscriptions` |
+
+`<prefix>` is `broker.clientIdPrefix`, `hiveme` by default. The device segment is the
+first eight alphanumeric characters of `device.id`. Every `hmc` run adds a random
+suffix, because a broker disconnects the older of two connections that share an
+identifier and `hmc` runs overlap with each other and with a running `hmg`.
+
+### Transport and TLS
+
+| `broker.url` scheme | Default port | Transport |
+|---------------------|--------------|-----------|
+| `mqtts` | 8883 | MQTT over TLS. The scheme HiveMQ Cloud is reached with. |
+| `mqtt` | 1883 | Plain TCP, for a local test broker. Logs a warning, because the password crosses the network in the clear. |
+| `wss` | 8884 | MQTT over WebSocket with TLS, path `/mqtt`. Needs the `websocket` feature of `hiveme-core`, which is off by default. |
+| `ws` | 8083 | Plain WebSocket, same feature. |
+
+The trust store is the operating system's, loaded with
+[rustls-native-certs](https://crates.io/crates/rustls-native-certs). That is enough for
+HiveMQ Cloud on its own, because the cluster certificate chains to a public CA.
+`broker.tls.caFile` adds PEM certificates to those roots rather than replacing them,
+so a configuration for a local broker with a private CA still reaches the cloud.
+rustls sends the host of `broker.url` as the SNI name, which HiveMQ Cloud requires.
+
+`broker.tls.verifyServer = false` skips the check that the certificate belongs to the
+host. It is honoured only for hosts outside `hivemq.cloud`: on a cloud host the
+credentials travel in the CONNECT packet, so an unverified connection would hand them
+to whatever answered, and the certificate is verified anyway with a warning in the
+log. Turning it off anywhere logs a warning.
+
+### Session settings
+
+* Keep alive is `broker.keepAliveSecs`, 30 seconds by default.
+* The connect timeout is `broker.connectTimeoutSecs`, 10 seconds by default. It bounds
+  both the TCP connection and the wait for the CONNACK.
+* `MqttClient::connect` returns only once the broker has answered, so a wrong password
+  is reported to the caller rather than retried in the background.
+* A `Role::Gui` client retries a transient failure inside the connect timeout, but a
+  refusal, a TLS failure, or the timeout running out is reported. Once the first
+  connection is up it reconnects on its own for as long as it lives.
+
+### Reconnect
+
+`broker.reconnect.initialDelayMs` doubles per attempt up to
+`broker.reconnect.maxDelayMs`, and half of each delay is randomised. The jitter matters
+because several installations share a cluster, and a cluster restart would otherwise
+bring them all back at the same instant. A successful connection resets the sequence.
+
+These errors are never retried, because retrying them cannot work: a CONNACK refusal
+(the credentials or the client id), a TLS failure, an answer that is not a CONNACK, and
+the client handle being dropped.
+
+When a reconnect comes back with no session, which is what the broker reports when the
+session expired or the cluster was replaced, the remembered subscriptions are sent
+again. A caller therefore subscribes once rather than on every reconnect.
+
+### Publishing and subscribing
+
+* `publish` returns once the broker has acknowledged: nothing to wait for at QoS 0, the
+  PUBACK at QoS 1, the PUBCOMP at QoS 2. It gives up after `publish.timeoutSecs`. This
+  is what lets `hmc` exit knowing the message landed.
+* A PUBACK reason other than success is an error naming the topic.
+  `NoMatchingSubscribers` is not an error: it is the normal answer when `hmg` is closed.
+* `subscribe` returns once the SUBACK has arrived, and a SUBACK carries one reason code
+  per filter. HiveMQ Cloud refuses a filter the credential has no permission for rather
+  than refusing the whole packet, so a refusal is reported naming that filter.
+* A topic with a wildcard, or a filter that is not a filter, is refused before it
+  reaches the broker, so the error names the mistake instead of the packet.
+* Every published message carries the MQTT 5 properties of its envelope: content type
+  `application/json`, payload format indicator 1, the `hiveme-v` user property, and the
+  message expiry interval when the envelope has a `ttlSecs`. See
+  [message.md](message.md).
+
+### Receiving
+
+Received messages go onto a bounded channel, 1024 deep. When nothing is reading it the
+event loop drops messages and counts them rather than blocking, because blocking there
+would stop the keep alive and cost the connection.
+
+### Serverless limits that shape this
+
+* 100 concurrent connections, so `hmc` disconnects rather than leaving a session behind:
+  a broker releases the session of a client that says goodbye at once instead of waiting
+  out the keep alive.
+* Credentials take up to a minute to become active, which is why a
+  `BadUserNamePassword` refusal says so.
+* There is no way to raise the connection limit, so the client identifiers of the two
+  applications must differ; they do, by construction.
+
+### Tested against
+
+`crates/hiveme-core/tests/mqtt.rs` runs against a `hivemq/hivemq-ce` container through
+`testcontainers`: the message round trip and its properties, every quality of service,
+retained messages, a wildcard subscription over the prefix, payloads that are not HiveMe
+envelopes, refusals, and a reconnect onto a replacement broker that has never heard of
+the client. The container has no TLS, so the handshake against a public chain is covered
+only by the opt-in test described in [development.md](../development.md#testing-against-a-broker).
 
 ## REST API
 

@@ -49,6 +49,33 @@ pub enum Error {
   #[error("the broker password is not available: {0}")]
   PasswordUnavailable(String),
 
+  #[error("TLS cannot be set up: {0}")]
+  Tls(String),
+
+  #[error("cannot connect to the broker: {0}")]
+  Connect(String),
+
+  #[error("the broker did not answer the connection within {0}s")]
+  ConnectTimeout(u64),
+
+  #[error("the connection to the broker was lost: {0}")]
+  ConnectionLost(String),
+
+  #[error("the MQTT client is not running: {0}")]
+  ClientStopped(String),
+
+  #[error("the broker rejected the message published to {topic}: {reason}")]
+  PublishRejected { topic: String, reason: String },
+
+  #[error("the broker did not acknowledge the message published to {topic} within {secs}s")]
+  PublishTimeout { topic: String, secs: u64 },
+
+  #[error("the broker rejected the subscription to {filter}: {reason}")]
+  SubscribeRejected { filter: String, reason: String },
+
+  #[error("the broker did not acknowledge the subscription within {0}s")]
+  SubscribeTimeout(u64),
+
   #[error("{0}")]
   NotImplemented(String),
 }
@@ -66,8 +93,32 @@ impl Error {
         | Self::ConfigMigrate { .. }
         | Self::ConfigInvalid(_)
         | Self::PasswordUnavailable(_)
+        // A trust store that cannot be assembled is a problem with broker.tls, not
+        // with the network, so it is reported as one.
+        | Self::Tls(_)
         | Self::NotImplemented(_)
     )
+  }
+
+  /// Whether the broker could not be reached or refused what was asked, which `hmc`
+  /// reports as exit code 4.
+  pub fn is_connection(&self) -> bool {
+    matches!(
+      self,
+      Self::Connect(_)
+        | Self::ConnectTimeout(_)
+        | Self::ConnectionLost(_)
+        | Self::ClientStopped(_)
+        | Self::PublishRejected { .. }
+        | Self::SubscribeRejected { .. }
+        | Self::SubscribeTimeout(_)
+    )
+  }
+
+  /// Whether a published message went unacknowledged, which `hmc` reports as exit
+  /// code 5.
+  pub fn is_publish_timeout(&self) -> bool {
+    matches!(self, Self::PublishTimeout { .. })
   }
 }
 

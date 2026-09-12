@@ -70,6 +70,11 @@ const SPEC_RULES: SpecRule[] = [
     spec: "docs/specs/message.md",
   },
   {
+    label: "The MQTT client",
+    code: /^crates\/hiveme-core\/src\/mqtt(\.rs|\/)/,
+    spec: "docs/specs/hivemq-cloud.md",
+  },
+  {
     label: "The CLI",
     code: /^crates\/hmc\/src\//,
     spec: "docs/specs/cli.md",
