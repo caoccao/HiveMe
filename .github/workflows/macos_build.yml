@@ -3,7 +3,17 @@ name: MacOS Build
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - .github/**
+      - "!.github/workflows/macos_build.yml"
+      - "**.md"
+      - "docs/**"
   push:
+    paths-ignore:
+      - .github/**
+      - "!.github/workflows/macos_build.yml"
+      - "**.md"
+      - "docs/**"
 
 env:
   HIVEME_VERSION: 0.1.0

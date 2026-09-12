@@ -247,8 +247,11 @@ and the workflows have a step for it. See
 One GitHub Actions workflow per OS runs the lint, check, test, and build steps and
 uploads artifacts: `.deb`, `.rpm`, and `.AppImage` on Linux, `.dmg` on macOS (Intel
 and Apple silicon), `.msi`, NSIS `.exe`, and a portable `.7z` on Windows, plus the
-`hmc` binary on all three. The workflows run on every push, so pushing a tag builds
-the same set of artifacts for that commit; nothing is published automatically.
+`hmc` binary on all three. The workflows run on every push that touches something
+they build, so pushing a tag builds the same set of artifacts for that commit;
+nothing is published automatically. A push that only edits markdown, the
+documentation, or another workflow builds nothing, through the `paths-ignore` of the
+reference project.
 
 Releasing a version:
 
@@ -306,8 +309,10 @@ Recorded so the plan and the tree can be reconciled later.
    `schemas/README.md` keeps the generated directory present in a fresh clone.
 3. Resolved in step 4.1: the workflows build and upload the bundles unconditionally.
    The guard that skipped them while `src-tauri` did not exist is gone.
-4. The workflows do not use `paths-ignore`, unlike the reference project, because the
-   specifications are load bearing here and their examples are validated in CI.
+4. Resolved: the workflows carry the `paths-ignore` of the reference project after
+   all. The specifications are still load bearing, so their tagged examples are
+   validated by the next push that touches code rather than by the one that edits
+   them.
 5. `cargo xtask` needs a library target as well as a binary, so that the checks and the
    tests in `xtask/tests/` run the same code.
 6. The `hiveme-core` tests keep their fixtures in
