@@ -9,9 +9,19 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
+[lib]
+name = "xtask"
+path = "src/lib.rs"
+
 [[bin]]
 name = "xtask"
 path = "src/main.rs"
 
 [dependencies]
+hiveme-core = { workspace = true }
+jsonschema = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

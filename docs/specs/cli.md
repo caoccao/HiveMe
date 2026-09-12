@@ -46,7 +46,9 @@ hmc --json '{"stage":"deploy","ok":true}'
   `--topic` is absent. `--absolute-topic` skips the prefix. See
   [config.md](config.md#topic-resolution).
 - `--level` defaults to the level of the first notification rule whose filter matches
-  the topic, and to `info` when no rule matches.
+  the topic, and to `info` when no rule matches. A rule is considered here whether or
+  not it is `enabled`, because `enabled` governs notifications rather than what a topic
+  means.
 - `--json` requires the input to parse as JSON and publishes it unchanged, with no
   HiveMe envelope. The MQTT content type is still `application/json`, but the
   `hiveme-v` user property is not set.
@@ -63,9 +65,11 @@ hmc --json '{"stage":"deploy","ok":true}'
 
 ## Client identifier
 
-`<broker.clientIdPrefix>-hmc-<first 8 hex of device.id>-<random>`. The random suffix
-keeps concurrent `hmc` invocations, and a running `hmg`, from colliding on the
-broker, which disconnects duplicate client identifiers.
+`<broker.clientIdPrefix>-hmc-<first 8 alphanumerics of device.id>-<8 random
+characters>`. The random suffix keeps concurrent `hmc` invocations, and a running
+`hmg`, from colliding on the broker, which disconnects duplicate client identifiers.
+`hmg` uses the same shape without the suffix, so its session is stable across
+restarts.
 
 ## Exit codes
 

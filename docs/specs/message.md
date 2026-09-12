@@ -124,12 +124,20 @@ the TypeScript tests read the same files.
 
 ### Parse tiers
 
-| Tier | Input | Result |
-|------|-------|--------|
-| A, envelope | A JSON object with an integer `v` and either `payload` or `enc` | Parsed envelope |
-| B, raw JSON | Any other valid JSON | Shown as a JSON tree. The notification body is the compact JSON truncated to 200 characters. |
-| C, raw text | Bytes that are valid UTF-8 | Shown as text |
-| C, raw bytes | Anything else | Shown as hex with a size label |
+| Tier | Stored as | Input | Result |
+|------|-----------|-------|--------|
+| A, envelope | `envelope` | A JSON object with an integer `v` and either `payload` or `enc` | Parsed envelope |
+| B, raw JSON | `json` | Any other valid JSON | Shown as a JSON tree. The notification body is the compact JSON truncated to 200 characters. |
+| C, raw text | `text` | Bytes that are valid UTF-8 | Shown as text |
+| C, raw bytes | `bytes` | Anything else | Shown as a size label, and as hex in the message view |
+
+A document that claims to be an envelope, by carrying an integer `v` and a `payload` or
+`enc` key, but whose shape is wrong falls back to tier B rather than being rejected. The
+same is true of a combination [the envelope forbids](#plaintext-envelope), such as an
+`enc` with no `ciphertext`.
+
+The "Stored as" column is the `tier` value in the history database; see
+[gui.md](gui.md#storage).
 
 Nothing is ever discarded.
 

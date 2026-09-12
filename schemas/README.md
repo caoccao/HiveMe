@@ -11,6 +11,8 @@ This directory holds the JSON schemas that `cargo xtask schema` generates from t
 Both are committed, and CI fails when they are stale. **Do not edit them by hand**:
 change the Rust types, then run `cargo xtask schema` and `pnpm gen:types`.
 
-The generators arrive with steps 1.1 and 1.2 of
-[the initialization plan](../docs/plans/plan-initialization.md), so the directory is
-empty until then.
+`pnpm gen:types` turns these into `src/generated/config.ts` and
+`src/generated/message.ts`, which are committed for the same reason.
+
+`cargo xtask check-spec` validates the examples embedded in the specifications against
+these schemas, so an example that drifts from the code fails CI.

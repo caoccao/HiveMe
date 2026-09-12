@@ -174,7 +174,7 @@ rather than rely on memory.
 | # | Mechanism | Where |
 |---|-----------|-------|
 | 1 | `cargo xtask schema` regenerates the JSON schemas from the Rust types; the test `schemas_are_current` fails when the committed files are stale | `xtask`, `schemas/` |
-| 2 | `cargo xtask check-spec` extracts fenced blocks tagged `json hiveme:config`, `json hiveme:message`, and `json hiveme:message-encrypted` from `docs/specs/*.md` and validates them against the schemas | `xtask`, `docs/specs/` |
+| 2 | `cargo xtask check-spec` extracts fenced blocks tagged `json hiveme:config`, `json hiveme:message`, and `json hiveme:message-encrypted` from `docs/specs/*.md`, validates each against its schema, and round trips it through the Rust types | `xtask`, `docs/specs/` |
 | 3 | Every compatibility rule in [message.md](message.md#compatibility-rules) names a fixture that proves it | `crates/hiveme-core/tests/fixtures/` |
 | 4 | `cli_help_matches_spec` compares clap's help with the `text hiveme:help` block | `crates/hmc`, [cli.md](cli.md) |
 | 5 | `pnpm gen:types` regenerates the TypeScript types from the schemas; CI fails when the output is not committed | `scripts/ts/gen-types.ts`, `src/generated/` |
@@ -192,11 +192,11 @@ is a pure refactor.
 | Specifications split by concern | all | `docs/specs` | 0.1 | done |
 | Workspace, conventions, toolchain | [app.md](#repository-layout) | root | 0.2 | done |
 | Build workflows | [app.md](#build-and-release) | `.github/workflows` | 0.3 | done |
-| Config load, save, migrate | [config.md](config.md) | `hiveme-core::config` | 1.1 | planned |
-| Message envelope and parser | [message.md](message.md) | `hiveme-core::message` | 1.2 | planned |
-| Topic resolution and filters | [config.md](config.md#topic-resolution) | `hiveme-core::topic` | 1.3 | planned |
-| Notification rule engine | [gui.md](gui.md#notifications) | `hiveme-core::rules` | 1.3 | planned |
-| Schema and spec tooling | [app.md](#spec-sync) | `xtask`, `scripts` | 1.4 | partial, `check-spec` validates JSON only |
+| Config load, save, migrate | [config.md](config.md) | `hiveme-core::config` | 1.1 | done |
+| Message envelope and parser | [message.md](message.md) | `hiveme-core::message` | 1.2 | done |
+| Topic resolution and filters | [config.md](config.md#topic-resolution) | `hiveme-core::topic` | 1.3 | done |
+| Notification rule engine | [gui.md](gui.md#notifications) | `hiveme-core::rules` | 1.3 | done |
+| Schema and spec tooling | [app.md](#spec-sync) | `xtask`, `scripts` | 1.4 | done |
 | MQTT client | [hivemq-cloud.md](hivemq-cloud.md#how-hiveme-connects) | `hiveme-core::mqtt` | 2.1 | planned |
 | CLI | [cli.md](cli.md) | `crates/hmc` | 3.1 | planned |
 | Tauri scaffold | [gui.md](gui.md#build-and-run) | `src-tauri`, `src` | 4.1 | planned |
@@ -206,7 +206,7 @@ is a pure refactor.
 | Settings tab | [gui.md](gui.md#settings) | `src/components/Config.tsx` | 4.5 | planned |
 | OS notifications | [gui.md](gui.md#notifications) | `src-tauri/notification.rs` | 4.6 | planned |
 | Update check and packaging | [app.md](#build-and-release) | `src-tauri/update.rs` | 5.1 | planned |
-| Encryption | [message.md](message.md#encryption) | `hiveme-core::crypto` | 6 | designed |
+| Encryption | [message.md](message.md#encryption) | `hiveme-core::crypto` | 6 | designed, types and parsing in place |
 | REST API client | [hivemq-cloud.md](hivemq-cloud.md#rest-api) | `hiveme-core::cloud` | 6 | designed |
 | Additional locales | [gui.md](gui.md) | `src/i18n` | 6 | designed |
 
@@ -244,3 +244,10 @@ Recorded so the plan and the tree can be reconciled later.
    4.1 removes the guard.
 4. The workflows do not use `paths-ignore`, unlike the reference project, because the
    specifications are load bearing here and their examples are validated in CI.
+5. `cargo xtask` needs a library target as well as a binary, so that the checks and the
+   tests in `xtask/tests/` run the same code.
+6. The `hiveme-core` tests keep their fixtures in
+   `crates/hiveme-core/tests/fixtures/`, split into `config/` and `message/`. The
+   validation rules are exercised from a table in the test rather than from one file
+   per rule, and a single `config/invalid.json` proves that every problem is reported
+   at once.

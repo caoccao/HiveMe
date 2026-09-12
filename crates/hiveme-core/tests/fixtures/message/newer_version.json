@@ -1,0 +1,9 @@
+{
+  "v": 99,
+  "id": "018f6b1e-7c2a-7d3e-9f1a-4b2c8d9e0f16",
+  "ts": "2026-09-12T09:41:23.512Z",
+  "type": "announcement",
+  "sender": { "name": "sams-macbook", "app": "hmg" },
+  "payload": { "body": "written by a future HiveMe", "title": "Heads up" },
+  "futureTopLevel": "ignored"
+}

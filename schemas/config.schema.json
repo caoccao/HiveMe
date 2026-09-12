@@ -1,0 +1,806 @@
+{
+  "$defs": {
+    "Broker": {
+      "description": "How to reach the MQTT broker.",
+      "properties": {
+        "clientIdPrefix": {
+          "default": "hiveme",
+          "description": "The first segment of the MQTT client identifier.",
+          "type": "string"
+        },
+        "connectTimeoutSecs": {
+          "default": 10,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "keepAliveSecs": {
+          "default": 30,
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "password": {
+          "default": "",
+          "description": "Stored in plain text. The file is created with mode 0600 on Unix.",
+          "type": "string"
+        },
+        "passwordRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SecretRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where to read the password instead of the field above."
+        },
+        "reconnect": {
+          "$ref": "#/$defs/Reconnect",
+          "default": {
+            "initialDelayMs": 1000,
+            "maxDelayMs": 30000
+          }
+        },
+        "sessionExpirySecs": {
+          "default": 3600,
+          "description": "`hmg` only. `hmc` always connects with a clean start and no session.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tls": {
+          "$ref": "#/$defs/Tls",
+          "default": {
+            "caFile": null,
+            "verifyServer": true
+          }
+        },
+        "url": {
+          "default": "",
+          "description": "`mqtts://host:8883` for HiveMQ Cloud. See `docs/specs/hivemq-cloud.md`.",
+          "type": "string"
+        },
+        "username": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CloudApi": {
+      "description": "The HiveMQ Cloud REST API. Needs the Starter plan; phase 6.",
+      "properties": {
+        "baseUrl": {
+          "default": "",
+          "description": "From the API Access tab, for example `https://api.a01.euc1.aws.hivemq.cloud`.",
+          "type": "string"
+        },
+        "clusterId": {
+          "default": "",
+          "description": "The cluster UUID.",
+          "type": "string"
+        },
+        "orgId": {
+          "default": "",
+          "description": "Six alphanumeric characters.",
+          "type": "string"
+        },
+        "token": {
+          "default": "",
+          "description": "The bearer token, shown once at creation time.",
+          "type": "string"
+        },
+        "tokenRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SecretRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where to read the token instead of the field above."
+        }
+      },
+      "type": "object"
+    },
+    "Device": {
+      "description": "This installation's identity.",
+      "properties": {
+        "id": {
+          "default": "",
+          "description": "A stable identifier for this installation, used as `sender.id`.",
+          "type": "string"
+        },
+        "name": {
+          "default": "",
+          "description": "The human readable name shown in the GUI.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DisplayMode": {
+      "description": "Which colour scheme the GUI follows.",
+      "oneOf": [
+        {
+          "enum": [
+            "Light",
+            "Dark"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "Auto",
+          "description": "Follow the operating system.",
+          "type": "string"
+        }
+      ]
+    },
+    "Encryption": {
+      "description": "Message encryption. Designed in `docs/specs/message.md`, implemented in phase 6.",
+      "properties": {
+        "keys": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/KeyEntry"
+          },
+          "type": "array"
+        },
+        "mode": {
+          "$ref": "#/$defs/EncryptionMode",
+          "default": "Off"
+        }
+      },
+      "type": "object"
+    },
+    "EncryptionMode": {
+      "description": "Whether messages are encrypted.",
+      "oneOf": [
+        {
+          "const": "Off",
+          "description": "Send plaintext, accept both.",
+          "type": "string"
+        },
+        {
+          "const": "Opportunistic",
+          "description": "Send encrypted, accept both.",
+          "type": "string"
+        },
+        {
+          "const": "Required",
+          "description": "Send encrypted, flag incoming plaintext in the UI.",
+          "type": "string"
+        }
+      ]
+    },
+    "Gui": {
+      "description": "Settings that only `hmg` reads.",
+      "properties": {
+        "displayMode": {
+          "$ref": "#/$defs/DisplayMode",
+          "default": "Auto"
+        },
+        "history": {
+          "$ref": "#/$defs/History",
+          "default": {
+            "maxMessagesPerTopic": 1000,
+            "retentionDays": 30
+          }
+        },
+        "language": {
+          "default": "en-US",
+          "description": "A BCP 47 tag. Only `en-US` ships today.",
+          "type": "string"
+        },
+        "theme": {
+          "$ref": "#/$defs/Theme",
+          "default": "Ocean"
+        },
+        "window": {
+          "$ref": "#/$defs/Window",
+          "default": {
+            "position": {
+              "x": -1,
+              "y": -1
+            },
+            "size": {
+              "height": 900,
+              "width": 1200
+            }
+          }
+        }
+      },
+      "type": "object"
+    },
+    "History": {
+      "description": "How much message history to keep.",
+      "properties": {
+        "maxMessagesPerTopic": {
+          "default": 1000,
+          "description": "Older rows beyond this count are deleted per topic. 0 keeps everything.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "retentionDays": {
+          "default": 30,
+          "description": "Older rows than this are deleted. 0 disables time based pruning.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "KeyEntry": {
+      "description": "One pre-shared encryption key.",
+      "properties": {
+        "alg": {
+          "default": "",
+          "description": "The AEAD algorithm, `A256GCM` today.",
+          "type": "string"
+        },
+        "createdAt": {
+          "default": "",
+          "description": "The date the key was created, as `YYYY-MM-DD`.",
+          "type": "string"
+        },
+        "kid": {
+          "default": "",
+          "description": "The identifier written into `enc.kid`.",
+          "type": "string"
+        },
+        "secret": {
+          "default": "",
+          "description": "32 random bytes, base64url encoded.",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/KeyState",
+          "default": "Active"
+        }
+      },
+      "type": "object"
+    },
+    "KeyState": {
+      "description": "Whether a key is still used for sending.",
+      "oneOf": [
+        {
+          "const": "Active",
+          "description": "Used for sending, and for decrypting.",
+          "type": "string"
+        },
+        {
+          "const": "Retired",
+          "description": "Used for decrypting old messages only.",
+          "type": "string"
+        }
+      ]
+    },
+    "Level": {
+      "default": "info",
+      "description": "Message severity. An open enum: a value outside the examples is kept verbatim and displayed as `info`.",
+      "examples": [
+        "debug",
+        "info",
+        "warn",
+        "error"
+      ],
+      "type": "string"
+    },
+    "Notifications": {
+      "description": "The rule based OS notification system.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "notifyOwnMessages": {
+          "default": false,
+          "description": "When false, a message this installation sent never raises a notification.",
+          "type": "boolean"
+        },
+        "rules": {
+          "default": [
+            {
+              "body": "{body}",
+              "enabled": true,
+              "id": "info",
+              "level": "info",
+              "title": "{title|topic}",
+              "topic": "info"
+            },
+            {
+              "body": "{body}",
+              "enabled": true,
+              "id": "warn",
+              "level": "warn",
+              "title": "{title|topic}",
+              "topic": "warn"
+            },
+            {
+              "body": "{body}",
+              "enabled": true,
+              "id": "error",
+              "level": "error",
+              "title": "{title|topic}",
+              "topic": "error"
+            }
+          ],
+          "description": "Absent means the three built-in rules. Present, even empty, replaces them.",
+          "items": {
+            "$ref": "#/$defs/Rule"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Publish": {
+      "description": "Publishing defaults.",
+      "properties": {
+        "qos": {
+          "default": 1,
+          "description": "0, 1, or 2.",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "retain": {
+          "default": false,
+          "type": "boolean"
+        },
+        "timeoutSecs": {
+          "default": 10,
+          "description": "How long `hmc` waits for the acknowledgement.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "Reconnect": {
+      "description": "Exponential backoff for the `hmg` connection.",
+      "properties": {
+        "initialDelayMs": {
+          "default": 1000,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxDelayMs": {
+          "default": 30000,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "Rule": {
+      "description": "One notification rule.",
+      "properties": {
+        "absolute": {
+          "type": "boolean"
+        },
+        "body": {
+          "default": "{body}",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Unique within the config. Reusing a built-in id overrides that rule.",
+          "type": "string"
+        },
+        "level": {
+          "$ref": "#/$defs/Level",
+          "default": "info",
+          "description": "The notification level, and the level `hmc` infers for a matching topic."
+        },
+        "match": {
+          "additionalProperties": true,
+          "description": "Reserved for payload matching. Not implemented.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "title": {
+          "default": "{title|topic}",
+          "type": "string"
+        },
+        "topic": {
+          "description": "An MQTT topic filter, relative to `topics.prefix` unless `absolute` is true.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "topic"
+      ],
+      "type": "object"
+    },
+    "SecretRef": {
+      "description": "Where a secret really lives.",
+      "oneOf": [
+        {
+          "description": "Read the secret from an environment variable.",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "const": "Env",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Read the secret from the OS keychain. Phase 6.",
+          "properties": {
+            "account": {
+              "type": "string"
+            },
+            "service": {
+              "type": "string"
+            },
+            "type": {
+              "const": "Keychain",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "service",
+            "account"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Subscription": {
+      "anyOf": [
+        {
+          "description": "A filter relative to `topics.prefix`.",
+          "type": "string"
+        },
+        {
+          "description": "A filter that says for itself whether the prefix applies.",
+          "properties": {
+            "absolute": {
+              "default": false,
+              "type": "boolean"
+            },
+            "filter": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "filter"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "One entry of `topics.subscriptions`.\n\nA bare string is relative to the prefix, unless it starts with `$`, which the MQTT\nspecification reserves for broker topics."
+    },
+    "Theme": {
+      "description": "The GUI palette.",
+      "enum": [
+        "Ocean",
+        "Aqua",
+        "Sky",
+        "Arctic",
+        "Glacier",
+        "Mist",
+        "Slate",
+        "Charcoal",
+        "Midnight",
+        "Indigo",
+        "Violet",
+        "Lavender",
+        "Rose",
+        "Blush",
+        "Coral",
+        "Sunset",
+        "Amber",
+        "Sand",
+        "Forest",
+        "Emerald"
+      ],
+      "type": "string"
+    },
+    "Tls": {
+      "description": "TLS settings for the broker connection.",
+      "properties": {
+        "caFile": {
+          "default": null,
+          "description": "Extra PEM roots appended to the native trust store.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "verifyServer": {
+          "default": true,
+          "description": "Honoured only for hosts outside `hivemq.cloud`, and logs a warning when false.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "Topics": {
+      "description": "The topic namespace.",
+      "properties": {
+        "default": {
+          "default": "info",
+          "description": "Where `hmc` publishes when no topic is given, relative to the prefix.",
+          "type": "string"
+        },
+        "prefix": {
+          "default": "hiveme",
+          "description": "Prepended to every relative topic. May be empty, which puts topics at the root.",
+          "type": "string"
+        },
+        "subscriptions": {
+          "default": [
+            "#"
+          ],
+          "description": "What `hmg` subscribes to, relative to the prefix.",
+          "items": {
+            "$ref": "#/$defs/Subscription"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Update": {
+      "description": "The GitHub release check.",
+      "properties": {
+        "checkInterval": {
+          "$ref": "#/$defs/UpdateCheckInterval",
+          "default": "Weekly"
+        },
+        "ignoreVersion": {
+          "default": "",
+          "description": "A version the user chose to skip.",
+          "type": "string"
+        },
+        "lastChecked": {
+          "default": 0,
+          "description": "Unix seconds of the last successful check.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "lastVersion": {
+          "default": "",
+          "description": "The latest version seen on GitHub.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "UpdateCheckInterval": {
+      "description": "How often to look for a new release.",
+      "enum": [
+        "Daily",
+        "Weekly",
+        "Monthly"
+      ],
+      "type": "string"
+    },
+    "Window": {
+      "description": "The remembered main window geometry.",
+      "properties": {
+        "position": {
+          "$ref": "#/$defs/WindowPosition",
+          "default": {
+            "x": -1,
+            "y": -1
+          }
+        },
+        "size": {
+          "$ref": "#/$defs/WindowSize",
+          "default": {
+            "height": 900,
+            "width": 1200
+          }
+        }
+      },
+      "type": "object"
+    },
+    "WindowPosition": {
+      "description": "The remembered window position. Negative means \"centre the window\".",
+      "properties": {
+        "x": {
+          "default": -1,
+          "format": "int32",
+          "type": "integer"
+        },
+        "y": {
+          "default": -1,
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "WindowSize": {
+      "description": "The remembered window size. The GUI clamps it to 600 by 450.",
+      "properties": {
+        "height": {
+          "default": 900,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "width": {
+          "default": 1200,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://hiveme.dev/schemas/config/v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The config shared by hmc and hmg. Generated from hiveme-core; see docs/specs/config.md.",
+  "properties": {
+    "broker": {
+      "$ref": "#/$defs/Broker",
+      "default": {
+        "clientIdPrefix": "hiveme",
+        "connectTimeoutSecs": 10,
+        "keepAliveSecs": 30,
+        "password": "",
+        "passwordRef": null,
+        "reconnect": {
+          "initialDelayMs": 1000,
+          "maxDelayMs": 30000
+        },
+        "sessionExpirySecs": 3600,
+        "tls": {
+          "caFile": null,
+          "verifyServer": true
+        },
+        "url": "",
+        "username": ""
+      }
+    },
+    "cloudApi": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CloudApi"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The HiveMQ Cloud REST API, which needs the Starter plan. Phase 6."
+    },
+    "device": {
+      "$ref": "#/$defs/Device",
+      "default": {
+        "id": "",
+        "name": ""
+      }
+    },
+    "encryption": {
+      "$ref": "#/$defs/Encryption",
+      "default": {
+        "keys": [],
+        "mode": "Off"
+      }
+    },
+    "gui": {
+      "$ref": "#/$defs/Gui",
+      "default": {
+        "displayMode": "Auto",
+        "history": {
+          "maxMessagesPerTopic": 1000,
+          "retentionDays": 30
+        },
+        "language": "en-US",
+        "theme": "Ocean",
+        "window": {
+          "position": {
+            "x": -1,
+            "y": -1
+          },
+          "size": {
+            "height": 900,
+            "width": 1200
+          }
+        }
+      }
+    },
+    "notifications": {
+      "$ref": "#/$defs/Notifications",
+      "default": {
+        "enabled": true,
+        "notifyOwnMessages": false,
+        "rules": [
+          {
+            "body": "{body}",
+            "enabled": true,
+            "id": "info",
+            "level": "info",
+            "title": "{title|topic}",
+            "topic": "info"
+          },
+          {
+            "body": "{body}",
+            "enabled": true,
+            "id": "warn",
+            "level": "warn",
+            "title": "{title|topic}",
+            "topic": "warn"
+          },
+          {
+            "body": "{body}",
+            "enabled": true,
+            "id": "error",
+            "level": "error",
+            "title": "{title|topic}",
+            "topic": "error"
+          }
+        ]
+      }
+    },
+    "publish": {
+      "$ref": "#/$defs/Publish",
+      "default": {
+        "qos": 1,
+        "retain": false,
+        "timeoutSecs": 10
+      }
+    },
+    "topics": {
+      "$ref": "#/$defs/Topics",
+      "default": {
+        "default": "info",
+        "prefix": "hiveme",
+        "subscriptions": [
+          "#"
+        ]
+      }
+    },
+    "update": {
+      "$ref": "#/$defs/Update",
+      "default": {
+        "checkInterval": "Weekly",
+        "ignoreVersion": "",
+        "lastChecked": 0,
+        "lastVersion": ""
+      }
+    },
+    "version": {
+      "default": 1,
+      "description": "The config schema version. The loader migrates older versions.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "title": "HiveMe config",
+  "type": "object"
+}

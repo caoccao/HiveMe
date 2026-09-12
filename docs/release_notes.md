@@ -9,3 +9,10 @@
   the repository scripts, and the three per-OS build workflows.
 * Wrote every repository script as Deno TypeScript under `scripts/ts/`, so that the
   project has no shell scripts and behaves the same on Linux, macOS, and Windows.
+* Built the shared core: the config file with its per-OS location, migrations, and a
+  writer that preserves keys it does not know; the JSON message envelope with its parse
+  tiers and compatibility rules; MQTT topic resolution and filter matching; and the
+  notification rule engine with its templates and rate limiter.
+* Generated `schemas/` from the Rust types and `src/generated/` from those schemas, and
+  wired both into CI so a stale schema, a drifted example, or an out of date TypeScript
+  type fails the build.

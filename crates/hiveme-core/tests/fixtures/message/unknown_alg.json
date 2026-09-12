@@ -1,0 +1,9 @@
+{
+  "v": 1,
+  "id": "018f6b1e-7c2a-7d3e-9f1a-4b2c8d9e0f15",
+  "ts": "2026-09-12T09:41:23.512Z",
+  "type": "message",
+  "sender": { "id": "0f7a1c2e-5d4b-4a6e-9c1d-2b3e4f5a6b7c", "name": "sams-macbook", "app": "hmc" },
+  "enc": { "alg": "XC20P", "kid": "k-2027-01", "iv": "u2m1xwK7Ck3NoMbz" },
+  "ciphertext": "8Qy0m5jI1n1F0y7b3z9K2Qw3e5r7t9y1u3i5o7p9a1s3d5f7g9h1j3k5l7"
+}

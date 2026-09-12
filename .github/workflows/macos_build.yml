@@ -83,7 +83,9 @@ jobs:
     - name: Check that the schemas are current
       run: |
         cargo xtask schema
-        git diff --exit-code -- schemas || {
+        # Only the generated files, so that editing schemas/README.md does not look
+        # like a stale schema.
+        git diff --exit-code -- 'schemas/*.schema.json' || {
           echo "schemas/ is stale, run 'cargo xtask schema' and commit the result" >&2
           exit 1
         }

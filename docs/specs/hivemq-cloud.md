@@ -52,7 +52,7 @@ Planned behaviour, for reference until then:
 
 | Concern | `hmc` | `hmg` |
 |---------|-------|-------|
-| Client id | `<prefix>-hmc-<first 8 hex of device.id>-<random>` | `<prefix>-hmg-<first 8 hex of device.id>` |
+| Client id | `<prefix>-hmc-<8 of device.id>-<8 random>` | `<prefix>-hmg-<8 of device.id>` |
 | Clean start | yes | no |
 | Session expiry | 0 | `broker.sessionExpirySecs` |
 | Reconnect | none, one shot | exponential backoff with jitter |

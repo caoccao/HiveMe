@@ -25,7 +25,8 @@ use std::process::ExitCode;
 
 fn main() -> ExitCode {
   eprintln!(
-    "hmc: not implemented yet: HiveMe {} is at phase 0, see docs/plans/plan-initialization.md step 3.1",
+    "hmc: not implemented yet: HiveMe {} has the shared core but not the command line \
+     interface, see docs/specs/cli.md and step 3.1 of docs/plans/plan-initialization.md",
     hiveme_core::VERSION
   );
   ExitCode::from(1)

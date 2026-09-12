@@ -16,3 +16,15 @@ storage = []
 cloud-api = []
 
 [dependencies]
+chrono = { workspace = true }
+hostname = { workspace = true }
+log = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+uuid = { workspace = true }

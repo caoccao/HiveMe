@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "id": "018f6b1e-7c2a-7d3e-9f1a-4b2c8d9e0f11",
+  "ts": "2026-09-12T09:41:23.512Z",
+  "type": "message",
+  "futureHeaderKey": { "nested": true },
+  "sender": {
+    "id": "0f7a1c2e-5d4b-4a6e-9c1d-2b3e4f5a6b7c",
+    "name": "sams-macbook",
+    "app": "hmc",
+    "appVersion": "0.1.0",
+    "futureSenderKey": 7
+  },
+  "payload": {
+    "body": "still readable",
+    "futurePayloadKey": ["a", "b"]
+  }
+}

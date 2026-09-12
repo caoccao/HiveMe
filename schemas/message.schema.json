@@ -1,0 +1,240 @@
+{
+  "$defs": {
+    "Enc": {
+      "description": "How a message was encrypted.\n\nDesigned but not implemented; see `docs/specs/message.md`. Readers already\nrecognise the shape so that an encrypted message is displayed as a placeholder\nrather than as unreadable JSON.",
+      "properties": {
+        "alg": {
+          "description": "The AEAD algorithm. An open enum; `A256GCM` is the first one.",
+          "type": "string"
+        },
+        "iv": {
+          "description": "The base64url nonce.",
+          "type": "string"
+        },
+        "kid": {
+          "description": "The identifier of the pre-shared key that encrypted this message.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "alg",
+        "kid",
+        "iv"
+      ],
+      "type": "object"
+    },
+    "Level": {
+      "default": "info",
+      "description": "Message severity. An open enum: a value outside the examples is kept verbatim and displayed as `info`.",
+      "examples": [
+        "debug",
+        "info",
+        "warn",
+        "error"
+      ],
+      "type": "string"
+    },
+    "Payload": {
+      "description": "The readable content of a message.",
+      "properties": {
+        "body": {
+          "description": "The main text. May be empty when `data` carries the content.",
+          "type": "string"
+        },
+        "contentType": {
+          "description": "A hint for `body`, such as `text/markdown`. Defaults to `text/plain`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "data": {
+          "additionalProperties": true,
+          "description": "Free form JSON for scripts.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "level": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Level"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The severity. Defaults to `info`."
+        },
+        "title": {
+          "description": "Used as the notification title when present.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "body"
+      ],
+      "type": "object"
+    },
+    "Sender": {
+      "description": "Who produced a message.",
+      "properties": {
+        "app": {
+          "description": "The producing application, `hmc` or `hmg` for the HiveMe tools.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "appVersion": {
+          "description": "The version of the producing application.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "The `device.id` of the installation that produced the message.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "The human readable device name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://hiveme.dev/schemas/message/v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A HiveMe message envelope. Generated from hiveme-core; see docs/specs/message.md.",
+  "oneOf": [
+    {
+      "description": "Carries a readable payload.",
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "enc"
+            ]
+          },
+          {
+            "required": [
+              "ciphertext"
+            ]
+          }
+        ]
+      },
+      "required": [
+        "payload"
+      ],
+      "title": "Plaintext"
+    },
+    {
+      "description": "Carries a ciphertext and the header needed to decrypt it.",
+      "not": {
+        "required": [
+          "payload"
+        ]
+      },
+      "required": [
+        "enc",
+        "ciphertext"
+      ],
+      "title": "Encrypted"
+    }
+  ],
+  "properties": {
+    "ciphertext": {
+      "description": "The base64url AEAD output. Present exactly when `enc` is.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "enc": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Enc"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The encryption header. Absent on a plaintext message."
+    },
+    "id": {
+      "description": "A unique identifier, UUID v7 for messages HiveMe writes.",
+      "type": "string"
+    },
+    "payload": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Payload"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The readable content. Absent on an encrypted message."
+    },
+    "replyTo": {
+      "description": "The `id` of another message. Reserved for threading.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sender": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Sender"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ts": {
+      "description": "RFC 3339 with a timezone and millisecond precision, from the producer's clock.",
+      "type": "string"
+    },
+    "ttlSecs": {
+      "description": "Mirrors the MQTT message expiry so a reader can show staleness.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "type": {
+      "default": "message",
+      "description": "An open enum; `message` unless stated otherwise.",
+      "type": "string"
+    },
+    "v": {
+      "description": "The envelope major version.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "v",
+    "id",
+    "ts"
+  ],
+  "title": "HiveMe message",
+  "type": "object"
+}

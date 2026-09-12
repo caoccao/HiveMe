@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "device": { "id": "0f7a1c2e-5d4b-4a6e-9c1d-2b3e4f5a6b7c" },
+  "broker": { "url": "mqtts://abc123.s1.eu.hivemq.cloud:8883", "username": "hiveme-sam", "password": "secret" }
+}

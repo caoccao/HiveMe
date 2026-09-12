@@ -31,12 +31,24 @@ The SQLite database `HiveMe.db` sits in the same directory as the config file. T
 directory is created on first launch.
 
 On first run either application writes a default config with a freshly generated
-`device.id` and the hostname as `device.name`, then reports the path it used. On
-Unix the file is created with mode 0600.
+`device.id` and the hostname as `device.name`, then reports the path it used. A config
+that exists but has no `device.id` is given one and written back, so that a hand
+written file still gets an identity.
+
+Writes go through a temporary file in the same directory and are then renamed, so an
+interrupted write cannot leave a half finished config. On Unix the file is created with
+mode 0600, because it holds a password in plain text.
+
+**Loading never validates.** A config is read as far as it can be, so that `hmg` can
+open an incomplete file and let the user finish it in the Settings tab. Both
+applications call validation separately, before they connect. See
+[Validation](#validation).
 
 ## Schema
 
-A complete config with every default spelled out:
+A complete config, with every optional key written out. The `device` and `broker`
+values are per installation and have no useful default; everything else shows the
+value the applications use when the key is absent.
 
 ```json hiveme:config
 {
@@ -116,10 +128,10 @@ A complete config with every default spelled out:
 | `version` | integer | yes | 1 | Config schema version. The loader migrates older versions. |
 | `device.id` | UUID string | yes | generated | Stable identity of this installation. Used as `sender.id` and to derive client identifiers. |
 | `device.name` | string | no | hostname | Shown in the GUI as the sender name. |
-| `broker.url` | string | yes | none | `mqtts://host:8883` for TLS, `wss://host:8884/mqtt` for WebSocket TLS (phase 6), `mqtt://host:1883` for a plain local broker, which logs a warning. |
+| `broker.url` | string | yes | none | `<scheme>://<host>[:<port>][/<path>]`. The schemes are `mqtts` (port 8883), `mqtt` (1883), `wss` (8884, path `/mqtt`), and `ws` (8083); `ssl` and `tcp` are accepted as aliases of `mqtts` and `mqtt`. The port defaults per scheme. Credentials in the URL are rejected: they belong in the fields below. |
 | `broker.username` | string | yes | none | HiveMQ Cloud credential username. |
 | `broker.password` | string | yes | none | May be empty when `passwordRef` is set. |
-| `broker.passwordRef` | object or null | no | null | `{ "type": "Env", "name": "HIVEME_PASSWORD" }` is implemented in phase 1. `{ "type": "Keychain", "service": "HiveMe", "account": "<username>" }` is reserved for phase 6. |
+| `broker.passwordRef` | object or null | no | null | `{ "type": "Env", "name": "<VARIABLE>" }` is implemented. `{ "type": "Keychain", "service": "HiveMe", "account": "<username>" }` is reserved for phase 6 and reports that it is not implemented rather than failing silently. |
 | `broker.clientIdPrefix` | string | no | `hiveme` | Client id is `<prefix>-<app>-<first 8 hex of device.id>` plus a random suffix for `hmc`. |
 | `broker.keepAliveSecs` | integer | no | 30 | MQTT keep alive. |
 | `broker.sessionExpirySecs` | integer | no | 3600 | `hmg` only. `hmc` always uses 0. |
@@ -140,7 +152,7 @@ A complete config with every default spelled out:
 | `gui.displayMode` | `Auto`, `Light`, `Dark` | no | `Auto` | `Auto` follows `prefers-color-scheme`. |
 | `gui.theme` | theme name | no | `Ocean` | One of the twenty palette names listed in [gui.md](gui.md#theme). |
 | `gui.language` | BCP 47 tag | no | detected | Only `en-US` ships in phase 1. |
-| `gui.history.maxMessagesPerTopic` | integer | no | 1000 | Older rows beyond this count are deleted per topic. |
+| `gui.history.maxMessagesPerTopic` | integer | no | 1000 | Older rows beyond this count are deleted per topic. 0 keeps everything. |
 | `gui.history.retentionDays` | integer | no | 30 | 0 disables time based pruning. |
 | `gui.window.position` | `{ x, y }` | no | `-1, -1` | Negative means "center the window". |
 | `gui.window.size` | `{ width, height }` | no | `1200 x 900` | Minimum 600 x 450. |
@@ -163,9 +175,43 @@ A complete config with every default spelled out:
 - Filter matching follows the MQTT 5 specification, including the rule that a
   wildcard filter does not match a topic starting with `$`.
 
+## Validation
+
+Validation is separate from loading. Both applications call it before they connect:
+`hmc` reports the problems and exits 3, `hmg` shows them in the snackbar and leaves the
+Settings tab open. Every problem is reported at once rather than one at a time.
+
+| Rule | Message mentions |
+|------|------------------|
+| `device.id` is not empty | `device.id` |
+| `broker.url` parses, and uses a known scheme with a host | `broker.url` |
+| A `hivemq.cloud` host uses `mqtts` or `wss`, because the service accepts TLS only | `TLS only` |
+| `broker.username` is not empty | `broker.username` |
+| A password is reachable: the field, `passwordRef`, or `HIVEME_PASSWORD` | `broker.password` |
+| `broker.reconnect.initialDelayMs` is not greater than `maxDelayMs` | `initialDelayMs` |
+| `topics.prefix` has no leading or trailing `/` and no wildcard | `topics.prefix` |
+| `topics.default` is a publishable topic, so no wildcard | `topics.default` |
+| `topics.subscriptions` is not empty, and every filter is well formed | `topics.subscriptions` |
+| `publish.qos` is 0, 1, or 2 | `publish.qos` |
+| Every notification rule has a non-empty id, and no two share one | `empty id`, `share the id` |
+| Every notification rule topic is a well formed filter | `rules['<id>'].topic` |
+| No two encryption keys share a `kid` | `share the kid` |
+| When `encryption.mode` is not `Off`, exactly one key is `Active` | `Active` |
+| `cloudApi.baseUrl`, when set, is HTTPS | `cloudApi.baseUrl` |
+| `cloudApi.orgId`, when set, is six alphanumeric characters | `cloudApi.orgId` |
+
+A filter is well formed when it is not empty, `#` is the last level and takes up a whole
+level, `+` takes up a whole level, and there are no control characters. A topic is
+publishable when it is not empty, carries no wildcard, and is at most 65535 bytes of
+UTF-8.
+
 ## Versioning and compatibility
 
-- `version` is a required integer.
+- `version` is an integer, and every writer emits it. A document without one is read
+  as the current version and logs a warning, so that a hand written file still loads.
+- A value this build does not know in a closed enum, such as a `gui.theme` added by a
+  later release, falls back to that field's default with a warning rather than making
+  the whole file unreadable.
 - Unknown fields are ignored on read and **preserved on write**: a write merges the
   typed structure into the `serde_json::Value` that was read, so a newer `hmc` and an
   older `hmg` can share one file without losing each other's settings. This is a
@@ -184,7 +230,12 @@ A complete config with every default spelled out:
 
 - Phase 1 stores `broker.password` in plain text in the config file. The file is
   created with mode 0600 on Unix.
-- `HIVEME_PASSWORD` overrides `broker.password` when set.
+- The password sent in the CONNECT packet is resolved in this order, at the moment of
+  connecting rather than at load time, so that an override is never written back into
+  the file:
+  1. the `HIVEME_PASSWORD` environment variable, when it is set and not empty,
+  2. `broker.passwordRef`, when it is set,
+  3. `broker.password`.
 - Phase 6 adds `passwordRef.type = "Keychain"`, backed by the OS keychain, plus the
   same `*Ref` mechanism for `encryption.keys[].secret` and `cloudApi.token`.
 - Logs never print `broker.password`, `encryption.keys[].secret`, or

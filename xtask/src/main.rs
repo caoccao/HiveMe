@@ -20,24 +20,18 @@
 //! `cargo xtask schema`     regenerates the JSON schemas under `schemas/`.
 //! `cargo xtask check-spec` validates the examples embedded in `docs/specs/`.
 //!
-//! Both commands are part of the specification sync mechanism described in
-//! `docs/specs/app.md`.
+//! Both are part of the specification sync mechanism described in
+//! `docs/specs/app.md`. The logic lives in the library beside this file, so the tests
+//! and the command line cannot disagree.
 
-use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-/// A fenced block in a specification file, tagged `json hiveme:<tag>`.
-struct Example {
-  file: PathBuf,
-  line: usize,
-  tag: String,
-  body: String,
-}
+use xtask::{relative, repo_root, schema, spec};
 
 fn main() -> ExitCode {
   let mut args = std::env::args().skip(1);
   match args.next().as_deref() {
-    Some("schema") => schema(),
+    Some("schema") => generate_schemas(),
     Some("check-spec") => check_spec(),
     None | Some("help" | "--help" | "-h") => {
       usage();
@@ -60,142 +54,60 @@ fn usage() {
   println!("  help         Print this help");
 }
 
-/// The repository root, derived from this crate's manifest directory.
-fn repo_root() -> PathBuf {
-  Path::new(env!("CARGO_MANIFEST_DIR"))
-    .parent()
-    .expect("xtask lives one level below the repository root")
-    .to_path_buf()
-}
-
-/// Maps an example tag to the schema that validates it.
-fn schema_for_tag(tag: &str) -> Option<&'static str> {
-  match tag {
-    "config" => Some("config.schema.json"),
-    "message" | "message-encrypted" => Some("message.schema.json"),
-    _ => None,
+fn generate_schemas() -> ExitCode {
+  let root = repo_root();
+  match schema::write(&root) {
+    Ok(written) => {
+      for path in written {
+        println!("wrote {}", relative(&root, &path));
+      }
+      ExitCode::SUCCESS
+    }
+    Err(error) => {
+      eprintln!("xtask schema: {error}");
+      ExitCode::from(1)
+    }
   }
-}
-
-fn schema() -> ExitCode {
-  // The generators are derived from the `schemars` annotations on the
-  // `hiveme-core` config and message types, which arrive in steps 1.1 and 1.2.
-  // Until then there is nothing to write, and the freshness check in CI passes
-  // because the schemas directory matches what this command would produce.
-  println!("xtask schema: no schema generators are registered yet (steps 1.1 and 1.2), nothing written");
-  ExitCode::SUCCESS
 }
 
 fn check_spec() -> ExitCode {
   let root = repo_root();
-  let specs = root.join("docs").join("specs");
-  let schemas = root.join("schemas");
 
-  let mut files: Vec<PathBuf> = match std::fs::read_dir(&specs) {
-    Ok(entries) => entries
-      .filter_map(Result::ok)
-      .map(|entry| entry.path())
-      .filter(|path| path.extension().is_some_and(|extension| extension == "md"))
-      .collect(),
-    Err(error) => {
-      eprintln!("xtask check-spec: cannot read {}: {error}", specs.display());
+  let stale = schema::stale(&root);
+  for entry in &stale {
+    eprintln!("FAIL schemas/{} {}", entry.name, entry.reason);
+  }
+  if !stale.is_empty() {
+    eprintln!("  run `cargo xtask schema` and commit the result");
+  }
+
+  let outcomes = match spec::check(&root) {
+    Ok(outcomes) => outcomes,
+    Err(reason) => {
+      eprintln!("xtask check-spec: {reason}");
       return ExitCode::from(1);
     }
   };
-  files.sort();
 
-  let mut examples = Vec::new();
-  for file in &files {
-    match std::fs::read_to_string(file) {
-      Ok(text) => examples.extend(extract_examples(file, &text)),
-      Err(error) => {
-        eprintln!("xtask check-spec: cannot read {}: {error}", file.display());
-        return ExitCode::from(1);
-      }
-    }
-  }
-
-  if examples.is_empty() {
-    eprintln!(
-      "xtask check-spec: no `json hiveme:<tag>` examples found in {}",
-      specs.display()
-    );
-    eprintln!("  the examples are part of the specification sync mechanism, see docs/specs/app.md");
-    return ExitCode::from(1);
-  }
-
-  let mut failures = 0usize;
-  let mut unvalidated = 0usize;
-  for example in &examples {
-    let location = format!("{}:{}", relative(&root, &example.file), example.line);
-    match serde_json::from_str::<serde_json::Value>(&example.body) {
-      Ok(_) => {}
-      Err(error) => {
-        eprintln!("FAIL {location} [{}]: invalid JSON: {error}", example.tag);
-        failures += 1;
-        continue;
-      }
-    }
-    match schema_for_tag(&example.tag) {
-      None => {
-        eprintln!("FAIL {location}: unknown example tag '{}'", example.tag);
-        failures += 1;
-      }
-      Some(schema_file) if schemas.join(schema_file).exists() => {
-        // Schema validation is wired up in step 1.4, once the schemas exist.
-        println!("OK   {location} [{}] parsed", example.tag);
-      }
-      Some(schema_file) => {
-        println!(
-          "OK   {location} [{}] parsed, {schema_file} not generated yet",
-          example.tag
-        );
-        unvalidated += 1;
+  let mut failed = 0usize;
+  for outcome in &outcomes {
+    let location = format!("{}:{}", relative(&root, &outcome.example.file), outcome.example.line);
+    if outcome.is_ok() {
+      println!("OK   {location} [{}]", outcome.example.tag);
+    } else {
+      failed += 1;
+      for problem in &outcome.problems {
+        eprintln!("FAIL {location} [{}] {problem}", outcome.example.tag);
       }
     }
   }
 
   println!();
-  println!("{} example(s) checked, {failures} failed", examples.len());
-  if unvalidated > 0 {
-    println!("{unvalidated} example(s) parsed but not schema validated, see step 1.4");
-  }
+  println!("{} example(s) checked, {failed} failed", outcomes.len());
 
-  if failures > 0 {
+  if failed > 0 || !stale.is_empty() {
     ExitCode::from(1)
   } else {
     ExitCode::SUCCESS
   }
-}
-
-/// Pulls every ```` ```json hiveme:<tag> ```` block out of one Markdown file.
-fn extract_examples(file: &Path, text: &str) -> Vec<Example> {
-  const OPEN: &str = "```json hiveme:";
-  let mut examples = Vec::new();
-  let mut lines = text.lines().enumerate();
-  while let Some((index, line)) = lines.next() {
-    let Some(tag) = line.strip_prefix(OPEN) else {
-      continue;
-    };
-    let tag = tag.trim().to_owned();
-    let mut body = String::new();
-    for (_, line) in lines.by_ref() {
-      if line.trim_end() == "```" {
-        break;
-      }
-      body.push_str(line);
-      body.push('\n');
-    }
-    examples.push(Example {
-      file: file.to_path_buf(),
-      line: index + 1,
-      tag,
-      body,
-    });
-  }
-  examples
-}
-
-fn relative(root: &Path, path: &Path) -> String {
-  path.strip_prefix(root).unwrap_or(path).display().to_string()
 }

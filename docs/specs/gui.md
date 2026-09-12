@@ -126,7 +126,7 @@ A rule maps a topic filter to an OS notification.
 | `id` | string | required | Unique within the config. The built-ins are `info`, `warn`, `error`. |
 | `topic` | string | required | MQTT topic filter, relative to `topics.prefix` unless `absolute` is true. `+` and `#` are allowed. |
 | `absolute` | boolean | false | |
-| `level` | string | `info` | The notification level, and the default `payload.level` when publishing to a matching topic. |
+| `level` | string | `info` | The notification level, and the default `payload.level` when publishing to a matching topic. Level inference uses the first matching rule whether or not it is `enabled`, because `enabled` governs notifications rather than what a topic means. |
 | `enabled` | boolean | true | |
 | `title` | string | `{title|topic}` | Template. |
 | `body` | string | `{body}` | Template. |
@@ -146,8 +146,8 @@ empty string. There are no expressions.
    `notifications.notifyOwnMessages` is true.
 3. Check rules in config order and fire the first enabled rule whose filter matches
    the topic.
-4. Rate limit to one notification per rule per second. Suppressed messages are
-   summarised with an "and N more" suffix.
+4. Rate limit to one notification per rule per second. The next notification that rule
+   raises carries the count that was held back, as "and N more messages".
 
 Clicking a notification focuses the window and selects the topic, on the platforms
 that support it.
@@ -180,7 +180,7 @@ file.
 topics(id INTEGER PRIMARY KEY, topic TEXT UNIQUE, first_seen_ts, last_seen_ts, unread INTEGER)
 messages(id INTEGER PRIMARY KEY, topic_id, msg_id TEXT, ts TEXT, received_ts TEXT,
          sender_id TEXT, sender_name TEXT, app TEXT,
-         tier TEXT CHECK(tier IN ('envelope','json','text')),
+         tier TEXT CHECK(tier IN ('envelope','json','text','bytes')),
          level TEXT, title TEXT, body TEXT, raw BLOB,
          qos INTEGER, retain INTEGER, outgoing INTEGER,
          UNIQUE(topic_id, msg_id))

@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "device": { "id": "", "name": "" },
+  "broker": {
+    "url": "http://not-a-broker",
+    "username": "",
+    "password": "",
+    "reconnect": { "initialDelayMs": 60000, "maxDelayMs": 1000 }
+  },
+  "topics": { "prefix": "/hiveme/", "default": "info/#", "subscriptions": ["bad/#/filter"] },
+  "publish": { "qos": 7 },
+  "notifications": {
+    "rules": [
+      { "id": "dup", "topic": "info" },
+      { "id": "dup", "topic": "warn" },
+      { "id": "", "topic": "in+fo" }
+    ]
+  },
+  "encryption": {
+    "mode": "Required",
+    "keys": [
+      { "kid": "k1", "alg": "A256GCM", "secret": "x", "createdAt": "2026-09-12", "state": "Retired" },
+      { "kid": "k1", "alg": "A256GCM", "secret": "y", "createdAt": "2026-09-12", "state": "Retired" }
+    ]
+  },
+  "cloudApi": { "baseUrl": "http://api.example.com", "orgId": "toolong", "clusterId": "", "token": "t" }
+}
