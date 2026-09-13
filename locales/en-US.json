@@ -211,7 +211,9 @@
     "notJson": "--json was given input that is not JSON: {{error}}",
     "encryptionUnavailable": "encryption.mode is {{mode}} but encryption arrives in a later version of HiveMe; set it to Off to publish in plain text",
     "configWritten": "no config yet, so a default one was written to {{path}}; fill in the broker block and run again",
-    "runtimeUnavailable": "cannot start the async runtime: {{error}}"
+    "runtimeUnavailable": "cannot start the async runtime: {{error}}",
+    "notATerminal": "--tui needs a terminal to draw on, but stdout is not one",
+    "terminalUnavailable": "cannot set up the terminal: {{error}}"
   },
   "help": {
     "about": "HiveMe CLI: send a message to the MQTT broker",
@@ -220,6 +222,7 @@
     "options": "Options",
     "message": "Message body. Read from stdin when omitted",
     "init": "Initialize the shared config from a setup string, then exit",
+    "tui": "Open the terminal UI, even when stdin is not a terminal",
     "topic": "Topic relative to hiveme; leading slashes are ignored [default: hiveme]",
     "json": "Publish MESSAGE (or stdin) as a raw JSON payload without the envelope",
     "title": "Optional title for the message",
@@ -229,6 +232,48 @@
     "config": "Config file path",
     "verbose": "Log connection details to stderr",
     "printHelp": "Print help",
-    "printVersion": "Print version"
+    "printVersion": "Print version",
+    "interactive": "Run hmc with no arguments on a terminal to open the terminal UI."
+  },
+  "tui": {
+    "toolbar": {
+      "connect": "Connect",
+      "disconnect": "Disconnect",
+      "pause": "Pause",
+      "resume": "Resume",
+      "clear": "Clear",
+      "settings": "Settings",
+      "about": "About",
+      "help": "Help",
+      "quit": "Quit"
+    },
+    "tooSmall": "Enlarge the terminal to at least {{columns}} × {{rows}}.",
+    "quitting": "quitting, ending the broker session…",
+    "settingsLater": "This category arrives in the terminal UI in a later version. Until then, change it in hmg or in the config file.",
+    "help": {
+      "title": "Keys",
+      "close": "close",
+      "global": "Everywhere",
+      "notice": "Update notice",
+      "quit": "Quit and end the broker session",
+      "connection": "Connect or disconnect",
+      "pause": "Pause or resume notifications",
+      "clear": "Clear the history of the selected topic",
+      "settings": "Open the Settings tab",
+      "about": "Open the About tab",
+      "selectTab": "Select a tab",
+      "cycleTabs": "Previous or next tab",
+      "closeTab": "Close the current tab",
+      "help": "Show or hide this help",
+      "escape": "Close the topmost overlay, or go back",
+      "focus": "Move the focus",
+      "activate": "Open the focused entry",
+      "category": "Choose a category",
+      "field": "Move between the fields",
+      "password": "Show or hide the password",
+      "edit": "Jump to the start or the end, clear before the cursor",
+      "releases": "Open the releases page",
+      "dismiss": "Close the notice"
+    }
   }
 }

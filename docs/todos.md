@@ -7,10 +7,8 @@ what the plans deliberately left open.
 
 ## Open items from the terminal UI plan
 
-* Whether `tui-textarea` and `tui-tree-widget` support the ratatui release in use
-  when phase 3 starts; if not, `crates/hmc/src/tui/widgets/` keeps in-house ones.
-* Whether the kitty keyboard protocol is enabled on Windows Terminal by default, or
-  only when detected.
+* Whether `tui-tree-widget` supports ratatui 0.30 when phase 4 builds the topic tree.
+  `tui-textarea` 0.7 did not when phase 3 started, so the text controls are in-house.
 * Whether the two applications should watch the config file for changes the other
   made. Today each keeps the config in memory and sees the other's change at its next
   start. If a watcher is wanted, it belongs to the session and lands in a later plan.
@@ -18,7 +16,8 @@ what the plans deliberately left open.
   left to its phase 6, is still wanted now that interactive mode tails every
   configured subscription. It would be an option, never a subcommand: a bare word is
   a message.
-* The ASCII fallbacks for the glyphs the terminal UI uses on terminals without them.
+* The ASCII fallbacks of the glyphs phases 4 and 5 add (`▾`, `▸`, the lock, the pin), in
+  the table phase 3 started in `crates/hmc/src/tui/theme.rs`.
 
 ## Open questions from the plan
 

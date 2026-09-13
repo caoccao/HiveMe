@@ -688,3 +688,58 @@ fn verbose_explains_what_it_is_doing() {
     .stdout(predicate::str::is_empty())
     .stderr(predicate::str::contains("connecting to").and(predicate::str::contains(path.display().to_string())));
 }
+
+#[test]
+fn tui_on_a_stdout_that_is_not_a_terminal_is_a_usage_error_and_writes_nothing() {
+  let (directory, path) = scratch();
+  hmc()
+    .arg("--tui")
+    .arg("--config")
+    .arg(&path)
+    .assert()
+    .code(2)
+    .stdout(predicate::str::is_empty())
+    .stderr("hmc: usage: --tui needs a terminal to draw on, but stdout is not one\n");
+  assert!(!path.exists(), "nothing was drawn, so nothing was set up");
+  assert!(!directory.path().join("HiveMe.db").exists());
+  assert!(!directory.path().join("hmc.log").exists());
+
+  let (_directory, path) = usable_in("de");
+  hmc()
+    .arg("--tui")
+    .arg("--config")
+    .arg(&path)
+    .assert()
+    .code(2)
+    .stderr(predicate::str::starts_with("hmc: usage: --tui braucht ein Terminal"));
+}
+
+#[test]
+fn tui_refuses_the_options_it_would_ignore() {
+  for arguments in [
+    vec!["--tui", "--init", "{}"],
+    vec!["--tui", "hello"],
+    vec!["--tui", "-t", "ci"],
+    vec!["--tui", "-l", "warn"],
+  ] {
+    hmc()
+      .args(&arguments)
+      .assert()
+      .code(2)
+      .stderr(predicate::str::contains("cannot be used with"));
+  }
+}
+
+#[test]
+fn no_arguments_with_a_body_piped_in_still_publishes() {
+  // stdin is a pipe here, so this is publish mode: a missing config is written and
+  // reported with exit 3, which the terminal UI would never do.
+  let (_directory, path) = scratch();
+  hmc()
+    .arg("--config")
+    .arg(&path)
+    .write_stdin("hello\n")
+    .assert()
+    .code(3)
+    .stderr(predicate::str::starts_with("hmc: config: no config yet"));
+}

@@ -180,7 +180,7 @@
       ]
     },
     "Gui": {
-      "description": "The settings of the user interface. `hmg` reads all of them; `hmc` reads `language`.",
+      "description": "The settings of the user interface. `hmg` reads all of them; the terminal UI of `hmc`\nreads all but `window`, and publish mode reads `language`.",
       "properties": {
         "displayMode": {
           "$ref": "#/$defs/DisplayMode",

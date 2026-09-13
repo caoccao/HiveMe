@@ -207,7 +207,9 @@
     "notJson": "--json 收到的輸入不是 JSON：{{error}}",
     "encryptionUnavailable": "encryption.mode 為 {{mode}}，但加密功能將在 HiveMe 的後續版本推出；請將其設為 Off 以明文發布",
     "configWritten": "尚無設定，已將預設設定寫入 {{path}}；請填寫 broker 區塊後再執行",
-    "runtimeUnavailable": "無法啟動非同步執行階段：{{error}}"
+    "runtimeUnavailable": "無法啟動非同步執行階段：{{error}}",
+    "notATerminal": "--tui 需要一個終端機來繪製介面，但 stdout 不是終端機",
+    "terminalUnavailable": "無法設定終端機：{{error}}"
   },
   "help": {
     "about": "HiveMe CLI：向 MQTT 代理伺服器傳送訊息",
@@ -216,6 +218,7 @@
     "options": "選項",
     "message": "訊息內文。省略時從 stdin 讀取",
     "init": "根據設定字串初始化共用設定，然後結束",
+    "tui": "開啟終端機介面，即使 stdin 不是終端機",
     "topic": "相對於 hiveme 的主題；會忽略開頭的斜線 [預設值：hiveme]",
     "json": "將 MESSAGE（或 stdin）作為不含信封的原始 JSON 酬載發布",
     "title": "訊息的選用標題",
@@ -225,6 +228,48 @@
     "config": "設定檔路徑",
     "verbose": "將連線詳細資料記錄到 stderr",
     "printHelp": "顯示說明",
-    "printVersion": "顯示版本"
+    "printVersion": "顯示版本",
+    "interactive": "在終端機中不帶參數執行 hmc 即可開啟終端機介面。"
+  },
+  "tui": {
+    "toolbar": {
+      "connect": "連線",
+      "disconnect": "中斷",
+      "pause": "暫停",
+      "resume": "恢復",
+      "clear": "清除",
+      "settings": "設定",
+      "about": "關於",
+      "help": "說明",
+      "quit": "結束"
+    },
+    "tooSmall": "請將終端機放大至至少 {{columns}} × {{rows}}。",
+    "quitting": "正在結束，正在終止代理伺服器工作階段…",
+    "settingsLater": "此類別將在之後的版本加入終端機介面。在此之前，請在 hmg 或設定檔中修改。",
+    "help": {
+      "title": "按鍵",
+      "close": "關閉",
+      "global": "全域",
+      "notice": "更新通知",
+      "quit": "結束並終止代理伺服器工作階段",
+      "connection": "連線或中斷",
+      "pause": "暫停或恢復通知",
+      "clear": "清除所選主題的歷史紀錄",
+      "settings": "開啟設定分頁",
+      "about": "開啟關於分頁",
+      "selectTab": "選擇分頁",
+      "cycleTabs": "上一個或下一個分頁",
+      "closeTab": "關閉目前分頁",
+      "help": "顯示或隱藏此說明",
+      "escape": "關閉最上層的浮動介面，或返回",
+      "focus": "移動焦點",
+      "activate": "開啟取得焦點的項目",
+      "category": "選擇類別",
+      "field": "在欄位之間移動",
+      "password": "顯示或隱藏密碼",
+      "edit": "跳至開頭或結尾，清除游標前的內容",
+      "releases": "開啟發佈頁面",
+      "dismiss": "關閉通知"
+    }
   }
 }

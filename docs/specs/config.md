@@ -8,10 +8,9 @@ schema, defaults, path resolution, loading, and atomic writes. Compatibility fol
 BetterMediaInfo's nested `Default` and `#[serde(default)]` pattern: present values
 are retained and missing sections or children receive their defaults in memory.
 The CLI uses the full shared schema, including GUI-only fields and their defaults.
-`hmc` reads `gui.language` for its help and the lines it prints, and from phase 3 of
-[the terminal UI plan](../plans/plan-terminal-ui.md) the interactive mode of `hmc`
-reads the rest of the `gui` block as well, except the window; the block keeps its
-name because renaming it would break every existing file for a word.
+`hmc` reads `gui.language` for its help and the lines it prints, and the interactive
+mode of `hmc` reads the rest of the `gui` block as well, except the window; the block
+keeps its name because renaming it would break every existing file for a word.
 
 The machine readable schema is [`schemas/config.schema.json`](../../schemas/config.schema.json),
 generated from the `hiveme-core::config` types with `cargo xtask schema`. The schema,
@@ -38,10 +37,11 @@ The config path is resolved in this order:
 | Windows, portable | next to the executable |
 
 The SQLite database `HiveMe.db` sits in the same directory as the config file. The
-directory is created on first launch. `hmg` opens the database today; interactive
-`hmc` opens the same file from phase 3 of
-[the terminal UI plan](../plans/plan-terminal-ui.md), and the two may run at once, see
-[session.md](session.md#two-processes-one-installation).
+directory is created on first launch. `hmg` and interactive `hmc` open the same
+database, and the two may run at once, see
+[session.md](session.md#two-processes-one-installation). Interactive `hmc` also appends
+its log to `hmc.log` in that directory when asked to log, see
+[tui.md](tui.md#logging).
 
 On first run either application writes a default config with a freshly generated
 `device.id` and the hostname as `device.name`, then reports the path it used. A config
@@ -149,7 +149,7 @@ value the applications use when the key is absent.
 | `broker.passwordRef` | object or null | no | null | `{ "type": "Env", "name": "<VARIABLE>" }` is implemented. `{ "type": "Keychain", "service": "HiveMe", "account": "<username>" }` is reserved for phase 6 and reports that it is not implemented rather than failing silently. |
 | `broker.clientIdPrefix` | string | no | `hiveme` | Client id is `<prefix>-<app>-<first 8 hex of device.id>` plus a random suffix for `hmc`, in both of its modes. |
 | `broker.keepAliveSecs` | integer | no | 30 | MQTT keep alive. |
-| `broker.sessionExpirySecs` | integer | no | 3600 | `hmg` session retention during network interruptions; explicit disconnect and quit discard the session. One-shot `hmc` always uses 0; interactive `hmc` uses this value from phase 3 of the terminal UI plan. |
+| `broker.sessionExpirySecs` | integer | no | 3600 | `hmg` session retention during network interruptions; explicit disconnect and quit discard the session. One-shot `hmc` always uses 0; interactive `hmc` uses this value. |
 | `broker.connectTimeoutSecs` | integer | no | 10 | |
 | `broker.tls.verifyServer` | boolean | no | true | `false` is honored only for hosts outside `hivemq.cloud` and logs a warning. |
 | `broker.tls.caFile` | path or null | no | null | Extra PEM roots appended to the native trust store. |

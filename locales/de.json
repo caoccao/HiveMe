@@ -211,7 +211,9 @@
     "notJson": "--json hat eine Eingabe erhalten, die kein JSON ist: {{error}}",
     "encryptionUnavailable": "encryption.mode ist {{mode}}, aber die Verschlüsselung kommt erst in einer späteren Version von HiveMe; auf Off setzen, um im Klartext zu senden",
     "configWritten": "noch keine Konfiguration, daher wurde eine Standardkonfiguration nach {{path}} geschrieben; den broker-Block ausfüllen und erneut ausführen",
-    "runtimeUnavailable": "die asynchrone Laufzeit kann nicht gestartet werden: {{error}}"
+    "runtimeUnavailable": "die asynchrone Laufzeit kann nicht gestartet werden: {{error}}",
+    "notATerminal": "--tui braucht ein Terminal zum Zeichnen, aber stdout ist keines",
+    "terminalUnavailable": "das Terminal kann nicht eingerichtet werden: {{error}}"
   },
   "help": {
     "about": "HiveMe CLI: eine Nachricht an den MQTT-Broker senden",
@@ -220,6 +222,7 @@
     "options": "Optionen",
     "message": "Nachrichtentext. Wird aus stdin gelesen, wenn er fehlt",
     "init": "Die gemeinsame Konfiguration aus einer Einrichtungszeichenfolge anlegen und beenden",
+    "tui": "Die Terminal-Oberfläche öffnen, auch wenn stdin kein Terminal ist",
     "topic": "Topic relativ zu hiveme; führende Schrägstriche werden ignoriert [Standard: hiveme]",
     "json": "MESSAGE (oder stdin) als unverarbeitete JSON-Nutzdaten ohne Umschlag senden",
     "title": "Optionaler Titel der Nachricht",
@@ -229,6 +232,48 @@
     "config": "Pfad der Konfigurationsdatei",
     "verbose": "Verbindungsdetails auf stderr protokollieren",
     "printHelp": "Hilfe anzeigen",
-    "printVersion": "Version anzeigen"
+    "printVersion": "Version anzeigen",
+    "interactive": "hmc ohne Argumente in einem Terminal starten, um die Terminal-Oberfläche zu öffnen."
+  },
+  "tui": {
+    "toolbar": {
+      "connect": "Verbinden",
+      "disconnect": "Trennen",
+      "pause": "Pausieren",
+      "resume": "Fortsetzen",
+      "clear": "Leeren",
+      "settings": "Einstellungen",
+      "about": "Über",
+      "help": "Hilfe",
+      "quit": "Beenden"
+    },
+    "tooSmall": "Das Terminal auf mindestens {{columns}} × {{rows}} vergrößern.",
+    "quitting": "wird beendet, die Broker-Sitzung endet…",
+    "settingsLater": "Diese Kategorie kommt in einer späteren Version in die Terminal-Oberfläche. Bis dahin in hmg oder in der Konfigurationsdatei ändern.",
+    "help": {
+      "title": "Tasten",
+      "close": "schließen",
+      "global": "Überall",
+      "notice": "Update-Hinweis",
+      "quit": "Beenden und die Broker-Sitzung schließen",
+      "connection": "Verbinden oder trennen",
+      "pause": "Benachrichtigungen pausieren oder fortsetzen",
+      "clear": "Verlauf des ausgewählten Topics löschen",
+      "settings": "Den Tab Einstellungen öffnen",
+      "about": "Den Tab Über öffnen",
+      "selectTab": "Einen Tab auswählen",
+      "cycleTabs": "Vorheriger oder nächster Tab",
+      "closeTab": "Den aktuellen Tab schließen",
+      "help": "Diese Hilfe ein- oder ausblenden",
+      "escape": "Das oberste Overlay schließen oder zurückgehen",
+      "focus": "Den Fokus bewegen",
+      "activate": "Den fokussierten Eintrag öffnen",
+      "category": "Eine Kategorie wählen",
+      "field": "Zwischen den Feldern wechseln",
+      "password": "Passwort anzeigen oder verbergen",
+      "edit": "An den Anfang oder das Ende springen, vor dem Cursor löschen",
+      "releases": "Die Release-Seite öffnen",
+      "dismiss": "Den Hinweis schließen"
+    }
   }
 }

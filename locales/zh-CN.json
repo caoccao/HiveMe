@@ -207,7 +207,9 @@
     "notJson": "--json 收到的输入不是 JSON：{{error}}",
     "encryptionUnavailable": "encryption.mode 为 {{mode}}，但加密将在 HiveMe 的后续版本中提供；请将其设为 Off 以明文发布",
     "configWritten": "尚无配置，已将默认配置写入 {{path}}；请填写 broker 部分后重新运行",
-    "runtimeUnavailable": "无法启动异步运行时：{{error}}"
+    "runtimeUnavailable": "无法启动异步运行时：{{error}}",
+    "notATerminal": "--tui 需要一个终端来绘制界面，但 stdout 不是终端",
+    "terminalUnavailable": "无法设置终端：{{error}}"
   },
   "help": {
     "about": "HiveMe CLI：向 MQTT 代理服务器发送消息",
@@ -216,6 +218,7 @@
     "options": "选项",
     "message": "消息正文。省略时从 stdin 读取",
     "init": "根据配置字符串初始化共享配置，然后退出",
+    "tui": "打开终端界面，即使 stdin 不是终端",
     "topic": "相对于 hiveme 的主题；忽略开头的斜杠 [默认：hiveme]",
     "json": "将 MESSAGE（或 stdin）作为不带信封的原始 JSON 载荷发布",
     "title": "消息的可选标题",
@@ -225,6 +228,48 @@
     "config": "配置文件路径",
     "verbose": "将连接详情记录到 stderr",
     "printHelp": "显示帮助",
-    "printVersion": "显示版本"
+    "printVersion": "显示版本",
+    "interactive": "在终端中不带参数运行 hmc 即可打开终端界面。"
+  },
+  "tui": {
+    "toolbar": {
+      "connect": "连接",
+      "disconnect": "断开",
+      "pause": "暂停",
+      "resume": "恢复",
+      "clear": "清除",
+      "settings": "设置",
+      "about": "关于",
+      "help": "帮助",
+      "quit": "退出"
+    },
+    "tooSmall": "请将终端扩大到至少 {{columns}} × {{rows}}。",
+    "quitting": "正在退出，正在结束代理服务器会话…",
+    "settingsLater": "此类别将在以后的版本中加入终端界面。在此之前，请在 hmg 或配置文件中修改。",
+    "help": {
+      "title": "按键",
+      "close": "关闭",
+      "global": "全局",
+      "notice": "更新通知",
+      "quit": "退出并结束代理服务器会话",
+      "connection": "连接或断开",
+      "pause": "暂停或恢复通知",
+      "clear": "清除所选主题的历史记录",
+      "settings": "打开设置标签页",
+      "about": "打开关于标签页",
+      "selectTab": "选择标签页",
+      "cycleTabs": "上一个或下一个标签页",
+      "closeTab": "关闭当前标签页",
+      "help": "显示或隐藏此帮助",
+      "escape": "关闭最上层的浮层，或返回",
+      "focus": "移动焦点",
+      "activate": "打开获得焦点的项目",
+      "category": "选择类别",
+      "field": "在字段之间移动",
+      "password": "显示或隐藏密码",
+      "edit": "跳到开头或结尾，清除光标前的内容",
+      "releases": "打开发布页面",
+      "dismiss": "关闭通知"
+    }
   }
 }

@@ -296,9 +296,7 @@ A rule matches an MQTT topic filter and a payload log level to an OS notificatio
 The rules below are the shared rules: their evaluation, the rate limiter, and the
 pause toggle live in the session of [session.md](session.md#notifications), and each
 application supplies only the final call that shows the toast. Interactive `hmc` raises
-the same notifications from phase 3 of
-[the terminal UI plan](../plans/plan-terminal-ui.md), see
-[tui.md](tui.md#notifications).
+the same notifications, see [tui.md](tui.md#notifications).
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
@@ -407,10 +405,9 @@ CREATE INDEX messages_received_ts ON messages(received_ts)
 
 The module is `hiveme_core::storage`, behind the `storage` feature, which the `session`
 feature implies. The database runs in WAL mode with a five second busy timeout, so a
-write that meets another process's write waits instead of failing. One-shot `hmc`
-does not link SQLite; from phase 3 of
-[the terminal UI plan](../plans/plan-terminal-ui.md) `hmc` does, because the terminal
-UI runs on the shared session and opens this same file. The rules for two processes on
+write that meets another process's write waits instead of failing. `hmc` links SQLite
+too, because its terminal UI runs on the shared session and opens this same file;
+one-shot publishing never opens it. The rules for two processes on
 one database are in [session.md](session.md#two-processes-one-installation).
 
 - `schema_version` holds the version of the layout above. Version 0 means a database

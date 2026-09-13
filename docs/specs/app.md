@@ -4,8 +4,9 @@ HiveMe is a Rust project with two applications built on
 top of MQTT, sharing one config file and one message format.
 
 1. **HiveMe CLI** (`hmc`) sends a message to the broker from a shell or a script. Run
-   with no arguments on a terminal, it opens a terminal UI with every feature of the
-   GUI; that mode is specified in [tui.md](tui.md) and not built yet.
+   with no arguments on a terminal, it opens a terminal UI, specified in
+   [tui.md](tui.md), that grows every feature of the GUI; its shell is built, and its
+   tabs are completed phase by phase.
 2. **HiveMe GUI** (`hmg`) watches the broker, keeps a local history, and raises OS
    notifications from rules.
 
@@ -21,7 +22,7 @@ with TLS.
 | [message.md](message.md) | The JSON message envelope, its payload, parse tiers, compatibility rules, and the encryption design |
 | [cli.md](cli.md) | `hmc`: usage, behavior, exit codes, the interactive mode trigger |
 | [gui.md](gui.md) | `hmg`: layout, notifications, storage, IPC, settings, window |
-| [tui.md](tui.md) | The terminal UI of `hmc`: layout, keys, theme, languages, startup; the languages are built, the terminal UI is specified |
+| [tui.md](tui.md) | The terminal UI of `hmc`: layout, keys, theme, languages, startup; the languages and the shell are built, the tabs are specified |
 | [session.md](session.md) | The backend both applications share: operations, events, types, notifications, two processes on one installation; `hmg` runs on it |
 | [hivemq-cloud.md](hivemq-cloud.md) | What the broker offers, how HiveMe connects, and the REST API |
 
@@ -40,7 +41,8 @@ builds the terminal UI and the shared session phase by phase.
 - `hmc <message>` sends to the default topic.
 - `hmc -t <topic> <message>` sends to a topic.
 - `echo <message> | hmc` reads the body from stdin.
-- `hmc` alone, on a terminal, opens the terminal UI (phase 3 of the terminal UI plan).
+- `hmc` alone, on a terminal, opens the terminal UI; `hmc --tui` opens it regardless of
+  stdin.
 
 Full reference in [cli.md](cli.md) and, for the terminal UI, [tui.md](tui.md).
 
@@ -175,7 +177,8 @@ HiveMe/
       src/i18n/                   # locale resolution, catalogs, plural rules, formatting (feature i18n)
     hmc/                          # CLI binary `hmc`
       build.rs, icons/            # the Windows executable icon and version information
-      src/tui/                    # planned, phases 3 to 5: the terminal UI of tui.md
+      src/tui/                    # the terminal UI of tui.md: the shell (phase 3); messages/ and the
+                                  # remaining settings/ panels are planned for phases 4 and 5
   xtask/                          # `cargo xtask schema`, `cargo xtask check-spec`
   schemas/                        # broker-init, config, message .schema.json (generated, committed), README.md
   scripts/
@@ -268,7 +271,7 @@ Their phase numbers are that plan's, not the initialization plan's.
 | SQLite busy timeout for two processes on one database | [session.md](session.md#two-processes-one-installation), [gui.md](gui.md#storage) | `hiveme-core::storage` | TUI 1 | done |
 | Setup string carries the language; `hmc --init` applies it | [config.md](config.md#the-setup-string), [cli.md](cli.md#setting-up) | `hiveme-core::config::init`, `crates/hmc` | TUI 2 | done |
 | Shared catalogs in `locales/`, `hiveme_core::i18n`, translated `hmc` lines and help | [cli.md](cli.md#languages), [tui.md](tui.md#languages), [gui.md](gui.md#languages) | `locales`, `hiveme-core::i18n`, `crates/hmc`, `src/i18n` | TUI 2 | done |
-| Terminal UI shell: trigger, toolbar, tabs, footer, snackbar, help, theme, keys, OS notifications, update notice | [tui.md](tui.md), [cli.md](cli.md#interactive-mode) | `crates/hmc/src/tui` | TUI 3 | planned |
+| Terminal UI shell: trigger, toolbar, tabs, footer, snackbar, help, theme, keys, OS notifications, update notice | [tui.md](tui.md), [cli.md](cli.md#interactive-mode) | `crates/hmc/src/tui` | TUI 3 | done |
 | Terminal UI Messages tab: topic tree, message view, composer | [tui.md](tui.md#topic-tree) | `crates/hmc/src/tui/messages` | TUI 4 | planned |
 | Terminal UI Settings and About tabs | [tui.md](tui.md#settings) | `crates/hmc/src/tui/settings`, `crates/hmc/src/tui/about.rs` | TUI 5 | planned |
 | Terminal UI end-to-end test, hardening, onboarding | [tui.md](tui.md#tests) | `crates/hmc/tests/tui.rs`, `docs`, `README.md` | TUI 6 | planned |
@@ -495,3 +498,30 @@ The entries below are against [the terminal UI plan](../plans/plan-terminal-ui.m
     `Argomenti` is that catalog's word for topics. A setup string with a blank
     `language` counts as one without it, and `BrokerInit` leaves the field out when it
     has no language, so the schema lets it be `null`.
+31. Phase 3: `tui-textarea` 0.7 depends on ratatui 0.29 and `tui-tree-widget` was not
+    needed yet, so `crates/hmc/src/tui/widgets/` holds an in-house one-line text input,
+    the only form control phase 3 uses. The editor, the select popup, and the tree are
+    written with the phases that use them.
+32. Phase 3: the screens talk to the session through a `Service` trait in
+    `crates/hmc/src/tui/service.rs`, which `Session` implements, so that the quit path
+    can be tested against a session whose shutdown never finishes. Section 3.4 of the
+    plan has no such file. `main.rs` only chooses the mode; the runtime, the log file,
+    and the panic hook are set up in `tui/mod.rs`, which is where the terminal is.
+33. Phase 3: `clipboard.rs` and the `arboard` dependency move to phase 4, since nothing in
+    the shell copies; the copy actions of the chat view and Copy CLI setup are the
+    first users. `portable-pty` arrives with the test of phase 6.
+34. Phase 3: the toolbar has a rule above and below and no side borders, rather than the
+    bordered block of section 5.1, because the seven English labels need 79 of the 80
+    columns. Labels that do not fit are cut from the longest, down to the key alone.
+    The labels are short `tui.toolbar.*` words rather than the GUI's tooltip keys, which
+    are sentences.
+35. Phase 3: until the tree and the chat view take the focus, `Tab` in the Messages tab
+    reaches the footer's `config error` and `last error` entries so that `Enter` can open
+    them, as section 5.8 asks. The About tab is drawn as text in phase 3 rather than
+    left empty; phase 5 adds the gradient letters and the cards. The snackbar reports
+    only failures until phase 4 brings the first confirmations.
+36. Phase 3: the keyboard enhancement flags are requested only where crossterm reports
+    support, which it never does on Windows, where the console API already reports the
+    chords; this answers the open item of section 10. The glyph fallbacks are chosen by
+    `TERM=linux` and by a Windows console without `WT_SESSION`. `--tui` on a redirected
+    stdout is refused before the config path is resolved, so it writes nothing.

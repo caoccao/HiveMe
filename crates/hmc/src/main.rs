@@ -17,8 +17,9 @@
 
 //! HiveMe CLI.
 //!
-//! `hmc` publishes one message to the broker and exits. The reference is
-//! `docs/specs/cli.md`; this file is only the entry point, so that what a script sees
+//! `hmc` publishes one message to the broker and exits, or, run with no arguments on a
+//! terminal, opens the terminal UI. The references are `docs/specs/cli.md` and
+//! `docs/specs/tui.md`; this file is only the entry point, so that what a script sees
 //! (stdout, stderr, and the exit code) is decided in one place.
 //!
 //! There is no `windows_subsystem` attribute on purpose: `hmc` is a console
@@ -27,8 +28,10 @@
 mod cli;
 mod failure;
 mod run;
+mod tui;
 
 use std::ffi::OsString;
+use std::io::IsTerminal;
 use std::process::ExitCode;
 
 use hiveme_core::i18n::{Locale, t_with};
@@ -45,9 +48,19 @@ fn main() -> ExitCode {
   // clap prints its own usage errors and exits 2, which is the code the specification
   // gives them, so a parse failure never reaches the mapping below.
   let cli = Cli::parse_in(locale, arguments);
-  init_logging(cli.verbose);
 
-  match runtime(locale).and_then(|runtime| runtime.block_on(run::run(cli, locale))) {
+  // The terminal UI logs to a file of its own, since stderr is its screen.
+  if cli.is_interactive(std::io::stdin().is_terminal()) {
+    return exit(tui::start(&cli, locale));
+  }
+
+  init_logging(cli.verbose);
+  exit(runtime(locale).and_then(|runtime| runtime.block_on(run::run(cli, locale))))
+}
+
+/// The exit code of a run, with the one line a failure writes to stderr.
+fn exit(result: failure::Result<()>) -> ExitCode {
+  match result {
     Ok(()) => ExitCode::SUCCESS,
     Err(failure) => {
       eprintln!("{}", failure.line());
@@ -56,7 +69,7 @@ fn main() -> ExitCode {
   }
 }
 
-/// The tokio runtime the MQTT client runs on.
+/// The tokio runtime a publish runs on.
 ///
 /// A single thread is enough: one publish, one acknowledgement, and the event loop that
 /// carries them. It also starts faster, which matters for something a script runs in a

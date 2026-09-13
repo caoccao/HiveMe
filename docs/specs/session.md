@@ -8,8 +8,8 @@ logic of its own between the broker and the screen.
 
 **Status: built in phase 1** of [the terminal UI plan](../plans/plan-terminal-ui.md),
 which moved what used to be `src-tauri/src/{mqtt,controller,notification,config,update,protocol}.rs`
-into this module without changing what `hmg` does. `hmg` runs on it today; the
-terminal UI of `hmc` drives it from phase 3. [gui.md](gui.md#ipc) stays the IPC
+into this module without changing what `hmg` does. `hmg` runs on it, and so does the
+terminal UI of `hmc`, since phase 3. [gui.md](gui.md#ipc) stays the IPC
 contract of `hmg` and points here for what each command does.
 
 ## Why
@@ -25,8 +25,8 @@ the `hmg` orchestration out of `hiveme-core`; a channel replaces them.
 *Phase 1.*
 
 Feature `session` of `hiveme-core`, which implies `storage` and brings `ureq`. `hmg`
-turns it on; `hmc` turns it on in phase 3, when the terminal UI first uses it, and
-links SQLite from then on.
+turns it on, and so does `hmc` for its terminal UI, which links SQLite and `ureq` into
+the one binary that also publishes.
 
 ```
 crates/hiveme-core/src/session/
@@ -303,10 +303,11 @@ One-shot `hmc` does not use the session; it keeps `Role::Cli`. The full table is
 
 | Concern | `hmg` (`src-tauri`) | `hmc` (`crates/hmc/src/tui`) |
 |---------|---------------------|------------------------------|
-| Entry | `lib.rs`: one `#[tauri::command]` per operation, alphabetized, `convert_error`, each calling one line of `controller.rs` | `mod.rs`: the event loop |
-| Events | `events.rs`: a task forwarding `SessionEvent` to `app.emit` under the names of [gui.md](gui.md#events); a lag is logged and skipped | applied to the application state |
+| Entry | `lib.rs`: one `#[tauri::command]` per operation, alphabetized, `convert_error`, each calling one line of `controller.rs` | `mod.rs`: the event loop; `service.rs`: the `Service` trait `Session` implements, so the screens can be tested against a scripted session |
+| Events | `events.rs`: a task forwarding `SessionEvent` to `app.emit` under the names of [gui.md](gui.md#events); a lag is logged and skipped | applied to the application state in the same `select!` as the keys; a lag is logged and the status read again |
 | Toaster | `notification.rs` | `notify.rs` |
 | Opening things | the opener plugin for URLs and the config file | the `open` crate |
+| Update check | `MainContent.tsx` polls `get_update_result` every second until it has an answer | the tick polls `update_result` until it has an answer |
 | Window or screen | `window.rs`: geometry in `gui.window`, the quit path, and the runtime `start_background_work` spawns onto | terminal setup and restore, the quit paths of [tui.md](tui.md#leaving-the-terminal-ui) |
 | Logging | stderr through `env_logger` | `hmc.log` beside the config, see [tui.md](tui.md#logging) |
 

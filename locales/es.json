@@ -215,7 +215,9 @@
     "notJson": "--json recibió una entrada que no es JSON: {{error}}",
     "encryptionUnavailable": "encryption.mode es {{mode}}, pero el cifrado llegará en una versión posterior de HiveMe; establézcalo en Off para publicar en texto sin cifrar",
     "configWritten": "aún no hay configuración, así que se escribió una predeterminada en {{path}}; complete el bloque broker y vuelva a ejecutar",
-    "runtimeUnavailable": "no se puede iniciar el entorno de ejecución asíncrono: {{error}}"
+    "runtimeUnavailable": "no se puede iniciar el entorno de ejecución asíncrono: {{error}}",
+    "notATerminal": "--tui necesita un terminal en el que dibujar, pero stdout no lo es",
+    "terminalUnavailable": "no se puede preparar el terminal: {{error}}"
   },
   "help": {
     "about": "HiveMe CLI: enviar un mensaje al bróker MQTT",
@@ -224,6 +226,7 @@
     "options": "Opciones",
     "message": "Cuerpo del mensaje. Se lee de stdin si se omite",
     "init": "Inicializar la configuración compartida a partir de una cadena de configuración y salir",
+    "tui": "Abrir la interfaz de terminal, aunque stdin no sea un terminal",
     "topic": "Tema relativo a hiveme; se ignoran las barras iniciales [predeterminado: hiveme]",
     "json": "Publicar MESSAGE (o stdin) como carga útil JSON sin procesar, sin el sobre",
     "title": "Título opcional del mensaje",
@@ -233,6 +236,48 @@
     "config": "Ruta del archivo de configuración",
     "verbose": "Registrar los detalles de la conexión en stderr",
     "printHelp": "Mostrar la ayuda",
-    "printVersion": "Mostrar la versión"
+    "printVersion": "Mostrar la versión",
+    "interactive": "Ejecute hmc sin argumentos en un terminal para abrir la interfaz de terminal."
+  },
+  "tui": {
+    "toolbar": {
+      "connect": "Conectar",
+      "disconnect": "Desconectar",
+      "pause": "Pausar",
+      "resume": "Reanudar",
+      "clear": "Borrar",
+      "settings": "Ajustes",
+      "about": "Acerca de",
+      "help": "Ayuda",
+      "quit": "Salir"
+    },
+    "tooSmall": "Amplíe el terminal a al menos {{columns}} × {{rows}}.",
+    "quitting": "saliendo, cerrando la sesión del bróker…",
+    "settingsLater": "Esta categoría llegará a la interfaz de terminal en una versión posterior. Hasta entonces, cámbiela en hmg o en el archivo de configuración.",
+    "help": {
+      "title": "Teclas",
+      "close": "cerrar",
+      "global": "En todas partes",
+      "notice": "Aviso de actualización",
+      "quit": "Salir y cerrar la sesión del bróker",
+      "connection": "Conectar o desconectar",
+      "pause": "Pausar o reanudar las notificaciones",
+      "clear": "Borrar el historial del tema seleccionado",
+      "settings": "Abrir la pestaña Ajustes",
+      "about": "Abrir la pestaña Acerca de",
+      "selectTab": "Seleccionar una pestaña",
+      "cycleTabs": "Pestaña anterior o siguiente",
+      "closeTab": "Cerrar la pestaña actual",
+      "help": "Mostrar u ocultar esta ayuda",
+      "escape": "Cerrar la superposición superior o volver",
+      "focus": "Mover el foco",
+      "activate": "Abrir la entrada con el foco",
+      "category": "Elegir una categoría",
+      "field": "Moverse entre los campos",
+      "password": "Mostrar u ocultar la contraseña",
+      "edit": "Ir al principio o al final, borrar antes del cursor",
+      "releases": "Abrir la página de versiones",
+      "dismiss": "Cerrar el aviso"
+    }
   }
 }

@@ -595,7 +595,8 @@ impl Rule {
   }
 }
 
-/// The settings of the user interface. `hmg` reads all of them; `hmc` reads `language`.
+/// The settings of the user interface. `hmg` reads all of them; the terminal UI of `hmc`
+/// reads all but `window`, and publish mode reads `language`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Gui {

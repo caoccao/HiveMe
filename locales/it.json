@@ -215,7 +215,9 @@
     "notJson": "--json ha ricevuto un input che non è JSON: {{error}}",
     "encryptionUnavailable": "encryption.mode è {{mode}}, ma la crittografia arriverà in una versione successiva di HiveMe; impostalo su Off per pubblicare in chiaro",
     "configWritten": "nessuna configurazione ancora, quindi ne è stata scritta una predefinita in {{path}}; compila il blocco broker ed esegui di nuovo",
-    "runtimeUnavailable": "impossibile avviare il runtime asincrono: {{error}}"
+    "runtimeUnavailable": "impossibile avviare il runtime asincrono: {{error}}",
+    "notATerminal": "--tui ha bisogno di un terminale su cui disegnare, ma stdout non lo è",
+    "terminalUnavailable": "impossibile preparare il terminale: {{error}}"
   },
   "help": {
     "about": "HiveMe CLI: invia un messaggio al broker MQTT",
@@ -224,6 +226,7 @@
     "options": "Opzioni",
     "message": "Corpo del messaggio. Letto da stdin se omesso",
     "init": "Inizializza la configurazione condivisa da una stringa di configurazione, poi esci",
+    "tui": "Apri l’interfaccia da terminale, anche se stdin non è un terminale",
     "topic": "Argomento relativo a hiveme; le barre iniziali vengono ignorate [predefinito: hiveme]",
     "json": "Pubblica MESSAGE (o stdin) come payload JSON grezzo, senza la busta",
     "title": "Titolo facoltativo del messaggio",
@@ -233,6 +236,48 @@
     "config": "Percorso del file di configurazione",
     "verbose": "Registra i dettagli della connessione su stderr",
     "printHelp": "Mostra l’aiuto",
-    "printVersion": "Mostra la versione"
+    "printVersion": "Mostra la versione",
+    "interactive": "Esegui hmc senza argomenti in un terminale per aprire l’interfaccia da terminale."
+  },
+  "tui": {
+    "toolbar": {
+      "connect": "Connetti",
+      "disconnect": "Disconnetti",
+      "pause": "Sospendi",
+      "resume": "Riprendi",
+      "clear": "Cancella",
+      "settings": "Impostazioni",
+      "about": "Informazioni",
+      "help": "Aiuto",
+      "quit": "Esci"
+    },
+    "tooSmall": "Ingrandisci il terminale ad almeno {{columns}} × {{rows}}.",
+    "quitting": "uscita in corso, chiusura della sessione del broker…",
+    "settingsLater": "Questa categoria arriverà nell’interfaccia da terminale in una versione successiva. Fino ad allora, modificala in hmg o nel file di configurazione.",
+    "help": {
+      "title": "Tasti",
+      "close": "chiudi",
+      "global": "Ovunque",
+      "notice": "Avviso di aggiornamento",
+      "quit": "Esci e chiudi la sessione del broker",
+      "connection": "Connetti o disconnetti",
+      "pause": "Sospendi o riprendi le notifiche",
+      "clear": "Cancella la cronologia dell’argomento selezionato",
+      "settings": "Apri la scheda Impostazioni",
+      "about": "Apri la scheda Informazioni",
+      "selectTab": "Seleziona una scheda",
+      "cycleTabs": "Scheda precedente o successiva",
+      "closeTab": "Chiudi la scheda corrente",
+      "help": "Mostra o nascondi questo aiuto",
+      "escape": "Chiudi il livello in primo piano, o torna indietro",
+      "focus": "Sposta il focus",
+      "activate": "Apri la voce con il focus",
+      "category": "Scegli una categoria",
+      "field": "Spostati tra i campi",
+      "password": "Mostra o nascondi la password",
+      "edit": "Vai all’inizio o alla fine, cancella prima del cursore",
+      "releases": "Apri la pagina delle versioni",
+      "dismiss": "Chiudi l’avviso"
+    }
   }
 }

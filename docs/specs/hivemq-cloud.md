@@ -84,7 +84,7 @@ suffix, because a broker disconnects the older of two connections that share an
 identifier and `hmc` runs overlap with each other and with a running `hmg`.
 
 `Role::Tui` was added in phase 1 of [the terminal UI plan](../plans/plan-terminal-ui.md)
-and is used by the terminal UI of [tui.md](tui.md) from phase 3. It keeps the random
+and is used by the terminal UI of [tui.md](tui.md). It keeps the random
 suffix so that several interactive `hmc` processes on one device do not collide, and
 takes everything else from the GUI role. Because the identifier is new on every run,
 it starts clean: there is never an earlier session of its own to resume.
@@ -180,7 +180,7 @@ five seconds or `broker.connectTimeoutSecs`, whichever is shorter. A timeout sto
 reconnection and fails pending requests instead of leaving background work running.
 The CLI uses a zero-expiry session, so this also releases its session.
 
-The GUI, and interactive `hmc` from phase 3 of the terminal UI plan, uses
+The GUI, and interactive `hmc`, use
 `end_session`, through the shared session, on quit, explicit disconnect, and
 connection replacement. Quit means every way the application ends that it can act
 on: closing the `hmg` window, and for the terminal UI the Quit tool, its keys,

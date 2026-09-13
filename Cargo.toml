@@ -23,12 +23,20 @@ anyhow = "1.0.102"
 assert_cmd = "2.2"
 chrono = "0.4.45"
 clap = { version = "4.6", features = ["derive"] }
+# The terminal backend of the hmc terminal UI; `event-stream` lets its key events be
+# awaited beside the session events.
+crossterm = { version = "0.29", features = ["event-stream"] }
 directories = "6.0"
 env_logger = "0.11"
+futures-core = "0.3"
 hostname = "0.4"
 jsonschema = "0.56"
 log = "0.4"
+# Linux and macOS only: the OS notifications of the hmc terminal UI.
+notify-rust = "4.18"
+open = "5.4"
 predicates = "3.1"
+ratatui = "0.30"
 rumqttc = { version = "0.25", features = ["use-rustls"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 rustls-native-certs = "0.8"
@@ -52,6 +60,8 @@ tempfile = "3.27"
 testcontainers = { version = "0.28", default-features = false, features = ["aws-lc-rs"] }
 thiserror = "2.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+# Display widths, so that CJK labels are cut by the cells they take.
+unicode-width = "0.2"
 ureq = { version = "2", features = ["json"] }
 uuid = { version = "1.26", features = ["v7", "serde"] }
 # Windows only: puts the icon and the version information inside hmc.exe.

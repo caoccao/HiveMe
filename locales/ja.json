@@ -207,7 +207,9 @@
     "notJson": "--json に JSON ではない入力が渡されました: {{error}}",
     "encryptionUnavailable": "encryption.mode は {{mode}} ですが、暗号化は HiveMe の今後のバージョンで対応予定です。平文で送信するには Off に設定してください",
     "configWritten": "設定がまだないため、既定の設定を {{path}} に書き込みました。broker ブロックを入力してから再実行してください",
-    "runtimeUnavailable": "非同期ランタイムを開始できません: {{error}}"
+    "runtimeUnavailable": "非同期ランタイムを開始できません: {{error}}",
+    "notATerminal": "--tui には描画先のターミナルが必要ですが、stdout はターミナルではありません",
+    "terminalUnavailable": "ターミナルを準備できません: {{error}}"
   },
   "help": {
     "about": "HiveMe CLI: MQTT ブローカーにメッセージを送信",
@@ -216,6 +218,7 @@
     "options": "オプション",
     "message": "メッセージ本文。省略すると stdin から読み込みます",
     "init": "設定文字列から共有設定を初期化して終了します",
+    "tui": "stdin がターミナルでなくてもターミナル UI を開きます",
     "topic": "hiveme からの相対トピック。先頭のスラッシュは無視されます [既定: hiveme]",
     "json": "MESSAGE（または stdin）をエンベロープなしの生の JSON ペイロードとして送信します",
     "title": "メッセージの任意のタイトル",
@@ -225,6 +228,48 @@
     "config": "設定ファイルのパス",
     "verbose": "接続の詳細を stderr に記録します",
     "printHelp": "ヘルプを表示",
-    "printVersion": "バージョンを表示"
+    "printVersion": "バージョンを表示",
+    "interactive": "ターミナルで hmc を引数なしで実行すると、ターミナル UI が開きます。"
+  },
+  "tui": {
+    "toolbar": {
+      "connect": "接続",
+      "disconnect": "切断",
+      "pause": "一時停止",
+      "resume": "再開",
+      "clear": "削除",
+      "settings": "設定",
+      "about": "情報",
+      "help": "ヘルプ",
+      "quit": "終了"
+    },
+    "tooSmall": "ターミナルを {{columns}} × {{rows}} 以上に広げてください。",
+    "quitting": "終了しています。ブローカーのセッションを閉じています…",
+    "settingsLater": "このカテゴリは今後のバージョンでターミナル UI に追加されます。それまでは hmg または設定ファイルで変更してください。",
+    "help": {
+      "title": "キー",
+      "close": "閉じる",
+      "global": "どこでも",
+      "notice": "アップデートのお知らせ",
+      "quit": "終了してブローカーのセッションを閉じる",
+      "connection": "接続または切断",
+      "pause": "通知を一時停止または再開",
+      "clear": "選択したトピックの履歴を削除",
+      "settings": "設定タブを開く",
+      "about": "このアプリについてタブを開く",
+      "selectTab": "タブを選択",
+      "cycleTabs": "前または次のタブ",
+      "closeTab": "現在のタブを閉じる",
+      "help": "このヘルプの表示を切り替え",
+      "escape": "一番上のオーバーレイを閉じる、または戻る",
+      "focus": "フォーカスを移動",
+      "activate": "フォーカスのある項目を開く",
+      "category": "カテゴリを選択",
+      "field": "フィールド間を移動",
+      "password": "パスワードの表示を切り替え",
+      "edit": "先頭または末尾へ移動、カーソルより前を削除",
+      "releases": "リリースページを開く",
+      "dismiss": "お知らせを閉じる"
+    }
   }
 }

@@ -212,9 +212,15 @@ More detail lives in [specs/hivemq-cloud.md](specs/hivemq-cloud.md) and
   is added to all nine files at once. Both `pnpm test` and
   `cargo test -p hiveme-core --lib i18n` fail on a key that a locale lacks or whose
   placeholders differ from English.
-* One-shot `hmc` does not link SQLite. From phase 3 of the
-  [terminal UI plan](plans/plan-terminal-ui.md) `hmc` turns the `session` feature on
-  for its terminal UI and links SQLite and `ureq` from then on.
+* `hmc` turns the `session` feature on for its terminal UI and links SQLite, `ureq`,
+  and ratatui. Publishing never opens the database; only the terminal UI does.
+* Run the terminal UI with `cargo run -p hmc` in a terminal, or
+  `cargo run -p hmc -- --tui --config ./scratch/HiveMe.json` to keep it off your real
+  config. It writes nothing to stderr while it is up; add `-v` or set `RUST_LOG` and
+  follow `hmc.log` beside the config file from another terminal. `Ctrl+Q` leaves it.
+* The terminal UI's screens are tested in process: `cargo test -p hmc --bin hmc tui`
+  renders them on ratatui's `TestBackend` against a scripted session, see
+  `crates/hmc/src/tui/tests.rs`.
 
 ## Config file location
 

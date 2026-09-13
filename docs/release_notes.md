@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+* `hmc` run with no arguments in a terminal opens a terminal UI, and `hmc --tui` opens
+  it on purpose. It connects to the cluster of the shared config, raises the same OS
+  notifications as `hmg`, and has the toolbar (connect, pause notifications, clear the
+  topic, Settings, About, help, and quit), the tabs, the status bar, the update notice,
+  and a key help on `?`. A fresh install opens on the broker URL, username, and password
+  so the cluster can be entered without leaving the terminal. `Ctrl+Q`, `Ctrl+C`, the
+  Quit tool, and closing the terminal all end the broker session before `hmc` exits.
+  The messages view and the rest of Settings follow in later versions. `echo hi | hmc`
+  and every publish option work as before.
+
 * `hmc` speaks the language of the config in all nine languages: `--help`, the publish
   confirmation, the `--init` outcomes, and its own usage errors follow `gui.language`.
   The `hmc: <category>:` prefix and the exit codes are unchanged, so scripts keep

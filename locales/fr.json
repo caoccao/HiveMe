@@ -215,7 +215,9 @@
     "notJson": "--json a reçu une entrée qui n’est pas du JSON : {{error}}",
     "encryptionUnavailable": "encryption.mode vaut {{mode}}, mais le chiffrement arrive dans une version ultérieure de HiveMe ; réglez-le sur Off pour publier en clair",
     "configWritten": "pas encore de configuration, une configuration par défaut a donc été écrite dans {{path}} ; renseignez le bloc broker et relancez",
-    "runtimeUnavailable": "impossible de démarrer l’environnement d’exécution asynchrone : {{error}}"
+    "runtimeUnavailable": "impossible de démarrer l’environnement d’exécution asynchrone : {{error}}",
+    "notATerminal": "--tui a besoin d’un terminal où dessiner, mais stdout n’en est pas un",
+    "terminalUnavailable": "impossible de préparer le terminal : {{error}}"
   },
   "help": {
     "about": "HiveMe CLI : envoyer un message au courtier MQTT",
@@ -224,6 +226,7 @@
     "options": "Options",
     "message": "Corps du message. Lu depuis stdin s’il est omis",
     "init": "Initialiser la configuration partagée à partir d’une chaîne de configuration, puis quitter",
+    "tui": "Ouvrir l’interface terminal, même si stdin n’est pas un terminal",
     "topic": "Sujet relatif à hiveme ; les barres obliques initiales sont ignorées [par défaut : hiveme]",
     "json": "Publier MESSAGE (ou stdin) comme charge utile JSON brute, sans l’enveloppe",
     "title": "Titre facultatif du message",
@@ -233,6 +236,48 @@
     "config": "Chemin du fichier de configuration",
     "verbose": "Journaliser les détails de la connexion sur stderr",
     "printHelp": "Afficher l’aide",
-    "printVersion": "Afficher la version"
+    "printVersion": "Afficher la version",
+    "interactive": "Lancez hmc sans argument dans un terminal pour ouvrir l’interface terminal."
+  },
+  "tui": {
+    "toolbar": {
+      "connect": "Connecter",
+      "disconnect": "Déconnecter",
+      "pause": "Suspendre",
+      "resume": "Reprendre",
+      "clear": "Effacer",
+      "settings": "Paramètres",
+      "about": "À propos",
+      "help": "Aide",
+      "quit": "Quitter"
+    },
+    "tooSmall": "Agrandissez le terminal à au moins {{columns}} × {{rows}}.",
+    "quitting": "fermeture, fin de la session du courtier…",
+    "settingsLater": "Cette catégorie arrivera dans l’interface terminal dans une version ultérieure. D’ici là, modifiez-la dans hmg ou dans le fichier de configuration.",
+    "help": {
+      "title": "Touches",
+      "close": "fermer",
+      "global": "Partout",
+      "notice": "Avis de mise à jour",
+      "quit": "Quitter et terminer la session du courtier",
+      "connection": "Se connecter ou se déconnecter",
+      "pause": "Suspendre ou reprendre les notifications",
+      "clear": "Effacer l’historique du sujet sélectionné",
+      "settings": "Ouvrir l’onglet Paramètres",
+      "about": "Ouvrir l’onglet À propos",
+      "selectTab": "Choisir un onglet",
+      "cycleTabs": "Onglet précédent ou suivant",
+      "closeTab": "Fermer l’onglet actuel",
+      "help": "Afficher ou masquer cette aide",
+      "escape": "Fermer la superposition du dessus, ou revenir",
+      "focus": "Déplacer le focus",
+      "activate": "Ouvrir l’entrée qui a le focus",
+      "category": "Choisir une catégorie",
+      "field": "Passer d’un champ à l’autre",
+      "password": "Afficher ou masquer le mot de passe",
+      "edit": "Aller au début ou à la fin, effacer avant le curseur",
+      "releases": "Ouvrir la page des versions",
+      "dismiss": "Fermer l’avis"
+    }
   }
 }

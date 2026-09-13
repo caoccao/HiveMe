@@ -39,9 +39,10 @@ use crate::failure::{Failure, Result};
 const LEVELS: [&str; 5] = ["debug", "info", "success", "warn", "error"];
 
 /// Each argument of [`Cli`] and the `help.*` key that describes it.
-const ARGUMENT_HELP: [(&str, &str); 10] = [
+const ARGUMENT_HELP: [(&str, &str); 11] = [
   ("message", "help.message"),
   ("init", "help.init"),
+  ("tui", "help.tui"),
   ("topic", "help.topic"),
   ("json", "help.json"),
   ("title", "help.title"),
@@ -54,7 +55,13 @@ const ARGUMENT_HELP: [(&str, &str); 10] = [
 
 /// Send a message to the MQTT broker.
 #[derive(Debug, Parser)]
-#[command(name = "hmc", version, about, long_about = None)]
+#[command(
+  name = "hmc",
+  version,
+  about,
+  long_about = None,
+  after_help = "Run hmc with no arguments on a terminal to open the terminal UI."
+)]
 pub struct Cli {
   /// Message body. Read from stdin when omitted.
   pub message: Option<String>,
@@ -62,6 +69,10 @@ pub struct Cli {
   /// Initialize the shared config from a setup string, then exit
   #[arg(long, value_name = "JSON", conflicts_with_all = ["message", "topic", "json", "title", "level", "qos", "retain"])]
   pub init: Option<String>,
+
+  /// Open the terminal UI, even when stdin is not a terminal
+  #[arg(long, conflicts_with_all = ["message", "init", "topic", "json", "title", "level", "qos", "retain"])]
+  pub tui: bool,
 
   /// Topic relative to hiveme; leading slashes are ignored [default: hiveme]
   #[arg(short = 't', long, value_name = "TOPIC")]
@@ -104,6 +115,24 @@ pub struct Body {
 }
 
 impl Cli {
+  /// Whether this run opens the terminal UI rather than publishing.
+  ///
+  /// `--tui` always does. Otherwise the command line has to be empty of everything a
+  /// publish or an init reads, and stdin a terminal: a body piped in is still published,
+  /// so `echo hi | hmc` keeps working. `--config` and `--verbose` apply to both modes.
+  pub fn is_interactive(&self, stdin_is_terminal: bool) -> bool {
+    self.tui
+      || (stdin_is_terminal
+        && self.message.is_none()
+        && self.init.is_none()
+        && self.topic.is_none()
+        && !self.json
+        && self.title.is_none()
+        && self.level.is_none()
+        && self.qos.is_none()
+        && !self.retain)
+  }
+
   /// Parses the command line, printing help, the version, or a usage error in
   /// `locale` and exiting when that is what it holds.
   pub fn parse_in(locale: Locale, arguments: impl IntoIterator<Item = OsString>) -> Self {
@@ -168,6 +197,7 @@ pub fn command(locale: Locale) -> Command {
   );
   command = command
     .about(t(locale, "help.about"))
+    .after_help(t(locale, "help.interactive"))
     .help_template(template)
     .disable_help_flag(true)
     .disable_version_flag(true);
@@ -322,6 +352,11 @@ mod tests {
     for locale in Locale::ALL {
       let help = rendered_help(locale);
       assert!(help.starts_with(&t(locale, "help.about")), "{locale}:\n{help}");
+      assert!(
+        help.trim_end().ends_with(&t(locale, "help.interactive")),
+        "{locale}:
+{help}"
+      );
       for key in ["help.usage", "help.arguments", "help.options"] {
         let heading = format!("{}:", t(locale, key));
         assert!(help.contains(&heading), "{locale} has no {heading}:\n{help}");
@@ -345,6 +380,7 @@ mod tests {
       let help = rendered_help(locale);
       for flag in [
         "--init",
+        "--tui",
         "--topic",
         "--json",
         "--title",
@@ -532,6 +568,53 @@ mod tests {
         clap::error::ErrorKind::ArgumentConflict,
         "{conflicting:?} should conflict"
       );
+    }
+  }
+
+  #[test]
+  fn tui_is_a_mode_of_its_own_and_refuses_what_it_would_ignore() {
+    for conflicting in [
+      vec!["hmc", "--tui", "hello"],
+      vec!["hmc", "--tui", "--init", "{}"],
+      vec!["hmc", "--tui", "-t", "error"],
+      vec!["hmc", "--tui", "--json"],
+      vec!["hmc", "--tui", "--title", "CI"],
+      vec!["hmc", "--tui", "-l", "warn"],
+      vec!["hmc", "--tui", "-q", "1"],
+      vec!["hmc", "--tui", "-r"],
+    ] {
+      let error = parse(&conflicting).unwrap_err();
+      assert_eq!(
+        error.kind(),
+        clap::error::ErrorKind::ArgumentConflict,
+        "{conflicting:?} should conflict"
+      );
+    }
+    let cli = Cli::parse_from(["hmc", "--tui", "-c", "x.json", "-v"]);
+    assert!(cli.tui && cli.verbose);
+    assert_eq!(cli.config.as_deref(), Some(std::path::Path::new("x.json")));
+  }
+
+  #[test]
+  fn the_terminal_ui_opens_only_for_an_empty_command_line_on_a_terminal() {
+    assert!(Cli::parse_from(["hmc"]).is_interactive(true));
+    assert!(Cli::parse_from(["hmc", "-c", "x.json", "-v"]).is_interactive(true));
+    assert!(
+      !Cli::parse_from(["hmc"]).is_interactive(false),
+      "a piped body is published"
+    );
+    assert!(Cli::parse_from(["hmc", "--tui"]).is_interactive(false));
+    for publishing in [
+      vec!["hmc", "hello"],
+      vec!["hmc", "--init", "{}"],
+      vec!["hmc", "-t", "ci"],
+      vec!["hmc", "--json"],
+      vec!["hmc", "--title", "CI"],
+      vec!["hmc", "-l", "warn"],
+      vec!["hmc", "-q", "1"],
+      vec!["hmc", "-r"],
+    ] {
+      assert!(!Cli::parse_from(&publishing).is_interactive(true), "{publishing:?}");
     }
   }
 

@@ -6,11 +6,12 @@ snackbar, OS notifications, and the update notice, rendered with
 [ratatui](https://ratatui.rs/) in the terminal, in all nine languages, on the same
 backend `hmg` uses. The one-shot publish mode of [cli.md](cli.md) is unchanged.
 
-**Status: the languages are built; the terminal UI is specified, not built.**
-[The terminal UI plan](../plans/plan-terminal-ui.md) builds it phase by phase. Every section below names the phase that builds it, and the
-status table in [app.md](app.md#status) records what has landed. Until a section's
-phase is done, this document describes intent rather than code, the way
-[message.md](message.md#encryption) describes encryption.
+**Status: the languages and the shell are built; the Messages tab, Settings, and
+About are specified.** [The terminal UI plan](../plans/plan-terminal-ui.md) builds it
+phase by phase. Every section below names the phase that builds it, and the status
+table in [app.md](app.md#status) records what has landed. Phases 1 to 3 are done; until
+a later section's phase is done, that section describes intent rather than code, the
+way [message.md](message.md#encryption) describes encryption.
 
 The behaviors are those of [gui.md](gui.md), rendered in cells. Where the terminal
 cannot do what the GUI does, this document says what replaces it. The shared backend
@@ -26,7 +27,7 @@ behind both applications is specified in [session.md](session.md).
   and init option, so an option that would be ignored is refused instead, as `--init`
   already is. `--config` and `--verbose` still apply.
 - `--tui` on a stdout that is not a terminal is a usage error, exit 2, because there is
-  nothing to draw on.
+  nothing to draw on. So is the trigger above with stdout redirected.
 - The rules are in [cli.md](cli.md#interactive-mode); this document is what the mode
   does once it is open.
 
@@ -40,10 +41,11 @@ applications.
 
 | File | What it is |
 |------|------------|
-| `crates/hmc/src/main.rs` | Chooses the mode, the runtime, and installs the panic hook that restores the terminal |
+| `crates/hmc/src/main.rs` | Chooses the mode: `Cli::is_interactive` sends the run to the terminal UI, anything else publishes |
 | `crates/hmc/src/cli.rs` | clap, `--tui`, the translated help |
-| `crates/hmc/src/tui/mod.rs` | `run()`: terminal setup, the event loop, shutdown |
+| `crates/hmc/src/tui/mod.rs` | `start()`: the multi-thread runtime, the log file, terminal setup and the panic hook that restores it, the signals, the event loop, and the quit path |
 | `crates/hmc/src/tui/app.rs` | The application state, the Rust twin of `src/lib/store.tsx`, plus focus, tabs, drafts, and overlays |
+| `crates/hmc/src/tui/service.rs` | The `Service` trait: the session operations the terminal UI uses, which `Session` implements and the tests script |
 | `crates/hmc/src/tui/keys.rs` | The key map and the keyboard enhancement flags |
 | `crates/hmc/src/tui/theme.rs` | The twenty palettes, the display modes, the severity colors |
 | `crates/hmc/src/tui/layout.rs` | The rows: toolbar, update notice, tabs, content, footer |
@@ -53,25 +55,26 @@ applications.
 | `crates/hmc/src/tui/snackbar.rs` | The transient overlay for errors and confirmations |
 | `crates/hmc/src/tui/help.rs` | The key binding overlay |
 | `crates/hmc/src/tui/update_notice.rs` | The line above the tabs when a newer release exists |
-| `crates/hmc/src/tui/messages/mod.rs` | Tab 0: the split pane and its divider |
+| `crates/hmc/src/tui/messages/mod.rs` | Tab 0: the split pane and its divider. Phase 3 draws the selected topic and `messages.empty` or `messages.selectTopic` |
 | `crates/hmc/src/tui/messages/topic_tree.rs` | The topic hierarchy and its filter |
 | `crates/hmc/src/tui/messages/message_view.rs` | The chat view, its bubbles, the virtual rows |
 | `crates/hmc/src/tui/messages/json_tree.rs` | The collapsible tree used by `data` and raw JSON |
 | `crates/hmc/src/tui/messages/detail.rs` | Per-node navigation of one message's trees |
 | `crates/hmc/src/tui/messages/composer.rs` | The input, the send action, the collapsible options |
 | `crates/hmc/src/tui/settings/mod.rs` | The Settings tab: category strip and panel |
-| `crates/hmc/src/tui/settings/{appearance,broker,topics,notifications,history,update,advanced}.rs` | One panel per category |
-| `crates/hmc/src/tui/about.rs` | The About tab |
-| `crates/hmc/src/tui/widgets/` | Text input, multi-line editor, select popup, checkbox, radio row, number field, editable table |
-| `crates/hmc/src/tui/clipboard.rs` | `arboard`, then the OSC 52 escape sequence |
+| `crates/hmc/src/tui/settings/{appearance,broker,topics,notifications,history,update,advanced}.rs` | One panel per category. Phase 3 has `broker.rs` with the URL, username, and password |
+| `crates/hmc/src/tui/about.rs` | The About tab. Phase 3 draws it as text |
+| `crates/hmc/src/tui/widgets/` | Text input, multi-line editor, select popup, checkbox, radio row, number field, editable table. Phase 3 has the text input and `truncate` |
+| `crates/hmc/src/tui/clipboard.rs` | `arboard`, then the OSC 52 escape sequence. Phase 4, with the copy actions that use it |
 | `crates/hmc/src/tui/notify.rs` | The `Toaster` of [session.md](session.md#notifications): `notify-rust`, or the Windows toast crate |
 | `crates/hmc/src/tui/open.rs` | Opens URLs and the config directory |
 | `crates/hiveme-core/src/i18n/` | Locale resolution, the catalogs, plural rules, formatting; see [Languages](#languages). Built in phase 2 |
 | `locales/*.json` | The nine catalogs, shared with the frontend |
 
 Third party ratatui widgets (`tui-textarea`, `tui-tree-widget`) are used only if they
-support the ratatui release in use when phase 3 starts; otherwise `widgets/` holds
-in-house ones. The choice is recorded in the deviations of [app.md](app.md).
+support the ratatui release in use. When phase 3 started, `tui-textarea` 0.7 still
+depended on ratatui 0.29, so `widgets/` holds in-house controls; the choice is recorded
+in the deviations of [app.md](app.md).
 
 ## Layout
 
@@ -81,9 +84,9 @@ Rows, top to bottom: the toolbar (3), the update notice (0 or 1), the tabs (1), 
 content (the rest), the footer (1).
 
 ```
-┌ HiveMe v0.1.0 ──────────────────────────────────────────────────────────────┐
-│ [F2 Connect] [F3 Pause] [F4 Clear] [F10 Settings] [F1 About] [? Help] [^Q Quit]│
-└──────────────────────────────────────────────────────────────────────────────┘
+ HiveMe v0.1.0 ─────────────────────────────────────────────────────────────────
+ [F2 Connect] [F3 Pause] [F4 Clear] [F10 Settings] [F1 About] [? Help] [^Q Quit]
+────────────────────────────────────────────────────────────────────────────────
  Messages │ Settings ✕ │ About ✕
 ┌ Filter topics ──────────┐┌ hiveme ────────────────────────────────────────────┐
 │ >                       ││  sams-macbook                                       │
@@ -110,16 +113,28 @@ content (the rest), the footer (1).
   `tui.tooSmall`, the way `hmg` enforces its 600 x 450 minimum.
 - The Messages tab stays mounted while another tab is shown, so its scroll position,
   focus, and drafts survive a switch.
+- Until phase 4 the Messages tab is one rounded block titled with the selected topic,
+  `hiveme` at startup, holding `messages.empty` while that subtree has no stored rows
+  and `messages.selectTopic` when nothing is selected.
 
 ### Toolbar
 
 *Phase 3.*
 
-A bordered block exactly three rows high: the top border, the row of tools, the bottom
-border. Its title is `HiveMe v<version>`, which is the window title of `hmg`. Each
-tool is a labeled button that shows its key, and the active one is drawn in the
-primary color, as the GUI's `activeButtonSx` does: while connected, while paused, and
-while the corresponding tab is open. Help and Quit sit at the right end.
+A block exactly three rows high: a rule above, the row of tools, a rule below. It has
+no side borders, which is what lets the English labels fit an 80 column terminal. Its
+title, on the rule above, is `HiveMe v<version>`, the window title of `hmg`. Each tool
+is a labeled button, `[<key> <label>]`, and the active one is drawn bold in the
+primary color, as the GUI's `activeButtonSx` does: while connecting, connected, or
+reconnecting, while paused, and while the corresponding tab is open. Clear is dimmed
+while no topic is selected. Help and Quit sit at the right end, and a click on a
+button does what its key does.
+
+The labels are the `tui.toolbar.*` keys, short words rather than the GUI's tooltips.
+When a language's labels do not fit the width, the longest label is cut first and ends
+in an ellipsis, one cell at a time, down to the key alone, so every tool stays on
+screen with its key. At exactly 80 columns the English Disconnect label is cut; at 120
+columns every language fits.
 
 | Tool | Key | Behavior |
 |------|-----|----------|
@@ -136,10 +151,13 @@ while the corresponding tab is open. Help and Quit sit at the right end.
 *Phase 3.*
 
 Tab 0, Messages, is fixed. Settings and About open as closable tabs, in the order they
-were opened, each with a `✕`. `Alt+1`..`Alt+9` select a tab, `Ctrl+W` closes the
-current closable tab, `Alt+Left` and `Alt+Right` cycle. `Ctrl+1`..`Ctrl+9`,
-`Ctrl+Tab`, and `Ctrl+Shift+Tab` are also accepted when the terminal reports them,
-which needs the keyboard protocol of [Terminal requirements](#terminal-requirements).
+were opened, each with a `✕`; opening one that is open selects it. `Alt+1`..`Alt+9`
+select a tab, `Ctrl+W` closes the current closable tab, `Alt+Left` and `Alt+Right`
+cycle and wrap. `Ctrl+1`..`Ctrl+9`, `Ctrl+Tab`, and `Ctrl+Shift+Tab` are also accepted
+when the terminal reports them, which needs the keyboard protocol of
+[Terminal requirements](#terminal-requirements). The tabs are separated by `│`, the
+selected one is bold in the primary color, a click on a label selects it, and a click
+on its `✕` closes it. Closing a tab selects the one that took its place.
 
 ### Topic tree
 
@@ -231,6 +249,19 @@ which needs the keyboard protocol of [Terminal requirements](#terminal-requireme
 
 *Phase 5, except the Broker fields a first run needs, which phase 3 provides.*
 
+What phase 3 builds: the category list, in a rounded block beside the panel, with
+`Up` and `Down` and clicks; and the Broker panel with three text fields, URL, Username,
+and Password, each a rounded block titled with its label, the password shown as `*`
+until `Ctrl+H`, the `Ctrl+H` hint, and the TLS note. `Tab` or `Enter` on the list
+enters the Broker fields; `Tab`, `Down`, and `Enter` move to the next field and `Up`
+and `Shift+Tab` to the previous one, back to the list from the first; `Esc` returns
+to the list. The URL is saved trimmed and as typed, since a URL without a scheme is
+TLS MQTT to the core; the username and password are saved as typed. Edits are saved
+500 ms after the last one, one write at a time, and `Enter` on the password field saves
+at once. The other six categories show `tui.settingsLater` until phase 5.
+
+What phase 5 builds:
+
 - A vertical category list on the left (Appearance, Broker, Topics, Notifications,
   History, Update, Advanced) and a panel on the right, 96 columns at most, centered.
   Appearance opens first. `Up` and `Down` on the list change the category, `Tab`
@@ -267,6 +298,10 @@ letters, the version chip, the tagline, the Author and GitHub cards that open th
 on `Enter` or click, the table of device, config file, history database, and license,
 and the copyright line. There is no icon image.
 
+Phase 3 draws the same content as text in one rounded block: `HiveMe` bold in amber
+beside the version, the tagline, a table of the author, the repository, the device,
+the config file, the history database, and the license, and the copyright line.
+
 ### Footer
 
 *Phase 3.*
@@ -278,6 +313,13 @@ subscription count, the messages received this session, the database size, the
 open the snackbar with the detail on `Enter` or click. The state words come from
 `footer.state.<state>` as in the GUI.
 
+The state is drawn as `● <state>`, green while connected, orange while connecting or
+reconnecting, and muted otherwise. The error entries sit at the right edge, underlined
+in the error color. Until the tree and the chat view take the focus in phase 4, `Tab`
+and `Shift+Tab` in the Messages tab move the focus through them, drawn reversed, and
+`Enter` opens the focused one. While the quit path waits for the broker, `tui.quitting`
+comes first.
+
 ### Snackbar
 
 *Phase 3.*
@@ -286,6 +328,12 @@ A top-center overlay one row high, info or error colored, shown for four seconds
 until a key is pressed, one at a time. It is driven by the same `notifyInfo` and
 `notifyError` calls the GUI store has: command errors, copy confirmations, save
 failures. It is in-app feedback and unrelated to OS notifications.
+
+It is drawn on the top row, over the toolbar's title, white on the error color, at most
+80 percent of the width, with a detail of several lines folded onto one. The key that
+dismisses it still does its work, except `Esc`, which only dismisses it, and a click on
+it dismisses it too. Phase 3 reports only failures; the info color arrives with the
+copy confirmations of phase 4.
 
 ### Update notice
 
@@ -296,12 +344,23 @@ found a newer release. `o` opens the releases page, `s` toggles Skip this versio
 or a click closes it and applies the skip through the session, which writes
 `update.ignoreVersion` as `hmg` does.
 
+The line reads `HiveMe vX is available. (o)` in the primary color on the left and
+`[ ] Skip this version (s)  ✕ (x)` on the right, and a click on each part does what its
+key does. The letters are keys only while no text field has the focus. The session's
+answer is read on the tick until there is one, once, as the GUI polls for it.
+
 ### Help overlay
 
 *Phase 3.*
 
 A centered popup listing the key map below for the current scope. `Esc` or any
 listed key closes it.
+
+It lists the keys that work everywhere, then those of the open tab, then those of the
+update notice while it is shown. The key names are written as keyboards print them in
+every language; what they do comes from `tui.help.*`. `?`, `Ctrl+/`, and `Esc` only
+close it, a key that does something else closes it and does it, and a click anywhere
+closes it.
 
 ## Keys and mouse
 
@@ -330,7 +389,17 @@ GUI's bindings are accepted in addition where the terminal reports them.
 
 Every text field takes the usual editing keys (`Left`, `Right`, `Home`, `End`,
 `Backspace`, `Delete`, `Ctrl+U`, `Ctrl+A`, `Ctrl+E`), and a paste arrives through
-bracketed paste when the terminal supports it.
+bracketed paste when the terminal supports it; a paste into a one-line field drops its
+line breaks.
+
+- A key acts when it is pressed or repeats, never when it is released, which Windows
+  reports as well.
+- Without the keyboard protocol a terminal sends `Ctrl+/` as the byte crossterm reads
+  as `Ctrl+7`, so `Ctrl+7` opens the help there; under the protocol it selects tab 7.
+- `Up` and `Down` move between the fields of a form, and `Ctrl+H` toggles the password
+  from any Settings field.
+- `Ctrl+Left`, `Ctrl+Right`, the wheel, and dragging arrive with the split pane in
+  phase 4.
 
 ## Theme
 
@@ -352,11 +421,15 @@ the Appearance settings mean the same thing in both.
   design never relies on a fill or a tint alone to convey a meaning: the badge text
   carries the level.
 - Text is never transformed. Labels read as they are written in the catalogs.
+- The glyphs `✕`, `●`, `✓`, `…`, and `│` fall back to `x`, `*`, `x`, `...`, and `|` on
+  the Linux console (`TERM=linux`) and on a Windows console that is not Windows
+  Terminal (no `WT_SESSION`), whose fonts lack them. The choice is made once for the
+  whole screen.
 
 ## Languages
 
-*Phase 2 for the catalogs and the publish and init lines, which are built; phase 3 for
-the terminal UI.*
+*Phase 2 for the catalogs and the publish and init lines; phase 3 for the terminal
+UI.*
 
 `hmc` ships the same nine languages as `hmg`: German (`de`), US English (`en-US`),
 Spanish (`es`), French (`fr`), Italian (`it`), Japanese (`ja`), Simplified Chinese
@@ -438,8 +511,9 @@ table is in [hivemq-cloud.md](hivemq-cloud.md#role).
 
 1. Resolve the config path (`--config`, `HIVEME_CONFIG`, then the per-OS location of
    [config.md](config.md#location-and-precedence)). Load it, or write the default one
-   with a fresh `device.id` and `en-US` when there is none; a fresh file opens the
-   terminal UI on the Settings tab's Broker category and stays disconnected until a
+   with a fresh `device.id` and `en-US` when there is none; a fresh file, one that did
+   not exist before the terminal UI started, opens the terminal UI on the Settings
+   tab's Broker category with the URL field focused and stays disconnected until a
    broker is entered, as `hmg` behaves on a fresh install. A file that cannot be read is
    reported in the footer as `config error`, the terminal UI runs on defaults, and
    nothing is written until a setting is saved.
@@ -499,9 +573,10 @@ The quit path:
 *Phase 3.*
 
 stderr is the screen while the terminal UI is up, so nothing is written to it. With
-`--verbose` or `RUST_LOG` set, `log` output goes to `hmc.log` beside the config file,
-at debug or the requested level. Without either, nothing is logged. Publish mode keeps
-the stderr logging of [cli.md](cli.md#output).
+`--verbose` or `RUST_LOG` set, `log` output is appended to `hmc.log` beside the config
+file, at debug or the requested level, with timestamps. Without either, nothing is
+logged. A log file that cannot be opened means no logging rather than a failure.
+Publish mode keeps the stderr logging of [cli.md](cli.md#output).
 
 ## Terminal requirements
 
@@ -512,10 +587,14 @@ the stderr logging of [cli.md](cli.md#output).
   Windows. On Windows `hmc.exe` stays a console application, virtual terminal
   processing is enabled, Windows Terminal renders truecolor, and the legacy console
   degrades to the nearest ANSI color.
-- The kitty keyboard protocol is requested with `PushKeyboardEnhancementFlags` and
-  ignored where the terminal does not support it. It is what makes `Ctrl+1`..`Ctrl+9`,
-  `Ctrl+Tab`, and `Shift+Enter` arrive; without it the `Alt` and `F` key bindings
-  apply.
+- The kitty keyboard protocol is requested with `PushKeyboardEnhancementFlags`
+  (`DISAMBIGUATE_ESCAPE_CODES`) only where crossterm reports that the terminal supports
+  it, and popped on the way out. It is what makes `Ctrl+1`..`Ctrl+9`, `Ctrl+Tab`, and
+  `Shift+Enter` arrive; without it the `Alt` and `F` key bindings apply. On Windows
+  crossterm reads the console API, which reports those chords without the protocol, so
+  nothing is requested there.
+- Mouse capture and bracketed paste are enabled with the alternate screen and disabled
+  when the terminal is given back, including from the panic hook.
 - Layout is display-width aware, so CJK labels are truncated by width, never by byte
   or character count. Glyphs the design uses (`▾`, `▸`, `✕`, the lock and pin
   markers) have ASCII fallbacks behind one table.
@@ -530,9 +609,9 @@ hmc                          # opens the terminal UI when stdin is a terminal
 hmc --tui --config ./HiveMe.json
 ```
 
-`hmc` links SQLite and ratatui from phase 3 on, when it turns on the `session` feature
-of `hiveme-core` for the terminal UI; the binary grows accordingly. Nothing changes in the bundles:
-every installer already carries `hmc` beside `hmg`.
+`hmc` links SQLite, `ureq`, and ratatui, because it turns on the `session` feature of
+`hiveme-core` for the terminal UI; the binary grows accordingly. Nothing changes in the
+bundles: every installer already carries `hmc` beside `hmg`.
 
 ## Tests
 
@@ -544,6 +623,13 @@ every installer already carries `hmc` beside `hmg`.
   message fixture of `crates/hiveme-core/tests/fixtures/message/` as a bubble in both
   directions, the tree with a filter, the composer's key handling and drafts, every
   settings category, and the save timing with a fake clock.
+- Built in phase 3, in `crates/hmc/src/tui/tests.rs` and beside each module: the frame
+  in every connection state, size, and one of the four languages, and the too small
+  line; the key map row by row; the tabs, the tools by key and by click, the pause
+  toggle holding back a scripted notifier's toasts, connect and disconnect with a
+  failure in the snackbar, the footer errors, the update notice, the help overlay, the
+  first run's Broker fields and their one delayed save, clearing the topic, About, and
+  a real `Session` on a scratch directory.
 - `assert_cmd` proves the trigger: no arguments with piped stdin publishes; `--tui`
   with a redirected stdout exits 2; `--tui` conflicts with the publish and init
   options.

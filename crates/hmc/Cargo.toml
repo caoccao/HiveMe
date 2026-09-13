@@ -19,16 +19,33 @@ winresource = { workspace = true }
 [dependencies]
 # `string` lets the help carry headings from the catalogs rather than only literals.
 clap = { workspace = true, features = ["string"] }
+crossterm = { workspace = true }
 env_logger = { workspace = true }
-hiveme-core = { workspace = true, features = ["i18n"] }
+futures-core = { workspace = true }
+# The terminal UI runs on the session `hmg` runs on, which brings the history database,
+# and the bundled SQLite library, with it.
+hiveme-core = { workspace = true, features = ["i18n", "session"] }
 log = { workspace = true }
+open = { workspace = true }
+ratatui = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
+# `signal`: closing the terminal and SIGTERM leave the terminal UI through its quit path.
+tokio = { workspace = true, features = ["signal"] }
+unicode-width = { workspace = true }
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+notify-rust = { workspace = true }
+
+# Windows only: the toast API under the HiveMe application identity hmg registers.
+[target.'cfg(target_os = "windows")'.dependencies]
+tauri-winrt-notification = { workspace = true }
+windows-registry = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
 predicates = { workspace = true }
 tempfile = { workspace = true }
 testcontainers = { workspace = true }
-tokio = { workspace = true }
+# `test-util` pauses the clock, so the shutdown timeout is tested without waiting it out.
+tokio = { workspace = true, features = ["test-util"] }
