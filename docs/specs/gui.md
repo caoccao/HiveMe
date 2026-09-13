@@ -293,12 +293,12 @@ written and no component has to say so itself. Components use theme values throu
 ## Notifications
 
 A rule matches an MQTT topic filter and a payload log level to an OS notification.
-The rules below are the shared rules: from phase 1 of
-[the terminal UI plan](../plans/plan-terminal-ui.md) their evaluation, the rate
-limiter, and the pause toggle live in the session of
-[session.md](session.md#notifications), and each application supplies only the final
-call that shows the toast. Interactive `hmc` raises the same notifications from phase
-3, see [tui.md](tui.md#notifications).
+The rules below are the shared rules: their evaluation, the rate limiter, and the
+pause toggle live in the session of [session.md](session.md#notifications), and each
+application supplies only the final call that shows the toast. Interactive `hmc` raises
+the same notifications from phase 3 of
+[the terminal UI plan](../plans/plan-terminal-ui.md), see
+[tui.md](tui.md#notifications).
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
@@ -405,12 +405,13 @@ CREATE INDEX messages_topic_id_id ON messages(topic_id, id)
 CREATE INDEX messages_received_ts ON messages(received_ts)
 ```
 
-The module is `hiveme_core::storage`, behind the `storage` feature so that `hmc` never
-links SQLite. The database runs in WAL mode. From phase 1 of
-[the terminal UI plan](../plans/plan-terminal-ui.md) `hmc` links it after all, because
-the shared session needs the history, and interactive `hmc` opens this same file; the
-rules for two processes on one database are in
-[session.md](session.md#two-processes-one-installation).
+The module is `hiveme_core::storage`, behind the `storage` feature, which the `session`
+feature implies. The database runs in WAL mode with a five second busy timeout, so a
+write that meets another process's write waits instead of failing. One-shot `hmc`
+does not link SQLite; from phase 3 of
+[the terminal UI plan](../plans/plan-terminal-ui.md) `hmc` does, because the terminal
+UI runs on the shared session and opens this same file. The rules for two processes on
+one database are in [session.md](session.md#two-processes-one-installation).
 
 - `schema_version` holds the version of the layout above. Version 0 means a database
   this build has not stamped, whether it is brand new or older than the table itself,
@@ -448,21 +449,27 @@ rules for two processes on one database are in
 
 The frontend never calls Tauri APIs directly. `src/lib/service.ts` wraps every
 `invoke`, and `src-tauri/src/lib.rs` holds one thin `#[tauri::command]` per call that
-delegates to `controller.rs`.
+delegates to `controller.rs`, which is one call into the shared session of
+[session.md](session.md) per command. The session is what each command does; this
+section is only the IPC surface of `hmg` over it, and the terminal UI of `hmc` drives
+the same session without any IPC.
 
-Shared types live in `src-tauri/src/protocol.rs` and `src/lib/protocol.ts`, which are
-hand-synced: camelCase in TypeScript, snake_case in Rust with `#[serde(rename)]`.
-Config and message types are **not** hand-written; they are generated from the JSON
-schemas into `src/generated/` and re-exported from `protocol.ts`.
+| `src-tauri/src` | What it adds to the session |
+|-----------------|-----------------------------|
+| `lib.rs`, `controller.rs` | The commands below, each one line of `controller.rs`; `open_config_file` is the one the session cannot answer, because it needs the opener plugin |
+| `events.rs` | A task that emits every `SessionEvent` under the event names below |
+| `notification.rs` | The `Toaster` of [session.md](session.md#notifications) |
+| `protocol.rs` | Re-exports the session's types, and holds the event names, the event payloads, and the managed state |
+| `window.rs` | Window geometry, `start_background_work`, and the quit path |
+
+The types live in `crates/hiveme-core/src/session/types.rs`, re-exported by
+`src-tauri/src/protocol.rs`, and in `src/lib/protocol.ts`, which are hand-synced:
+camelCase in TypeScript, snake_case in Rust with `#[serde(rename)]`. Config and message
+types are **not** hand-written; they are generated from the JSON schemas into
+`src/generated/` and re-exported from `protocol.ts`.
 
 Every command answers `Result<T, String>`, and the error is the one line the snackbar
 shows.
-
-This section is the IPC surface of `hmg`. What each command does behind it is, from
-phase 1 of [the terminal UI plan](../plans/plan-terminal-ui.md), the shared session of
-[session.md](session.md), which the terminal UI of `hmc` drives without any IPC; the
-commands, their request and response shapes, and the events below do not change when
-that phase lands.
 
 ### Commands
 
@@ -488,19 +495,16 @@ that phase lands.
 `before` and `limit` in `get_messages` may both be null: no cursor means the newest
 page, and no limit means the default of 200.
 
-`connect` replaces a connection that is already up, which is what a saved change to
-the broker or the subscriptions needs. `set_config` validates, writes, recompiles the
-notification rules, and reconnects only when something the CONNECT packet or the
-subscription list is built from changed: changing a theme does not drop the
-connection, and changing a password does.
+What each command does is the operation of the same name in
+[session.md](session.md#operations): `get_about` is `about`, `get_config` is `config`,
+`get_broker_init` is `broker_init`, `get_messages` is `messages`, `get_status` is
+`status`, `get_update_result` is `update_result`, `list_topics` is `topic_tree`, and
+the rest keep their names. In short: `connect` replaces a connection that is already
+up; `set_config` reconnects only when the broker or the subscriptions changed, so a
+theme keeps the connection and a password does not; `set_notifications_paused` is the
+toolbar toggle and lasts for the process.
 
-`get_broker_init` fails while the broker fields are not usable, because a setup string
-that cannot be applied is worse than no string. It carries the password in plain text,
-so it is never logged.
-
-`set_notifications_paused` is the toolbar toggle. The rules and the rate limiter live
-in the backend, so the pause does too; it lasts for the session and is not written to
-the config.
+`get_broker_init` carries the password in plain text, so it is never logged.
 
 ### Types
 
@@ -550,9 +554,11 @@ PublishOptions = { topic?, json?, qos?, retain?, title?, level? }
 | `topic-added` | `{ "topic": "hiveme" }` |
 | `notification-fired` | `{ "ruleId": "error", "messageId": "018f6b1e-...", "topic": "hiveme" }` |
 
-A `message` event is emitted once per stored row, whether the message arrived or the
-composer sent it. The echo of a message this installation published raises no second
-event, because it collapses into the row that is already there.
+The events are the session's, see [session.md](session.md#events). A `message` event
+is emitted once per stored row, whether the message arrived or the composer sent it.
+The echo of a message this installation published raises no second event, because it
+collapses into the row that is already there. `status` is also emitted when the pause
+toggle changes.
 
 ## Settings
 

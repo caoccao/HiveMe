@@ -102,8 +102,12 @@ const SPEC_RULES: SpecRule[] = [
   },
 ];
 
-/** The two halves of the IPC protocol are hand synced and must move together. */
-const PROTOCOL_PAIR = ["src-tauri/src/protocol.rs", "src/lib/protocol.ts"];
+/**
+ * The two halves of the IPC protocol are hand synced and must move together. The Rust
+ * half is `protocol.rs` plus the shared session's types, which it re-exports.
+ */
+const PROTOCOL_RUST = ["src-tauri/src/protocol.rs", "crates/hiveme-core/src/session/types.rs"];
+const PROTOCOL_TS = "src/lib/protocol.ts";
 
 if (Deno.env.get("SPEC_SYNC_EXEMPT") === "1") {
   console.info("Spec sync check skipped: SPEC_SYNC_EXEMPT=1.");
@@ -152,10 +156,13 @@ for (const rule of SPEC_RULES) {
   }
 }
 
-for (const [one, other] of [PROTOCOL_PAIR, [...PROTOCOL_PAIR].reverse()]) {
-  if (changed.includes(one) && !changed.includes(other)) {
-    failures.push(`${one} changed without ${other}`);
+for (const rust of PROTOCOL_RUST) {
+  if (changed.includes(rust) && !changed.includes(PROTOCOL_TS)) {
+    failures.push(`${rust} changed without ${PROTOCOL_TS}`);
   }
+}
+if (changed.includes(PROTOCOL_TS) && !PROTOCOL_RUST.some((rust) => changed.includes(rust))) {
+  failures.push(`${PROTOCOL_TS} changed without ${PROTOCOL_RUST.join(" or ")}`);
 }
 
 if (failures.length > 0) {

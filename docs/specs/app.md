@@ -22,7 +22,7 @@ with TLS.
 | [cli.md](cli.md) | `hmc`: usage, behavior, exit codes, the interactive mode trigger |
 | [gui.md](gui.md) | `hmg`: layout, notifications, storage, IPC, settings, window |
 | [tui.md](tui.md) | The terminal UI of `hmc`: layout, keys, theme, languages, startup; specified, not built |
-| [session.md](session.md) | The backend both applications share: operations, events, types, notifications, two processes on one installation; specified, not built |
+| [session.md](session.md) | The backend both applications share: operations, events, types, notifications, two processes on one installation; `hmg` runs on it |
 | [hivemq-cloud.md](hivemq-cloud.md) | What the broker offers, how HiveMe connects, and the REST API |
 
 The implementation plans are
@@ -167,12 +167,11 @@ HiveMe/
   src-tauri/                      # Tauri 2 app, package `hmg`, lib `hmg_lib`, binary `hmg`
     Cargo.toml, tauri.conf.json, build.rs, capabilities/default.json, icons/
     tauri.windows.conf.json       # Windows only: the bundle entry that carries hmc
-    src/                          # main.rs, lib.rs, controller.rs, protocol.rs, config.rs, constants.rs,
-                                  # window.rs, mqtt.rs, notification.rs, storage.rs, update.rs
-                                  # (phase 1, planned: adapters over hiveme_core::session; config.rs and update.rs go)
+    src/                          # main.rs, lib.rs, controller.rs, protocol.rs, constants.rs, window.rs,
+                                  # events.rs, notification.rs: adapters over hiveme_core::session
   crates/
-    hiveme-core/                  # config, message, topic, rules, mqtt, storage (feature), cloud (feature, later)
-      src/session/                # planned, phase 1: the shared backend of session.md
+    hiveme-core/                  # config, message, topic, rules, mqtt, storage (feature), session (feature), cloud (feature, later)
+      src/session/                # the shared backend of session.md: mod, config, mqtt, notify, history, update, types
       src/i18n/                   # planned, phase 2: locale resolution, catalogs, plural rules, formatting
     hmc/                          # CLI binary `hmc`
       build.rs, icons/            # the Windows executable icon and version information
@@ -204,7 +203,7 @@ rather than rely on memory.
 | 3 | Every compatibility rule in [message.md](message.md#compatibility-rules) names a fixture that proves it | `crates/hiveme-core/tests/fixtures/` |
 | 4 | `cli_help_matches_spec` compares clap's rendered help with the `text hiveme:help` block, so the block is the help text rather than a description of it | `crates/hmc`, [cli.md](cli.md) |
 | 5 | `pnpm gen:types` regenerates the TypeScript types from the schemas; CI fails when the output is not committed | `scripts/ts/gen-types.ts`, `src/generated/` |
-| 6 | `scripts/ts/check-spec-sync.ts` fails when the config, message, MQTT, CLI, or IPC code changes without a matching change under `docs/specs/`, and when `protocol.rs` changes without `protocol.ts` | `scripts/ts/` |
+| 6 | `scripts/ts/check-spec-sync.ts` fails when the config, message, MQTT, CLI, or IPC code changes without a matching change under `docs/specs/`, when `protocol.rs` or the session's `types.rs` changes without `protocol.ts`, and when `protocol.ts` changes without either | `scripts/ts/` |
 | 7 | The status table below records what is built | this file |
 | 8 | Definition of done for every step: code, tests, spec update, regenerated schemas, a status table row, and a release note for user visible changes | the plan |
 | 9 | The same script maps the shared session (`crates/hiveme-core/src/session/`) to [session.md](session.md), and the terminal UI (`crates/hmc/src/tui/`) and the Rust catalogs (`crates/hiveme-core/src/i18n/`) to [tui.md](tui.md); the rest of `crates/hmc/src/` still maps to [cli.md](cli.md). The rules exist ahead of the directories, so the first code in them needs its spec | `scripts/ts/` |
@@ -252,7 +251,7 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Settings tab opening on Appearance, with immediate changes and automatic saving | [gui.md](gui.md#settings) | `src/components/Config.tsx`, `src/lib/store.tsx` | 4.5 | done |
 | Copy CLI setup command, ready to paste and run | [gui.md](gui.md#copy-cli-setup) | `src/components/Config.tsx` | 4.5 | done |
 | OS notifications | [gui.md](gui.md#notifications) | `src-tauri/notification.rs` | 4.6 | done |
-| Update check and packaging | [app.md](#install) | `src-tauri/update.rs` | 5.1 | done |
+| Update check and packaging | [app.md](#install) | `hiveme-core::session::update` (was `src-tauri/update.rs`) | 5.1 | done |
 | Native hmc-to-hmg end-to-end regression | [development.md](../development.md#native-end-to-end-test) | `scripts/ts/test-e2e.ts`, Linux CI | 5.2 | done |
 | Documentation and onboarding | [README](../../README.md) | `README.md`, `docs/` | 5.2 | done, except the screenshots |
 | Encryption | [message.md](message.md#encryption) | `hiveme-core::crypto` | 6 | designed, types and parsing in place |
@@ -265,7 +264,8 @@ Their phase numbers are that plan's, not the initialization plan's.
 | Feature | Spec | Module | Phase | Status |
 |---------|------|--------|-------|--------|
 | Terminal UI and shared session specified | [tui.md](tui.md), [session.md](session.md) | `docs/specs` | TUI 0 | done |
-| Shared session: `hmg` on `hiveme_core::session`, `Role::Tui`, the `Toaster` split | [session.md](session.md) | `hiveme-core::session`, `src-tauri` | TUI 1 | planned |
+| Shared session: `hmg` on `hiveme_core::session`, `Role::Tui`, the `Toaster` split | [session.md](session.md) | `hiveme-core::session`, `src-tauri` | TUI 1 | done |
+| SQLite busy timeout for two processes on one database | [session.md](session.md#two-processes-one-installation), [gui.md](gui.md#storage) | `hiveme-core::storage` | TUI 1 | done |
 | Setup string carries the language; `hmc --init` applies it | [config.md](config.md#the-setup-string), [cli.md](cli.md#setting-up) | `hiveme-core::config::init`, `crates/hmc` | TUI 2 | planned |
 | Shared catalogs in `locales/`, `hiveme_core::i18n`, translated `hmc` lines and help | [tui.md](tui.md#languages), [gui.md](gui.md#languages) | `locales`, `hiveme-core::i18n`, `crates/hmc`, `src/i18n` | TUI 2 | planned |
 | Terminal UI shell: trigger, toolbar, tabs, footer, snackbar, help, theme, keys, OS notifications, update notice | [tui.md](tui.md), [cli.md](cli.md#interactive-mode) | `crates/hmc/src/tui` | TUI 3 | planned |
@@ -441,3 +441,33 @@ Recorded so the plan and the tree can be reconciled later.
     share a config file and a message format are a pair, and a user who installs the
     desktop application should not have to fetch the other half by hand. The standalone
     `hmc` is still published, for machines with no desktop.
+
+The entries below are against [the terminal UI plan](../plans/plan-terminal-ui.md).
+
+23. Phase 1: the task that forwards session events to the frontend is
+    `src-tauri/src/events.rs`, not a rewritten `mqtt.rs` as section 3.2 of the plan
+    has it, because nothing in it is MQTT any more. `protocol.rs` keeps the
+    `topic-added` and `notification-fired` payload structs beside the event names and
+    `AppState`, since those payloads are the GUI's event shapes rather than session
+    types, and `constants.rs` stays with `APP_NAME` alone.
+24. Phase 1: `hmc` does not turn the `session` feature on yet. Nothing in `hmc` uses the
+    session before the terminal UI of phase 3, so linking SQLite and `ureq` into the
+    one-shot publisher now would only grow the binary; decision 1 of the plan is met in
+    phase 3. `development.md` and [tui.md](tui.md#build-and-run) say so.
+25. Phase 1: `Session` gains `with_parts`, to build a session on a config store and a
+    store a caller already has, `config_directory` for `open_config_file`, and the
+    `SHUTDOWN_TIMEOUT` both applications bound their quit with. `hiveme_core::Error`
+    gains `InvalidTopic` beside the four variants the plan names, so the publish error
+    for a topic the MQTT rules refuse keeps its wording. `set_notifications_paused`
+    also raises a `Status` event, as session.md's event table says.
+26. Phase 1: the Tauri notification plugin needs an `AppHandle`, and the session exists
+    before the Tauri application does, so `TauriToaster` holds the handle in a
+    `OnceLock` that `window.rs` fills during setup, before `start_background_work`
+    opens the first connection. `window.rs` also enters the Tauri runtime around
+    `start_background_work`, because the session spawns onto the runtime it is called
+    from.
+27. Phase 1, answered while it was built: the plan and [tui.md](tui.md#leaving-the-terminal-ui)
+    gained a Quit tool on the toolbar and one quit path for every way out of the
+    terminal UI, closing the terminal and `SIGTERM` included, so that the MQTT
+    connection is closed and the broker session discarded however it ends. Decision
+    26 and section 5.11 of the plan record it.

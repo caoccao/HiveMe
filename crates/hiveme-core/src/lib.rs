@@ -28,6 +28,7 @@
 //! | [`rules`]   | 1.3 | `docs/specs/gui.md`          |
 //! | [`mqtt`]    | 2.1 | `docs/specs/hivemq-cloud.md` |
 //! | [`storage`] | 4.2 | `docs/specs/gui.md`          |
+//! | [`session`] | TUI 1 | `docs/specs/session.md`    |
 //! | `cloud`     | 6   | `docs/specs/hivemq-cloud.md` |
 //! | `crypto`    | 6   | `docs/specs/message.md`      |
 
@@ -36,6 +37,8 @@ pub mod error;
 pub mod message;
 pub mod mqtt;
 pub mod rules;
+#[cfg(feature = "session")]
+pub mod session;
 #[cfg(feature = "storage")]
 pub mod storage;
 pub mod topic;
@@ -44,6 +47,8 @@ pub use config::{BrokerInit, Config, ConfigFile};
 pub use error::{Error, Result};
 pub use message::{Level, Message, Parsed, Payload, Sender};
 pub use mqtt::{MqttClient, Qos, Role, State, Status};
+#[cfg(feature = "session")]
+pub use session::{Session, SessionApp, SessionEvent, Toaster};
 #[cfg(feature = "storage")]
 pub use storage::{NewMessage, Store, StoredMessage, TopicRow};
 

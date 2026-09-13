@@ -17,9 +17,11 @@
 
 // The IPC types shared with the backend.
 //
-// This file and `src-tauri/src/protocol.rs` are hand synced: camelCase here,
-// snake_case there with an explicit `#[serde(rename)]`.
-// `scripts/ts/check-spec-sync.ts` fails when one moves without the other.
+// This file and the Rust half are hand synced: camelCase here, snake_case there with an
+// explicit `#[serde(rename)]`. The Rust half is `src-tauri/src/protocol.rs`, which keeps
+// the event names and payloads, and the shared session's
+// `crates/hiveme-core/src/session/types.rs`, which it re-exports.
+// `scripts/ts/check-spec-sync.ts` fails when one side moves without the other.
 //
 // The config and the message envelope are not written here. They are generated from
 // the JSON schemas into `src/generated/` and re-exported below, because they are the

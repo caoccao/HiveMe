@@ -2197,6 +2197,7 @@ dependencies = [
  "testcontainers",
  "thiserror 2.0.20",
  "tokio",
+ "ureq",
  "uuid",
 ]
 
@@ -2238,7 +2239,6 @@ dependencies = [
  "tauri-winrt-notification",
  "tempfile",
  "tokio",
- "ureq",
  "windows-registry",
 ]
 

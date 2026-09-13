@@ -28,9 +28,9 @@
 //! * [`MqttClient::take_incoming`], a channel of received messages, and
 //! * [`MqttClient::status`], a watch channel the `hmg` status bar renders.
 //!
-//! The difference between the two applications is [`Role`]: `hmc` connects clean,
-//! publishes, and leaves, while `hmg` keeps a session and reconnects with the backoff
-//! in [`backoff`].
+//! The difference between the applications is [`Role`]: one-shot `hmc` connects clean,
+//! publishes, and leaves, while `hmg` and the terminal UI of `hmc` keep a session and
+//! reconnect with the backoff in [`backoff`].
 
 mod backoff;
 mod options;
@@ -315,12 +315,12 @@ pub struct MqttClient {
 impl MqttClient {
   /// Connects as `role` and returns once the broker has accepted the connection.
   ///
-  /// The wait is bounded by `broker.connectTimeoutSecs`. A [`Role::Gui`] client retries
-  /// a connection that fails for a transient reason inside that window, but a refusal,
-  /// a TLS failure, or the window running out is reported to the caller, because a
-  /// wrong password should reach the user rather than be retried forever. Once the
-  /// first connection is up, a [`Role::Gui`] client reconnects on its own for as long
-  /// as it lives.
+  /// The wait is bounded by `broker.connectTimeoutSecs`. A [`Role::Gui`] or
+  /// [`Role::Tui`] client retries a connection that fails for a transient reason inside
+  /// that window, but a refusal, a TLS failure, or the window running out is reported
+  /// to the caller, because a wrong password should reach the user rather than be
+  /// retried forever. Once the first connection is up, such a client reconnects on its
+  /// own for as long as it lives.
   pub async fn connect(config: &Config, role: Role) -> Result<Self> {
     config.validate()?;
     Self::connect_unvalidated(config, role).await

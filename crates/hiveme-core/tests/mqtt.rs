@@ -337,7 +337,7 @@ fn a_published_message_comes_back_on_the_subscription() {
         .subscribe(config.subscription_filters(), Qos::AtLeastOnce)
         .await
         .expect("the broker accepts the prefix subscription");
-      assert_eq!(subscriber.subscriptions(), vec!["hiveme/round-trip/#".to_owned()]);
+      assert_eq!(subscriber.subscriptions(), vec!["hiveme/#".to_owned()]);
       assert_eq!(subscriber.status_now().subscriptions, 1);
 
       let sender = Sender::from_device(&config.device, "hmc");
@@ -352,7 +352,7 @@ fn a_published_message_comes_back_on_the_subscription() {
         .expect("the broker acknowledges the publish");
 
       let received = next_message(&mut incoming).await;
-      assert_eq!(received.topic, "hiveme/round-trip/warn");
+      assert_eq!(received.topic, "hiveme/warn");
       assert_eq!(received.qos, Qos::AtLeastOnce);
       assert!(!received.retain);
 

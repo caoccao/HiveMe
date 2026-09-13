@@ -84,6 +84,21 @@ pub enum Error {
 
   #[error("{0}")]
   NotImplemented(String),
+
+  #[error("{topic}: {reason}")]
+  InvalidTopic { topic: String, reason: String },
+
+  #[error("not connected to the broker")]
+  NotConnected,
+
+  #[error("the application is quitting")]
+  Quitting,
+
+  #[error("there is nothing to send")]
+  NothingToSend,
+
+  #[error("send as raw JSON was given input that is not JSON: {0}")]
+  NotJson(String),
 }
 
 impl Error {
@@ -113,6 +128,7 @@ impl Error {
     matches!(
       self,
       Self::Connect(_)
+        | Self::NotConnected
         | Self::ConnectTimeout(_)
         | Self::ConnectionLost(_)
         | Self::ClientStopped(_)

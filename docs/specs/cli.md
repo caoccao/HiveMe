@@ -206,6 +206,10 @@ in [tui.md](tui.md#languages).
   mode keeps its exit 3, see [First run](#first-run).
 - While the terminal UI is up nothing is written to stderr; `--verbose` and `RUST_LOG`
   log to `hmc.log` beside the config file instead. See [tui.md](tui.md#logging).
+- The Quit tool, `Ctrl+Q`, `Ctrl+C`, closing the terminal, and `SIGTERM` all leave the
+  terminal UI the same way: the MQTT connection is closed, the broker session is
+  discarded, the terminal is restored, and `hmc` exits 0. See
+  [tui.md](tui.md#leaving-the-terminal-ui).
 - Interactive `hmc` opens `HiveMe.db` beside the config, the same history `hmg` keeps,
   and connects as `Role::Tui`, see [Client identifier](#client-identifier). Both
   applications may run at once; the rules are in

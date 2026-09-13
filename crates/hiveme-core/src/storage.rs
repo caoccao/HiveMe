@@ -15,10 +15,11 @@
 * limitations under the License.
 */
 
-//! The local message history of `hmg`.
+//! The local message history of `hmg` and the terminal UI of `hmc`.
 //!
 //! SQLite through `rusqlite` with the bundled library, in `HiveMe.db` beside the
-//! config file. The schema is specified in `docs/specs/gui.md`.
+//! config file. The schema is specified in `docs/specs/gui.md`. Both applications may
+//! have the file open at once, which `docs/specs/session.md` describes.
 //!
 //! The store is what makes the topic tree and the chat view survive a restart. It also
 //! decides what is new: a row exists once per topic and message id, so a message the
@@ -27,6 +28,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -40,8 +42,15 @@ pub const SCHEMA_VERSION: i64 = 1;
 /// How many messages one page of history holds when the caller does not say.
 pub const DEFAULT_PAGE_SIZE: u32 = 200;
 
-/// How often `hmg` prunes, after the pass it makes at startup.
+/// How often the session prunes, after the pass it makes at startup.
 pub const PRUNE_INTERVAL_SECS: u64 = 600;
+
+/// How long a write waits for another process's write to finish before it fails.
+///
+/// `hmg` and the terminal UI of `hmc` share `HiveMe.db`. WAL lets readers and one
+/// writer work side by side, but a second writer is refused at once unless it is told
+/// to wait.
+pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// One topic the store has seen.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -200,6 +209,9 @@ impl Store {
       })?;
     }
     let connection = Connection::open(path).map_err(|source| failed("open the database", source))?;
+    connection
+      .busy_timeout(BUSY_TIMEOUT)
+      .map_err(|source| failed("set its busy timeout", source))?;
     let store = Self {
       connection: Mutex::new(connection),
       path: path.to_path_buf(),

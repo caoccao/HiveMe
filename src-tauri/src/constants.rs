@@ -15,16 +15,8 @@
 * limitations under the License.
 */
 
-//! The names and links `hmg` shows and follows.
+//! The names `hmg` shows.
 
-/// The product name, which is also the config directory and the window title.
+/// The product name, which is also the config directory, the window title, and the
+/// Windows notification identity.
 pub const APP_NAME: &str = hiveme_core::APP_NAME;
-
-/// The identifier `sender.app` carries for a message this GUI publishes.
-pub const APP_ID: &str = "hmg";
-
-/// The repository the update check and the About tab point at.
-pub const GITHUB_URL: &str = "https://github.com/caoccao/HiveMe";
-
-/// Where the update check reads the published releases.
-pub const RELEASES_API_URL: &str = "https://api.github.com/repos/caoccao/HiveMe/releases";

@@ -83,10 +83,11 @@ first eight alphanumeric characters of `device.id`. Every `hmc` run adds a rando
 suffix, because a broker disconnects the older of two connections that share an
 identifier and `hmc` runs overlap with each other and with a running `hmg`.
 
-`Role::Tui` is added in phase 1 of [the terminal UI plan](../plans/plan-terminal-ui.md)
-and used by the terminal UI of [tui.md](tui.md) from phase 3; it is not built yet. It
-keeps the random suffix so that several interactive `hmc` processes on one device do
-not collide, and takes everything else from the GUI role.
+`Role::Tui` was added in phase 1 of [the terminal UI plan](../plans/plan-terminal-ui.md)
+and is used by the terminal UI of [tui.md](tui.md) from phase 3. It keeps the random
+suffix so that several interactive `hmc` processes on one device do not collide, and
+takes everything else from the GUI role. Because the identifier is new on every run,
+it starts clean: there is never an earlier session of its own to resume.
 
 ### Transport and TLS
 
@@ -119,8 +120,9 @@ log. Turning it off anywhere logs a warning.
 
 The cryptography rustls uses is chosen rather than inferred. rustls picks a provider on
 its own only when exactly one is compiled in, and panics rather than guessing when
-there are two; `hmg` reaches the GitHub releases API through `ureq`, which brings its
-own rustls with `ring` alongside the `aws-lc-rs` that `rumqttc` is built against. The
+there are two; the update check of the shared session reaches the GitHub releases API
+through `ureq`, which brings its own rustls with `ring` alongside the `aws-lc-rs` that
+`rumqttc` is built against. The
 client installs aws-lc-rs once per process before it builds any TLS configuration, so
 neither application depends on which crates happen to be linked beside it.
 
@@ -179,7 +181,11 @@ reconnection and fails pending requests instead of leaving background work runni
 The CLI uses a zero-expiry session, so this also releases its session.
 
 The GUI, and interactive `hmc` from phase 3 of the terminal UI plan, uses
-`end_session` on quit, explicit disconnect, and connection replacement.
+`end_session`, through the shared session, on quit, explicit disconnect, and
+connection replacement. Quit means every way the application ends that it can act
+on: closing the `hmg` window, and for the terminal UI the Quit tool, its keys,
+closing the terminal, and `SIGTERM`, as [tui.md](tui.md#leaving-the-terminal-ui)
+lists.
 It closes the live connection and discards the broker's subscriptions and queued
 session messages. Retained topic messages and local history are unaffected. The
 configured session expiry still applies to unexpected network interruptions.

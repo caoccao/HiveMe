@@ -37,6 +37,7 @@ Answers gathered before writing this plan. They are binding for the phases below
 | 23 | Minimum terminal (*assumed*) | 80 columns by 24 rows. Below that the TUI draws one centered line asking for a larger terminal, the way `hmg` enforces 600 x 450. |
 | 24 | End-to-end driver (*assumed*) | The pseudo-terminal test is a Rust integration test using `portable-pty`, not a Deno script: Deno has no PTY API. `scripts/ts/test-e2e.ts` stays the `hmg` driver. |
 | 25 | No subcommands (answered in phase 0) | `hmc [OPTIONS] [MESSAGE]` stays the whole grammar. A bare word is the message, so `hmc config` publishes `config`; every mode is an option, which is why the trigger of decision 4 is "no arguments" and the forcing flag is `--tui`. The helpers the initialization plan once spelled as subcommands are options when they are built. |
+| 26 | Leaving the TUI (answered in phase 1) | A user always has a visible way out: a Quit tool at the right end of the toolbar, and `Ctrl+Q` and `Ctrl+C`, which raw mode delivers as keys. Closing the terminal, `SIGHUP`, `SIGTERM`, and the Windows console close events take the same quit path. Every quit path closes the MQTT connection and discards the broker session through `Session::shutdown` before the process exits. See section 5.11. |
 
 ---
 
@@ -249,7 +250,7 @@ Rows: toolbar (3), update notice (0 or 1), tabs (1), content (the rest), footer 
 
 ```
 ┌ HiveMe v0.1.0 ──────────────────────────────────────────────────────────────┐
-│ [F2 Connect] [F3 Pause] [F4 Clear] [F10 Settings] [F1 About]          [? Help]│
+│ [F2 Connect] [F3 Pause] [F4 Clear] [F10 Settings] [F1 About] [? Help] [^Q Quit]│
 └──────────────────────────────────────────────────────────────────────────────┘
  Messages │ Settings ✕ │ About ✕
 ┌ Filter topics ──────────┐┌ hiveme ────────────────────────────────────────────┐
@@ -270,7 +271,7 @@ Rows: toolbar (3), update notice (0 or 1), tabs (1), content (the rest), footer 
  ● connected  abc123.s1.eu.hivemq.cloud:8883  1 subscription  128 messages this session  database 1.2 MB
 ```
 
-- The toolbar is a bordered block whose title is `HiveMe v<version>`, the window title of `hmg`. The tools are labeled buttons showing their key; the active one (connected, paused, an open tab) is drawn in the primary color, as `activeButtonSx` does.
+- The toolbar is a bordered block whose title is `HiveMe v<version>`, the window title of `hmg`. The tools are labeled buttons showing their key; the active one (connected, paused, an open tab) is drawn in the primary color, as `activeButtonSx` does. Help and Quit sit at the right end.
 - The pane split starts at 28 percent, is clamped to 15..60, and moves with `Ctrl+Left`/`Ctrl+Right` or by dragging the divider with the mouse.
 - Below 80 x 24 the whole frame is replaced by one centered line: `tui.tooSmall`.
 
@@ -284,6 +285,7 @@ Rows: toolbar (3), update notice (0 or 1), tabs (1), content (the rest), footer 
 | Settings | `F10` | Opens or focuses the Settings tab |
 | About | `F1` | Opens or focuses the About tab |
 | Help | `?` outside a text field, `Ctrl+/` anywhere | The key binding overlay; not a GUI feature, added because a terminal has no tooltips |
+| Quit | `Ctrl+Q`, `Ctrl+C` | Leaves the terminal UI through the quit path of section 5.11. The GUI's equivalent is the window's close button, which a terminal does not have, so the tool is always shown; the label writes the key as `^Q` |
 
 ### 5.3 Tabs
 
@@ -337,7 +339,7 @@ Tab 0 Messages is fixed; Settings and About open as closable tabs, in the order 
 
 | Scope | Key | Action |
 |-------|-----|--------|
-| Global | `Ctrl+C`, `Ctrl+Q` | Quit: end the broker session, restore the terminal, exit 0 |
+| Global | `Ctrl+Q`, `Ctrl+C` | Quit through section 5.11: close the MQTT connection, discard the broker session, restore the terminal, exit 0. Raw mode turns off the terminal's own `Ctrl+C` signal, so both arrive as keys in every focus, text fields included |
 | Global | `F1`, `F2`, `F3`, `F4`, `F10` | About, Connect/Disconnect, Pause, Clear topic, Settings |
 | Global | `Alt+1`..`Alt+9`, `Ctrl+1`..`Ctrl+9` | Select tab |
 | Global | `Alt+Left`/`Alt+Right`, `Ctrl+Shift+Tab`/`Ctrl+Tab` | Previous, next tab |
@@ -350,7 +352,7 @@ Tab 0 Messages is fixed; Settings and About open as closable tabs, in the order 
 | Message list | `Up`/`Down`, `PageUp`/`PageDown`, `Home`/`End`, `c`, `r`, `Space`, `Enter` | Move focus, page, jump, copy body, copy raw, toggle trees, detail view |
 | Composer | `Enter`, `Alt+Enter`/`Ctrl+J`/`Shift+Enter`, `Tab` | Send, newline, next control |
 | Settings | `Up`/`Down`, `Tab`/`Shift+Tab`, `Enter`, `Space`, `Ctrl+H` | Category, field, open a select, toggle, show/hide password |
-| Mouse | click, wheel, drag | Select tabs, tools, topics, rows, controls; scroll the focused list; move the divider |
+| Mouse | click, wheel, drag | Select tabs, tools (Quit included), topics, rows, controls; scroll the focused list; move the divider |
 
 Every text field takes the usual editing keys (`Left`/`Right`, `Home`/`End`, `Backspace`, `Delete`, `Ctrl+U`, `Ctrl+A`/`Ctrl+E`), and paste arrives through crossterm's bracketed paste when the terminal supports it.
 
@@ -360,9 +362,34 @@ Every text field takes the usual editing keys (`Left`/`Right`, `Home`/`End`, `Ba
 2. Open `HiveMe.db` beside it, with a 5 s busy timeout.
 3. Enter the alternate screen, raw mode, mouse capture, bracketed paste, and the kitty keyboard flags when supported. Install the panic hook.
 4. Select `hiveme`, load its subtree, start the prune loop, connect when a broker is configured, start the update check when due.
-5. On quit, stop accepting work, end the broker session with the ten second bound `hmg` uses, restore the terminal, exit 0. A second `Ctrl+C` during shutdown exits at once with the terminal restored.
+5. On quit, by any path of section 5.11, stop accepting work, end the broker session with the ten second bound `hmg` uses, restore the terminal, exit 0.
 6. Logging: with `--verbose` or `RUST_LOG`, `log` output goes to `hmc.log` beside the config file at debug or the requested level; otherwise nothing is logged. stderr is never written while the TUI is up.
 7. `--tui` on a stdout that is not a terminal is a usage error, exit 2.
+
+### 5.11 Leaving the terminal UI
+
+Every way out runs one quit path, so that the MQTT connection is closed and the broker session is discarded however the terminal UI ends.
+
+| Way out | How it arrives |
+|---------|----------------|
+| The Quit tool | A click, or its key |
+| `Ctrl+Q`, `Ctrl+C` | Key events. Raw mode turns off the terminal's `Ctrl+C` signal, so neither can kill the process halfway through the cleanup |
+| Closing the terminal window or tab, or a dropped SSH connection | `SIGHUP` on Linux and macOS, `CTRL_CLOSE_EVENT` on Windows |
+| `kill`, or a service manager stopping the process | `SIGTERM` on Linux and macOS, `CTRL_BREAK_EVENT` on Windows |
+| Logging off or shutting down | `SIGHUP` or `SIGTERM` from the session manager; `CTRL_LOGOFF_EVENT` and `CTRL_SHUTDOWN_EVENT` on Windows where the system delivers them to a console process |
+
+The quit path:
+
+1. Stop accepting input and call `Session::begin_shutdown`, so that no connection is opened and nothing is published behind the quit.
+2. When the terminal is still there, draw `tui.quitting` in the footer so that a slow broker is not mistaken for a hung program.
+3. Call `Session::shutdown` under `SHUTDOWN_TIMEOUT`: it closes the MQTT connection and discards the broker session with the clean-start follow-up of `hivemq-cloud.md`, whose own bound is five seconds.
+4. Restore the terminal. After `SIGHUP` or a Windows close event there is no terminal left, so the restore is attempted and its errors are ignored.
+5. Exit 0.
+
+- A second `Ctrl+Q` or `Ctrl+C` during steps 2 and 3 skips the rest of the cleanup, restores the terminal, and exits at once; the broker keeps the session until `broker.sessionExpirySecs` runs out.
+- Windows ends a console process about five seconds after it delivers a close, logoff, or shutdown event, whatever the handler is doing. On those events the cleanup starts at once, skips step 2, and relies on the five second bound of step 3.
+- A process that is killed outright (`SIGKILL`, Task Manager) or that crashes runs no quit path. The panic hook still restores the terminal; the broker session expires after `broker.sessionExpirySecs`, as it does after a network loss.
+- Signals are read with `tokio::signal` (`unix::SignalKind::hangup` and `terminate`, `windows::ctrl_close`, `ctrl_break`, `ctrl_logoff`, `ctrl_shutdown`) in the same `select!` as the key events and the session events, which needs tokio's `signal` feature in `hmc`.
 
 ---
 
@@ -464,6 +491,7 @@ Phases are sequential. Phase 2 does not depend on phase 1 and can be built in pa
 
 **Tasks.**
 - Mode selection in `main.rs` and `--tui` in `cli.rs` (conflicts with every publish and init option); the multi-thread runtime for the TUI; the panic hook; terminal setup and restore; the log file rule.
+- The quit path and every way out of section 5.11: the Quit tool, `Ctrl+Q` and `Ctrl+C`, `SIGHUP` and `SIGTERM`, the Windows console control events, the second press that exits at once.
 - `tui/app.rs` holding the state of `store.tsx` and consuming `SessionEvent`; the event loop selecting the crossterm stream, the session channel, and a 250 ms tick.
 - `theme.rs` with the twenty palettes and the display modes; `toolbar.rs`, `tabs.rs`, `footer.rs`, `snackbar.rs`, `help.rs`, `update_notice.rs`; `keys.rs` with the kitty flags; `notify.rs` (the `Toaster`); `open.rs`; `clipboard.rs`.
 - First-run behavior of decision 15, using a Settings tab that for this phase holds only the category strip and the Broker panel's URL, username, and password fields, so a fresh install can be completed without leaving the TUI. The rest of Settings is phase 5.
@@ -472,12 +500,13 @@ Phases are sequential. Phase 2 does not depend on phase 1 and can be built in pa
 **Tests.**
 - `TestBackend` renders the frame at 80 x 24 and 120 x 40 in each connection state and in `en-US`, `de`, `ja`, and `zh-CN`, asserting the toolbar rows, the tab strip, and the footer text; a 79 x 24 render shows the too-small line.
 - Key map unit tests for every row of section 5.9, including the kitty and fallback variants.
+- Quit tests against a scripted session: the Quit tool, `Ctrl+Q`, `Ctrl+C` in a focused text field, and a signal each call `begin_shutdown` and `shutdown` once and restore the terminal; a second press during a shutdown that never finishes exits at once; a shutdown that hangs is cut off at `SHUTDOWN_TIMEOUT`.
 - `assert_cmd`: no arguments with piped stdin publishes; `--tui` with a redirected stdout exits 2 with a usage line; `--tui --init '{}'` conflicts.
 - A scripted session drives status changes, a notification event, and an update result through the app and the tests assert the footer, the toaster call, and the notice line.
 
-**Documentation.** `tui.md` layout, toolbar, tabs, footer, snackbar, keys, startup and shutdown, logging; `cli.md` help block and trigger rule; `app.md` status; `development.md` running the TUI; release notes.
+**Documentation.** `tui.md` layout, toolbar, tabs, footer, snackbar, keys, startup and shutdown, leaving the terminal UI, logging; `cli.md` help block and trigger rule; `app.md` status; `development.md` running the TUI; release notes.
 
-**Done when.** On all three platforms a user can run `hmc`, see the frame connect to their cluster, receive an OS notification for an `error` published by another terminal, pause it, and quit with the terminal restored.
+**Done when.** On all three platforms a user can run `hmc`, see the frame connect to their cluster, receive an OS notification for an `error` published by another terminal, pause it, and quit with the Quit tool, with `Ctrl+Q`, or by closing the terminal window, with the terminal restored where it still exists and the broker session ended in every case.
 
 ### Phase 4: The Messages tab
 
@@ -527,7 +556,7 @@ Phases are sequential. Phase 2 does not depend on phase 1 and can be built in pa
 **Goals.** The TUI is exercised as a real process against a real broker on CI, behaves under load and resize, and the documentation lets a user go from nothing to a terminal session.
 
 **Tasks.**
-- `crates/hmc/tests/tui.rs` with `portable-pty`: start the Docker broker as `publish.rs` does, spawn `hmc --tui --config <scratch>` in a pseudo-terminal, wait for the frame, publish with one-shot `hmc`, assert the bubble text in the screen capture, type a message and `Enter`, assert the acknowledgement bubble and the row in `HiveMe.db`, press `F10`, change the language, assert the German toolbar, press `Ctrl+Q`, assert the terminal is restored and the broker session ended. Gated like `publish.rs`; the Linux workflow runs it, the others set `HIVEME_SKIP_DOCKER`.
+- `crates/hmc/tests/tui.rs` with `portable-pty`: start the Docker broker as `publish.rs` does, spawn `hmc --tui --config <scratch>` in a pseudo-terminal, wait for the frame, publish with one-shot `hmc`, assert the bubble text in the screen capture, type a message and `Enter`, assert the acknowledgement bubble and the row in `HiveMe.db`, press `F10`, change the language, assert the German toolbar, press `Ctrl+Q`, assert the terminal is restored and the broker session ended. A second run closes the pseudo-terminal instead of pressing a key, which delivers `SIGHUP`, and asserts through the log file and a session probe that the broker session ended all the same. Gated like `publish.rs`; the Linux workflow runs it, the others set `HIVEME_SKIP_DOCKER`.
 - Performance: 10,000 rows across 200 topics render at 60 x 200 without a visible stall (a benchmark test with a budget); resize during a render; the too-small path.
 - Windows: verify Windows Terminal and conhost, the ConPTY run of the test, the toast label; macOS: verify the toast appears from an unbundled binary and record its label in `tui.md`; Linux: the notification daemon absent case is silent, not fatal.
 - Two-process check: run `hmg` and interactive `hmc` on one config and one database, publish from a third terminal, confirm one row and one notification each, and record the raw JSON duplication in `session.md`.
@@ -568,6 +597,7 @@ The workflows need no new steps: `cargo test -r --workspace` picks up the new te
 | `ureq` brings `ring` into `hmc` beside `aws-lc-rs` | `mqtt::tls` already installs the provider explicitly once per process; the session test runs in `hmc` too |
 | macOS toasts from an unbundled binary | `notify-rust` shows them under the terminal application's identity; phase 6 verifies and `tui.md` says so |
 | Windows toast label | `hmc` registers the same `AppUserModelId` `hmg` registers, so the label reads HiveMe |
+| A terminal closed under the TUI, or a signal, leaving a broker session behind | Every way out of section 5.11 runs the same quit path; only `SIGKILL` or a crash skips it, and the session then expires after `broker.sessionExpirySecs`; the phase 6 pseudo-terminal test closes the terminal and checks |
 | Truecolor unavailable in a legacy console | crossterm maps `Color::Rgb` to the nearest ANSI color; the design never relies on a tint to convey meaning, the badge text carries the level |
 | CJK width and layout | ratatui's width-aware truncation; the `TestBackend` tests render `ja` and `zh-CN` |
 | Translated clap help drifting from the spec | `cli_help_matches_spec` compares `en-US`; the catalog test proves every other language has every `help.*` key |

@@ -203,6 +203,12 @@ More detail lives in [specs/hivemq-cloud.md](specs/hivemq-cloud.md) and
   `Cargo.toml` so that `cargo build --workspace` succeeds.
 * `schemas/` and `src/generated/` are generated and committed. Never edit them by
   hand.
+* Everything `hmg` does between the broker and the window is the shared session in
+  `crates/hiveme-core/src/session/`, behind the `session` feature; `src-tauri/src` only
+  adapts it to Tauri. See [specs/session.md](specs/session.md).
+* One-shot `hmc` does not link SQLite. From phase 3 of the
+  [terminal UI plan](plans/plan-terminal-ui.md) `hmc` turns the `session` feature on
+  for its terminal UI and links SQLite and `ureq` from then on.
 
 ## Config file location
 
@@ -298,6 +304,7 @@ runs in well under a minute.
 
 ```sh
 cargo test -p hiveme-core --test mqtt           # the client
+cargo test -p hiveme-core --test session        # the shared session hmg runs on
 cargo test -p hmc --test publish                # CLI broker integration
 ```
 

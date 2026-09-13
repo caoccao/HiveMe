@@ -17,10 +17,11 @@
 
 //! Turning a [`Config`] into the options `rumqttc` connects with.
 //!
-//! The session settings differ between the two applications, and that difference is
-//! the whole of [`Role`]: `hmc` is one publish and a goodbye, `hmg` keeps a session so
-//! that messages sent during a network interruption can arrive on recovery. The scheme of the
-//! client identifiers is in `docs/specs/hivemq-cloud.md`.
+//! The session settings differ between the applications, and that difference is the
+//! whole of [`Role`]: one-shot `hmc` is one publish and a goodbye, `hmg` keeps a session
+//! so that messages sent during a network interruption can arrive on recovery, and the
+//! terminal UI of `hmc` behaves like `hmg` under an identifier of its own. The scheme of
+//! the client identifiers is in `docs/specs/hivemq-cloud.md`.
 
 use std::time::Duration;
 
@@ -39,42 +40,46 @@ pub enum Role {
   Cli,
   /// `hmg`: a session that survives network interruptions while the app is open.
   Gui,
+  /// Interactive `hmc`: the connection behavior of `hmg` under a fresh identifier.
+  Tui,
 }
 
 impl Role {
   /// The segment of the client identifier that names the application.
   pub fn app(&self) -> &'static str {
     match self {
-      Self::Cli => "hmc",
+      Self::Cli | Self::Tui => "hmc",
       Self::Gui => "hmg",
     }
   }
 
   /// Whether each run gets its own client identifier.
   ///
-  /// `hmc` runs can overlap with each other and with a running `hmg`, and a broker
-  /// disconnects the older of two connections that share an identifier, so every run
-  /// takes a fresh one. `hmg` keeps a stable identifier because that is what ties it
-  /// to its session.
+  /// `hmc` runs, one-shot or interactive, can overlap with each other and with a
+  /// running `hmg`, and a broker disconnects the older of two connections that share an
+  /// identifier, so every run takes a fresh one. `hmg` keeps a stable identifier
+  /// because that is what ties it to its session.
   pub fn unique_client_id(&self) -> bool {
-    matches!(self, Self::Cli)
+    matches!(self, Self::Cli | Self::Tui)
   }
 
   /// Whether the broker discards whatever session the identifier already had.
+  ///
+  /// An identifier that is new on every run has no session worth resuming.
   pub fn clean_start(&self) -> bool {
-    matches!(self, Self::Cli)
+    matches!(self, Self::Cli | Self::Tui)
   }
 
   /// Whether a lost connection is retried.
   pub fn reconnects(&self) -> bool {
-    matches!(self, Self::Gui)
+    matches!(self, Self::Gui | Self::Tui)
   }
 
   /// How long the broker keeps the session after a disconnect.
   pub fn session_expiry_secs(&self, config: &Config) -> u32 {
     match self {
       Self::Cli => 0,
-      Self::Gui => config.broker.session_expiry_secs,
+      Self::Gui | Self::Tui => config.broker.session_expiry_secs,
     }
   }
 }
@@ -203,6 +208,26 @@ mod tests {
   fn the_two_roles_do_not_share_a_client_id() {
     let config = config();
     assert_ne!(client_id(&config, Role::Cli), client_id(&config, Role::Gui));
+  }
+
+  #[test]
+  fn the_terminal_ui_does_not_share_a_client_id_with_either_application() {
+    let config = config();
+    let tui = client_id(&config, Role::Tui);
+    assert!(tui.starts_with("hiveme-hmc-0f9c2d1e-"), "{tui}");
+    assert_eq!(tui.len(), "hiveme-hmc-0f9c2d1e-".len() + 8);
+    assert_ne!(tui, client_id(&config, Role::Tui), "every terminal UI takes a fresh id");
+    assert_ne!(tui, client_id(&config, Role::Gui));
+  }
+
+  #[test]
+  fn the_terminal_ui_reconnects_and_keeps_its_session_for_the_process() {
+    let mut config = config();
+    config.broker.session_expiry_secs = 7_200;
+    let connection = build(&config, Role::Tui).unwrap();
+    assert!(connection.options.clean_start());
+    assert_eq!(connection.options.session_expiry_interval(), Some(7_200));
+    assert!(Role::Tui.reconnects());
   }
 
   #[test]
@@ -361,5 +386,6 @@ mod tests {
   fn the_role_names_the_application() {
     assert_eq!(Role::Cli.to_string(), "hmc");
     assert_eq!(Role::Gui.to_string(), "hmg");
+    assert_eq!(Role::Tui.to_string(), "hmc");
   }
 }

@@ -514,3 +514,23 @@ fn the_database_directory_is_created_on_first_open() {
   assert_eq!(store.message_count().unwrap(), 0);
   assert!(store.topics().unwrap().is_empty());
 }
+
+#[test]
+fn two_processes_on_one_database_store_an_envelope_once_and_count_it_once() {
+  // hmg and the terminal UI of hmc open the same HiveMe.db and both receive what the
+  // broker delivers. Two handles on one file stand in for the two processes.
+  let directory = tempfile::tempdir().unwrap();
+  let path = directory.path().join("HiveMe.db");
+  let gui = Store::open(&path).unwrap();
+  let tui = Store::open(&path).unwrap();
+  let message = envelope("device-2", "Deployed to staging");
+
+  let first = gui.insert(&incoming("hiveme/deploy", &message)).unwrap();
+  let second = tui.insert(&incoming("hiveme/deploy", &message)).unwrap();
+
+  assert!(first.is_new);
+  assert!(!second.is_new, "the second process recognizes the envelope");
+  assert_eq!(second.message.row_id, first.message.row_id);
+  assert_eq!(gui.message_count().unwrap(), 1);
+  assert_eq!(tui.topics().unwrap()[0].unread, 1, "the envelope counts as unread once");
+}

@@ -82,7 +82,7 @@ content (the rest), the footer (1).
 
 ```
 ┌ HiveMe v0.1.0 ──────────────────────────────────────────────────────────────┐
-│ [F2 Connect] [F3 Pause] [F4 Clear] [F10 Settings] [F1 About]          [? Help]│
+│ [F2 Connect] [F3 Pause] [F4 Clear] [F10 Settings] [F1 About] [? Help] [^Q Quit]│
 └──────────────────────────────────────────────────────────────────────────────┘
  Messages │ Settings ✕ │ About ✕
 ┌ Filter topics ──────────┐┌ hiveme ────────────────────────────────────────────┐
@@ -119,7 +119,7 @@ A bordered block exactly three rows high: the top border, the row of tools, the 
 border. Its title is `HiveMe v<version>`, which is the window title of `hmg`. Each
 tool is a labeled button that shows its key, and the active one is drawn in the
 primary color, as the GUI's `activeButtonSx` does: while connected, while paused, and
-while the corresponding tab is open.
+while the corresponding tab is open. Help and Quit sit at the right end.
 
 | Tool | Key | Behavior |
 |------|-----|----------|
@@ -129,6 +129,7 @@ while the corresponding tab is open.
 | Settings | `F10` | Opens or focuses the Settings tab |
 | About | `F1` | Opens or focuses the About tab |
 | Help | `?` outside a text field, `Ctrl+/` anywhere | The key binding overlay. Not a GUI feature; a terminal has no tooltips to name the keys |
+| Quit | `Ctrl+Q`, `Ctrl+C` | Leaves the terminal UI, see [Leaving the terminal UI](#leaving-the-terminal-ui). The GUI's equivalent is the window's close button, which a terminal does not have, so the tool is always shown. Its label writes the key as `^Q` |
 
 ### Tabs
 
@@ -312,7 +313,7 @@ GUI's bindings are accepted in addition where the terminal reports them.
 
 | Scope | Key | Action |
 |-------|-----|--------|
-| Global | `Ctrl+C`, `Ctrl+Q` | Quit: end the broker session, restore the terminal, exit 0 |
+| Global | `Ctrl+Q`, `Ctrl+C` | Quit, see [Leaving the terminal UI](#leaving-the-terminal-ui). Raw mode turns off the terminal's own `Ctrl+C` signal, so both arrive as keys in every focus, text fields included |
 | Global | `F1`, `F2`, `F3`, `F4`, `F10` | About, Connect or Disconnect, Pause, Clear topic, Settings |
 | Global | `Alt+1`..`Alt+9`, `Ctrl+1`..`Ctrl+9` | Select a tab |
 | Global | `Alt+Left`, `Alt+Right`, `Ctrl+Shift+Tab`, `Ctrl+Tab` | Previous, next tab |
@@ -325,7 +326,7 @@ GUI's bindings are accepted in addition where the terminal reports them.
 | Message list | `Up`, `Down`, `PageUp`, `PageDown`, `Home`, `End`, `c`, `r`, `Space`, `Enter` | Move focus, page, jump, copy body, copy raw, toggle trees, detail view |
 | Composer | `Enter`; `Alt+Enter`, `Ctrl+J`, `Shift+Enter`; `Tab` | Send; newline; next control |
 | Settings | `Up`, `Down`, `Tab`, `Shift+Tab`, `Enter`, `Space`, `Ctrl+H` | Category, field, open a select, toggle, show or hide the password |
-| Mouse | click, wheel, drag | Select tabs, tools, topics, rows, and controls; scroll the focused list; move the divider |
+| Mouse | click, wheel, drag | Select tabs, tools (Quit included), topics, rows, and controls; scroll the focused list; move the divider |
 
 Every text field takes the usual editing keys (`Left`, `Right`, `Home`, `End`,
 `Backspace`, `Delete`, `Ctrl+U`, `Ctrl+A`, `Ctrl+E`), and a paste arrives through
@@ -440,9 +441,50 @@ table is in [hivemq-cloud.md](hivemq-cloud.md#role).
    and request the keyboard enhancement flags where supported. Install the panic hook.
 4. Select `hiveme` and load its subtree, start the prune loop, connect when a broker is
    configured, and start the update check when it is due, through the session.
-5. On quit, stop accepting work, end the broker session with the ten second bound `hmg`
-   uses, restore the terminal, and exit 0. A second `Ctrl+C` during shutdown exits at
-   once with the terminal restored.
+5. On quit, by any of the ways out below, stop accepting work, end the broker session
+   with the ten second bound `hmg` uses, restore the terminal, and exit 0.
+
+## Leaving the terminal UI
+
+*Phase 3.*
+
+A user always has a visible way out, and every way out runs one quit path, so that the
+MQTT connection is closed and the broker session is discarded however the terminal UI
+ends.
+
+| Way out | How it arrives |
+|---------|----------------|
+| The Quit tool | A click, or its key |
+| `Ctrl+Q`, `Ctrl+C` | Key events. Raw mode turns off the terminal's `Ctrl+C` signal, so neither can kill the process halfway through the cleanup |
+| Closing the terminal window or tab, or a dropped SSH connection | `SIGHUP` on Linux and macOS, `CTRL_CLOSE_EVENT` on Windows |
+| `kill`, or a service manager stopping the process | `SIGTERM` on Linux and macOS, `CTRL_BREAK_EVENT` on Windows |
+| Logging off or shutting down | `SIGHUP` or `SIGTERM` from the session manager; `CTRL_LOGOFF_EVENT` and `CTRL_SHUTDOWN_EVENT` on Windows where the system delivers them to a console process |
+
+The quit path:
+
+1. Stop accepting input and call `Session::begin_shutdown`, so that no connection is
+   opened and nothing is published behind the quit.
+2. When the terminal is still there, draw `tui.quitting` in the footer, so that a slow
+   broker is not mistaken for a hung program.
+3. Call `Session::shutdown` under `SHUTDOWN_TIMEOUT`, ten seconds. It closes the MQTT
+   connection and discards the broker session as
+   [hivemq-cloud.md](hivemq-cloud.md#disconnect-and-quit) describes, within its own
+   five second bound.
+4. Restore the terminal. After `SIGHUP` or a Windows close event there is no terminal
+   left, so the restore is attempted and its errors are ignored.
+5. Exit 0.
+
+- A second `Ctrl+Q` or `Ctrl+C` during steps 2 and 3 skips the rest of the cleanup,
+  restores the terminal, and exits at once. The broker then keeps the session until
+  `broker.sessionExpirySecs` runs out.
+- Windows ends a console process about five seconds after it delivers a close, logoff,
+  or shutdown event, whatever the handler is doing. On those events the cleanup starts
+  at once, skips step 2, and relies on the five second bound of step 3.
+- A process that is killed outright (`SIGKILL`, Task Manager) or that crashes runs no
+  quit path. The panic hook still restores the terminal; the broker session expires
+  after `broker.sessionExpirySecs`, as it does after a network loss.
+- The signals are read with `tokio::signal` in the same `select!` as the key events
+  and the session events.
 
 ## Logging
 
@@ -480,8 +522,8 @@ hmc                          # opens the terminal UI when stdin is a terminal
 hmc --tui --config ./HiveMe.json
 ```
 
-`hmc` links SQLite from phase 1 on, because the session needs the history, and
-ratatui from phase 3 on; the binary grows accordingly. Nothing changes in the bundles:
+`hmc` links SQLite and ratatui from phase 3 on, when it turns on the `session` feature
+of `hiveme-core` for the terminal UI; the binary grows accordingly. Nothing changes in the bundles:
 every installer already carries `hmc` beside `hmg`.
 
 ## Tests
@@ -501,5 +543,10 @@ every installer already carries `hmc` beside `hmg`.
   `portable-pty` against the Docker broker of `publish.rs`: the frame comes up, a
   message published by one-shot `hmc` appears, a message typed and sent is
   acknowledged and stored, a language change re-renders the toolbar, and `Ctrl+Q`
-  ends the session and restores the terminal. It is gated like `publish.rs`; the Linux
-  workflow runs it.
+  ends the session and restores the terminal. A second run closes the
+  pseudo-terminal instead, which delivers `SIGHUP`, and proves that the broker session
+  ended all the same. It is gated like `publish.rs`; the Linux workflow runs it.
+- Quit tests against a scripted session: the Quit tool, `Ctrl+Q`, `Ctrl+C` in a
+  focused text field, and a signal each end the session once and restore the terminal;
+  a second press exits at once; a shutdown that hangs is cut off at
+  `SHUTDOWN_TIMEOUT`.
