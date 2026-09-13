@@ -198,5 +198,37 @@
       "GB": "GB",
       "TB": "TB"
     }
+  },
+  "cli": {
+    "sent": "Message sent to {{topic}}.",
+    "configUnchanged": "Config is not changed: {{path}}",
+    "configUpdated": "Config has been updated: {{path}}",
+    "configCreated": "Config has been created: {{path}}",
+    "noMessage": "no message: pass one as an argument or pipe it in, see hmc --help",
+    "stdinUnreadable": "cannot read the message from stdin: {{error}}",
+    "stdinEmpty": "nothing to publish: stdin was empty",
+    "messageEmpty": "nothing to publish: the message is empty",
+    "notJson": "--json was given input that is not JSON: {{error}}",
+    "encryptionUnavailable": "encryption.mode is {{mode}} but encryption arrives in a later version of HiveMe; set it to Off to publish in plain text",
+    "configWritten": "no config yet, so a default one was written to {{path}}; fill in the broker block and run again",
+    "runtimeUnavailable": "cannot start the async runtime: {{error}}"
+  },
+  "help": {
+    "about": "HiveMe CLI: send a message to the MQTT broker",
+    "usage": "Usage",
+    "arguments": "Arguments",
+    "options": "Options",
+    "message": "Message body. Read from stdin when omitted",
+    "init": "Initialize the shared config from a setup string, then exit",
+    "topic": "Topic relative to hiveme; leading slashes are ignored [default: hiveme]",
+    "json": "Publish MESSAGE (or stdin) as a raw JSON payload without the envelope",
+    "title": "Optional title for the message",
+    "level": "debug | info | success | warn | error [default: info; independent of topic]",
+    "qos": "0 | 1 | 2 [default: publish.qos]",
+    "retain": "Set the retain flag",
+    "config": "Config file path",
+    "verbose": "Log connection details to stderr",
+    "printHelp": "Print help",
+    "printVersion": "Print version"
   }
 }

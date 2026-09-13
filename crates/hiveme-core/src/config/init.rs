@@ -122,7 +122,8 @@ fn merge_changes(target: &mut Value, before: &Value, after: Value) {
   }
 }
 
-/// Everything `hmc` needs to reach the cluster `hmg` is already talking to.
+/// Everything `hmc` needs to reach the cluster `hmg` is already talking to, and the
+/// language to talk about it in.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct BrokerInit {
@@ -134,6 +135,11 @@ pub struct BrokerInit {
   pub username: String,
   /// Plain text, because the CONNECT packet needs it in plain text.
   pub password: String,
+  /// The `gui.language` of the application that copied the string, a BCP 47 tag.
+  /// Optional: a string without it leaves an existing language alone, and a new config
+  /// gets `en-US`.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub language: Option<String>,
 }
 
 impl Default for BrokerInit {
@@ -143,6 +149,7 @@ impl Default for BrokerInit {
       url: String::new(),
       username: String::new(),
       password: String::new(),
+      language: None,
     }
   }
 }
@@ -151,13 +158,15 @@ impl BrokerInit {
   /// The setup string for the cluster `config` is pointed at.
   ///
   /// This is the `hmg` end: the Settings tab renders [`BrokerInit::to_json`] of this
-  /// for the user to copy.
+  /// for the user to copy. The language travels with the cluster, so that the `hmc` it
+  /// initializes speaks the language of the window it came from.
   pub fn from_config(config: &Config) -> Self {
     Self {
       v: BROKER_INIT_VERSION,
       url: config.broker.url.clone(),
       username: config.broker.username.clone(),
       password: config.broker.password.clone(),
+      language: Some(config.gui.language.clone()),
     }
   }
 
@@ -221,11 +230,16 @@ impl BrokerInit {
   ///
   /// Only the fields the string carries are touched, so a `hmc` that has been running
   /// for a while keeps its device identity, its rules, and anything a newer build put
-  /// in the file.
+  /// in the file. A language that is absent or blank is not carried; one that is
+  /// present is written as it stands, because an unsupported tag already resolves to
+  /// English wherever `gui.language` is read.
   pub fn apply_to(&self, config: &mut Config) {
     config.broker.url = self.url.clone();
     config.broker.username = self.username.clone();
     config.broker.password = self.password.clone();
+    if let Some(language) = self.language.as_ref().filter(|language| !language.trim().is_empty()) {
+      config.gui.language = language.clone();
+    }
   }
 
   /// A copy safe to log or to put in a bug report.
@@ -281,6 +295,7 @@ mod tests {
       url: "mqtts://abc123.s1.eu.hivemq.cloud:8883".to_owned(),
       username: "hiveme-sam".to_owned(),
       password: "s3cret".to_owned(),
+      language: None,
     }
   }
 
@@ -386,6 +401,87 @@ mod tests {
   }
 
   #[test]
+  fn initialization_writes_the_language_on_create_and_only_a_different_one_on_update() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("HiveMe.json");
+    let language = |path: &Path| {
+      let document: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+      document["gui"]["language"].clone()
+    };
+
+    // Created from a string that carries a language.
+    let german = BrokerInit {
+      language: Some("de".to_owned()),
+      ..cloud()
+    };
+    assert_eq!(ConfigFile::initialize(&path, &german).unwrap().1, InitOutcome::Created);
+    assert_eq!(language(&path), "de");
+
+    // The same language again is no change at all.
+    let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+    assert_eq!(
+      ConfigFile::initialize(&path, &german).unwrap().1,
+      InitOutcome::Unchanged
+    );
+    assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), modified);
+
+    // A string without a language, or with a blank one, leaves the file's alone.
+    for absent in [None, Some(String::new()), Some("  ".to_owned())] {
+      let setup = BrokerInit {
+        language: absent,
+        ..cloud()
+      };
+      assert_eq!(ConfigFile::initialize(&path, &setup).unwrap().1, InitOutcome::Unchanged);
+      assert_eq!(language(&path), "de");
+    }
+
+    // A different language is an update of that one field.
+    let before: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let japanese = BrokerInit {
+      language: Some("ja".to_owned()),
+      ..cloud()
+    };
+    assert_eq!(
+      ConfigFile::initialize(&path, &japanese).unwrap().1,
+      InitOutcome::Updated
+    );
+    let mut expected = before;
+    expected["gui"]["language"] = Value::from("ja");
+    let written: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(written, expected);
+  }
+
+  #[test]
+  fn a_string_without_a_language_creates_an_english_config() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("HiveMe.json");
+    let (file, outcome) = ConfigFile::initialize(&path, &cloud()).unwrap();
+    assert_eq!(outcome, InitOutcome::Created);
+    assert_eq!(file.config().gui.language, "en-US");
+  }
+
+  #[test]
+  fn an_unsupported_language_is_kept_as_written() {
+    let mut config = Config::default();
+    BrokerInit {
+      language: Some("tlh".to_owned()),
+      ..cloud()
+    }
+    .apply_to(&mut config);
+    assert_eq!(config.gui.language, "tlh");
+  }
+
+  #[test]
+  fn a_string_without_a_language_says_nothing_about_one() {
+    // An older hmg wrote no language, and this build writes none when it has none.
+    let json = cloud().to_json();
+    assert!(!json.contains("language"), "{json}");
+    let parsed =
+      BrokerInit::parse(r#"{"v":1,"url":"mqtts://a.s1.eu.hivemq.cloud:8883","username":"u","password":"p"}"#).unwrap();
+    assert_eq!(parsed.language, None);
+  }
+
+  #[test]
   fn the_string_round_trips_through_json() {
     let init = cloud();
     assert_eq!(BrokerInit::parse(&init.to_json()).unwrap(), init);
@@ -403,14 +499,18 @@ mod tests {
     config.broker.username = "hiveme-sam".to_owned();
     config.broker.password = "s3cret".to_owned();
 
+    config.gui.language = "zh-TW".to_owned();
+
     let init = BrokerInit::from_config(&config);
     let parsed = BrokerInit::parse(&init.to_json()).unwrap();
+    assert_eq!(parsed.language.as_deref(), Some("zh-TW"));
 
     let mut fresh = Config::new_for_this_device();
     parsed.apply_to(&mut fresh);
     assert_eq!(fresh.broker.url, config.broker.url);
     assert_eq!(fresh.broker.username, config.broker.username);
     assert_eq!(fresh.broker.password, config.broker.password);
+    assert_eq!(fresh.gui.language, "zh-TW");
     assert_eq!(fresh.default_topic(), "hiveme");
   }
 
@@ -510,7 +610,7 @@ mod tests {
     assert!(schema.get("$id").is_some());
     assert_eq!(schema["type"], "object");
     let properties = schema["properties"].as_object().expect("properties");
-    for field in ["v", "url", "username", "password"] {
+    for field in ["v", "url", "username", "password", "language"] {
       assert!(properties.contains_key(field), "{field} is missing from the schema");
     }
   }

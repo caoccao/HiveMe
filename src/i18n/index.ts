@@ -18,15 +18,15 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { Language, LANGUAGES } from '../lib/protocol';
-import de from './locales/de.json';
-import enUS from './locales/en-US.json';
-import es from './locales/es.json';
-import fr from './locales/fr.json';
-import it from './locales/it.json';
-import ja from './locales/ja.json';
-import zhCN from './locales/zh-CN.json';
-import zhHK from './locales/zh-HK.json';
-import zhTW from './locales/zh-TW.json';
+import de from '../../locales/de.json';
+import enUS from '../../locales/en-US.json';
+import es from '../../locales/es.json';
+import fr from '../../locales/fr.json';
+import it from '../../locales/it.json';
+import ja from '../../locales/ja.json';
+import zhCN from '../../locales/zh-CN.json';
+import zhHK from '../../locales/zh-HK.json';
+import zhTW from '../../locales/zh-TW.json';
 
 /** Resolve regional and script tags to a bundled locale, with English as fallback. */
 export function resolveLanguage(language?: string): Language {

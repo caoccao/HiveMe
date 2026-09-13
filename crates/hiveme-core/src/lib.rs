@@ -29,11 +29,14 @@
 //! | [`mqtt`]    | 2.1 | `docs/specs/hivemq-cloud.md` |
 //! | [`storage`] | 4.2 | `docs/specs/gui.md`          |
 //! | [`session`] | TUI 1 | `docs/specs/session.md`    |
+//! | [`i18n`]    | TUI 2 | `docs/specs/tui.md`        |
 //! | `cloud`     | 6   | `docs/specs/hivemq-cloud.md` |
 //! | `crypto`    | 6   | `docs/specs/message.md`      |
 
 pub mod config;
 pub mod error;
+#[cfg(feature = "i18n")]
+pub mod i18n;
 pub mod message;
 pub mod mqtt;
 pub mod rules;

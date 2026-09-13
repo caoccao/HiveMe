@@ -194,5 +194,37 @@
       "GB": "GB",
       "TB": "TB"
     }
+  },
+  "cli": {
+    "sent": "{{topic}} にメッセージを送信しました。",
+    "configUnchanged": "設定は変更されていません: {{path}}",
+    "configUpdated": "設定を更新しました: {{path}}",
+    "configCreated": "設定を作成しました: {{path}}",
+    "noMessage": "メッセージがありません: 引数で渡すかパイプで入力してください。hmc --help を参照",
+    "stdinUnreadable": "stdin からメッセージを読み込めません: {{error}}",
+    "stdinEmpty": "送信する内容がありません: stdin が空でした",
+    "messageEmpty": "送信する内容がありません: メッセージが空です",
+    "notJson": "--json に JSON ではない入力が渡されました: {{error}}",
+    "encryptionUnavailable": "encryption.mode は {{mode}} ですが、暗号化は HiveMe の今後のバージョンで対応予定です。平文で送信するには Off に設定してください",
+    "configWritten": "設定がまだないため、既定の設定を {{path}} に書き込みました。broker ブロックを入力してから再実行してください",
+    "runtimeUnavailable": "非同期ランタイムを開始できません: {{error}}"
+  },
+  "help": {
+    "about": "HiveMe CLI: MQTT ブローカーにメッセージを送信",
+    "usage": "使い方",
+    "arguments": "引数",
+    "options": "オプション",
+    "message": "メッセージ本文。省略すると stdin から読み込みます",
+    "init": "設定文字列から共有設定を初期化して終了します",
+    "topic": "hiveme からの相対トピック。先頭のスラッシュは無視されます [既定: hiveme]",
+    "json": "MESSAGE（または stdin）をエンベロープなしの生の JSON ペイロードとして送信します",
+    "title": "メッセージの任意のタイトル",
+    "level": "debug | info | success | warn | error [既定: info。トピックとは無関係]",
+    "qos": "0 | 1 | 2 [既定: publish.qos]",
+    "retain": "retain フラグを設定します",
+    "config": "設定ファイルのパス",
+    "verbose": "接続の詳細を stderr に記録します",
+    "printHelp": "ヘルプを表示",
+    "printVersion": "バージョンを表示"
   }
 }

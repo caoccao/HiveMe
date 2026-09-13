@@ -35,15 +35,17 @@ Options:
   -V, --version        Print version
 ```
 
-Phase 3 of [the terminal UI plan](../plans/plan-terminal-ui.md) adds `--tui` and a
-sentence about the interactive mode to this block, and phase 2 renders the whole of
-it in the config language; `cli_help_matches_spec` keeps comparing the `en-US`
-rendering. Until those phases land the block above is the help text as built.
+The block is the `en-US` rendering. `hmc` renders the same help in the language of the
+config, see [Languages](#languages); `cli_help_matches_spec` compares the `en-US`
+rendering, and a second test proves that the doc comments of `cli.rs` and the English
+catalog render the same help. Phase 3 of
+[the terminal UI plan](../plans/plan-terminal-ui.md) adds `--tui` and a sentence about
+the interactive mode to this block.
 
 ## Examples
 
 ```sh
-hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret"}'
+hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret","language":"en-US"}'
 hmc                                   # open the terminal UI (phase 3, see tui.md)
 hmc "Build finished"                  # publish to hiveme
 hmc --level success "Build succeeded" # success payload on hiveme
@@ -60,7 +62,7 @@ username, and password from the HiveMQ Cloud console. **Copy CLI setup** copies 
 complete command, including the JSON, ready to paste into a terminal and run:
 
 ```sh
-hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret"}'
+hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret","language":"en-US"}'
 ```
 
 The format is in [config.md](config.md#the-setup-string) and is generated into
@@ -70,22 +72,25 @@ The format is in [config.md](config.md#the-setup-string) and is generated into
   so an option that would be ignored is refused instead.
 - It uses `hiveme-core::config::ConfigFile::initialize`, sharing the complete config
   schema, defaults, loader, and atomic writer with `hmg`.
-- It compares `broker.url`, `broker.username`, and `broker.password` with the existing
-  config. Matching values leave the file untouched
-  and print `Config is not changed: <path>` on stdout.
+- It compares `broker.url`, `broker.username`, `broker.password`, and, when the string
+  carries one, `gui.language` with the existing config. Matching values leave the file
+  untouched and print `Config is not changed: <path>` on stdout.
 - Different values update only those fields and print `Config has been updated: <path>`.
   All other values, including GUI preferences, device identity, unknown keys, and
   omitted fields, remain intact. The setup string has no topic configuration.
 - When there is no file, it creates the full shared config, including defaults for
   fields the CLI does not use, and prints `Config has been created: <path>`.
 - It never connects, so a setup string can be applied while the cluster is unreachable.
-- From phase 2 of [the terminal UI plan](../plans/plan-terminal-ui.md) the string also
-  carries the language of the `hmg` that copied it, as an optional `language` field.
-  `--init` writes it into `gui.language` when it creates the file and updates a
-  `gui.language` that differs, so the two applications stay in the same language. A
-  string without the field leaves an existing language alone and means `en-US` on a
-  fresh file. The outcomes keep their meaning: a language that already matches
-  changes nothing.
+- The string also carries the language of the `hmg` that copied it, as an optional
+  `language` field. `--init` writes it into `gui.language` when it creates the file
+  and updates a `gui.language` that differs, so the two applications stay in the same
+  language. A string without the field leaves an existing language alone and means
+  `en-US` on a fresh file. The outcomes keep their meaning: a language that already
+  matches changes nothing.
+- The outcome line is in the language of the config as `--init` left it, which is the
+  language of the string when the string carries one: a string copied from a German
+  `hmg` into a fresh install prints `Konfiguration wurde erstellt: <path>`. The lines
+  above are the `en-US` ones.
 - A string that is not usable is a usage error and nothing is written.
 - An unreadable config or a change to a newer-version config is a config error and
   the existing file is preserved. Unrelated existing settings are validated before
@@ -161,7 +166,8 @@ authority, which the operating system already trusts. See
 ### Output
 
 - After a successful publish, `hmc` prints `Message sent to <resolved-topic>.` on
-  stdout, for example `Message sent to hiveme.`. At QoS 1 and 2 this follows the
+  stdout, for example `Message sent to hiveme.`, in the language of the config, see
+  [Languages](#languages). At QoS 1 and 2 this follows the
   broker acknowledgement; at QoS 0 it follows writing the packet. A failed publish
   prints no success message. A subsequent disconnect failure still goes to stderr
   and produces a nonzero exit code.
@@ -177,17 +183,32 @@ authority, which the operating system already trusts. See
 
 ### Languages
 
-*Phase 2 of [the terminal UI plan](../plans/plan-terminal-ui.md); not built yet.*
+`hmc` speaks the nine languages of `hmg`, from the same catalogs in `locales/` at the
+repository root, under their `help` and `cli` keys.
 
-`hmc` speaks the nine languages of `hmg`, from the same catalogs, which move to
-`locales/` at the repository root. The language is `gui.language` of the config that
-was loaded, `en-US` when there is no config, and the `language` of the setup string
-when `--init` is given one. What is translated: the help, the publish confirmation,
-the init outcomes, and the usage errors `hmc` itself authors. What is not: the
-`hmc: <category>:` prefix and the exit codes, which scripts read; diagnostics authored
-by `hiveme-core`, such as a broker refusal or a validation message, which stay English
-as they do in `hmg`; and topic names, JSON, paths, and identifiers. The full rules are
-in [tui.md](tui.md#languages).
+- **Which language.** `gui.language` of the config, resolved as `hmg` resolves it, so
+  `de-AT` is German and an unsupported tag is English. Before clap parses the command
+  line, `hmc` finds `--config` on it, or `HIVEME_CONFIG`, or the per-OS path, and reads
+  the language from that file without writing anything; a missing or unreadable config
+  means `en-US`. That language is the one of `--help` and of a usage error found
+  before the config is read, such as an empty stdin. A publish then uses the
+  language of the config it loaded, and `--init` the language of the config as it left
+  it, which is the setup string's when the string carries one.
+- **What is translated.** The help, including the `Usage`, `Arguments`, and `Options`
+  headings and the descriptions of `--help` and `--version`; the publish confirmation;
+  the three init outcomes; and the details `hmc` itself writes: no message, an empty or
+  unreadable stdin, `--json` input that is not JSON, the refused encryption mode, the
+  default config that was written, and a runtime that would not start.
+- **What is not.** The `hmc: <category>:` prefix and the exit codes, which scripts
+  read. The option names, value names, and the `[OPTIONS]` and `[MESSAGE]` placeholders
+  of the usage line. clap's own parse errors, such as an unknown option or two options
+  that conflict, which clap writes in English with its `error:` prefix. Diagnostics
+  authored by `hiveme-core`, such as a setup string that is not usable, a broker
+  refusal, a validation message, or the reason a `--topic` is refused, which stay
+  English as they do in `hmg`. Topic names, JSON, paths, keys such as `encryption.mode`,
+  and identifiers.
+
+The rules the terminal UI adds are in [tui.md](tui.md#languages).
 
 ## Interactive mode
 

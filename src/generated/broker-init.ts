@@ -19,9 +19,16 @@
 // Do not edit; run `pnpm gen:types` instead.
 
 /**
- * Everything `hmc` needs to reach the cluster `hmg` is already talking to.
+ * Everything `hmc` needs to reach the cluster `hmg` is already talking to, and the
+ * language to talk about it in.
  */
 export interface HiveMeBrokerSetupString {
+  /**
+   * The `gui.language` of the application that copied the string, a BCP 47 tag.
+   * Optional: a string without it leaves an existing language alone, and a new config
+   * gets `en-US`.
+   */
+  language?: string | null;
   /**
    * Plain text, because the CONNECT packet needs it in plain text.
    */

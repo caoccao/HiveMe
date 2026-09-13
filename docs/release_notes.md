@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* `hmc` speaks the language of the config in all nine languages: `--help`, the publish
+  confirmation, the `--init` outcomes, and its own usage errors follow `gui.language`.
+  The `hmc: <category>:` prefix and the exit codes are unchanged, so scripts keep
+  working.
+
+* **Copy CLI setup** now carries the window's language, and `hmc --init` writes it to
+  `gui.language`, so a CLI set up from a German `hmg` answers in German. A setup string
+  without a language still works and leaves the language alone.
+
 * CLI level input is case-insensitive. Levels are normalized to lowercase in the
   shared message model, generated JSON, and database level fields; only UI labels
   use an initial capital.

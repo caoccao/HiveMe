@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import i18n, { changeLanguage, resolveLanguage } from './index';
-import enUS from './locales/en-US.json';
+import enUS from '../../locales/en-US.json';
 import { LANGUAGES, LEVELS, THEMES, ConnectionState, UpdateCheckInterval } from '../lib/protocol';
 import { BrokerProtocol } from '../lib/brokerUrl';
 import { formatBytes, formatDateTime, formatDay, formatDuration, formatTime } from '../lib/format';

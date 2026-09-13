@@ -202,5 +202,37 @@
       "GB": "Go",
       "TB": "To"
     }
+  },
+  "cli": {
+    "sent": "Message envoyé à {{topic}}.",
+    "configUnchanged": "La configuration n’a pas changé : {{path}}",
+    "configUpdated": "La configuration a été mise à jour : {{path}}",
+    "configCreated": "La configuration a été créée : {{path}}",
+    "noMessage": "aucun message : passez-le en argument ou par un tube, voir hmc --help",
+    "stdinUnreadable": "impossible de lire le message depuis stdin : {{error}}",
+    "stdinEmpty": "rien à publier : stdin était vide",
+    "messageEmpty": "rien à publier : le message est vide",
+    "notJson": "--json a reçu une entrée qui n’est pas du JSON : {{error}}",
+    "encryptionUnavailable": "encryption.mode vaut {{mode}}, mais le chiffrement arrive dans une version ultérieure de HiveMe ; réglez-le sur Off pour publier en clair",
+    "configWritten": "pas encore de configuration, une configuration par défaut a donc été écrite dans {{path}} ; renseignez le bloc broker et relancez",
+    "runtimeUnavailable": "impossible de démarrer l’environnement d’exécution asynchrone : {{error}}"
+  },
+  "help": {
+    "about": "HiveMe CLI : envoyer un message au courtier MQTT",
+    "usage": "Utilisation",
+    "arguments": "Arguments",
+    "options": "Options",
+    "message": "Corps du message. Lu depuis stdin s’il est omis",
+    "init": "Initialiser la configuration partagée à partir d’une chaîne de configuration, puis quitter",
+    "topic": "Sujet relatif à hiveme ; les barres obliques initiales sont ignorées [par défaut : hiveme]",
+    "json": "Publier MESSAGE (ou stdin) comme charge utile JSON brute, sans l’enveloppe",
+    "title": "Titre facultatif du message",
+    "level": "debug | info | success | warn | error [par défaut : info ; indépendant du sujet]",
+    "qos": "0 | 1 | 2 [par défaut : publish.qos]",
+    "retain": "Activer l’indicateur de conservation",
+    "config": "Chemin du fichier de configuration",
+    "verbose": "Journaliser les détails de la connexion sur stderr",
+    "printHelp": "Afficher l’aide",
+    "printVersion": "Afficher la version"
   }
 }

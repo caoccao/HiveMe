@@ -101,7 +101,7 @@ inputs, and answers, minus the Tauri wrapping.
 | `config`, `config_path`, `database_path`, `load_error` | none | the config as held, the two paths, why the file could not be read |
 | `set_config` | `Config` | the config as saved. Validates, writes, recompiles the rules, and reconnects only when something the CONNECT packet or the subscription list is built from changed |
 | `set_config_quietly` | `Config` | none. A change the user did not ask for, such as window geometry or the update check's bookkeeping; silently skipped while the file on disk is unreadable |
-| `broker_init` | none | the setup string for `hmc --init`, carrying `gui.language` from phase 2. Fails while the broker fields are not usable |
+| `broker_init` | none | the setup string for `hmc --init`, carrying `gui.language`. Fails while the broker fields are not usable |
 | `status` | none | `Status` |
 | `connect` | none | `Status`. Replaces a connection that is already up |
 | `disconnect` | none | none |

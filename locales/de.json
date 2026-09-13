@@ -198,5 +198,37 @@
       "GB": "GB",
       "TB": "TB"
     }
+  },
+  "cli": {
+    "sent": "Nachricht an {{topic}} gesendet.",
+    "configUnchanged": "Konfiguration ist unverändert: {{path}}",
+    "configUpdated": "Konfiguration wurde aktualisiert: {{path}}",
+    "configCreated": "Konfiguration wurde erstellt: {{path}}",
+    "noMessage": "keine Nachricht: als Argument übergeben oder per Pipe einlesen, siehe hmc --help",
+    "stdinUnreadable": "die Nachricht kann nicht aus stdin gelesen werden: {{error}}",
+    "stdinEmpty": "nichts zu senden: stdin war leer",
+    "messageEmpty": "nichts zu senden: die Nachricht ist leer",
+    "notJson": "--json hat eine Eingabe erhalten, die kein JSON ist: {{error}}",
+    "encryptionUnavailable": "encryption.mode ist {{mode}}, aber die Verschlüsselung kommt erst in einer späteren Version von HiveMe; auf Off setzen, um im Klartext zu senden",
+    "configWritten": "noch keine Konfiguration, daher wurde eine Standardkonfiguration nach {{path}} geschrieben; den broker-Block ausfüllen und erneut ausführen",
+    "runtimeUnavailable": "die asynchrone Laufzeit kann nicht gestartet werden: {{error}}"
+  },
+  "help": {
+    "about": "HiveMe CLI: eine Nachricht an den MQTT-Broker senden",
+    "usage": "Verwendung",
+    "arguments": "Argumente",
+    "options": "Optionen",
+    "message": "Nachrichtentext. Wird aus stdin gelesen, wenn er fehlt",
+    "init": "Die gemeinsame Konfiguration aus einer Einrichtungszeichenfolge anlegen und beenden",
+    "topic": "Topic relativ zu hiveme; führende Schrägstriche werden ignoriert [Standard: hiveme]",
+    "json": "MESSAGE (oder stdin) als unverarbeitete JSON-Nutzdaten ohne Umschlag senden",
+    "title": "Optionaler Titel der Nachricht",
+    "level": "debug | info | success | warn | error [Standard: info; unabhängig vom Topic]",
+    "qos": "0 | 1 | 2 [Standard: publish.qos]",
+    "retain": "Das Retain-Flag setzen",
+    "config": "Pfad der Konfigurationsdatei",
+    "verbose": "Verbindungsdetails auf stderr protokollieren",
+    "printHelp": "Hilfe anzeigen",
+    "printVersion": "Version anzeigen"
   }
 }

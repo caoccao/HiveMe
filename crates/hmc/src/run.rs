@@ -20,8 +20,15 @@
 //! The behavior is specified in `docs/specs/cli.md`. Everything that could also be
 //! useful to `hmg` lives in `hiveme-core`, so this file only decides what the command
 //! line asked for.
+//!
+//! What this file prints is in the language of the config it read, see "Languages" in
+//! `docs/specs/cli.md`. What `hiveme-core` reports, a broker refusal or a validation
+//! message, stays English, as `hmg` shows it.
+
+use std::path::Path;
 
 use hiveme_core::config::{BrokerInit, Config, ConfigFile, InitOutcome, config_path};
+use hiveme_core::i18n::{Locale, t_with};
 use hiveme_core::message::{CONTENT_TYPE, Level, Message, MessageProperties, Sender};
 use hiveme_core::mqtt::{MqttClient, Qos, Role};
 
@@ -31,22 +38,38 @@ use crate::failure::{Failure, Result};
 /// The name `hmc` puts in the `sender.app` field of every message it writes.
 const APP: &str = "hmc";
 
+/// The language of the config `hmc` is about to read, before anything has read it.
+///
+/// This is what the help, the version, and a usage error found before the config is
+/// loaded are written in. Nothing is written: a missing or unreadable config means
+/// English, and the run itself reports what is wrong with it.
+pub fn configured_locale(explicit: Option<&Path>) -> Locale {
+  config_path(explicit)
+    .and_then(|path| ConfigFile::load(&path))
+    .map(|file| Locale::resolve(&file.config().gui.language))
+    .unwrap_or_default()
+}
+
 /// Publishes one message, or writes the config and stops.
-pub async fn run(cli: Cli) -> Result<()> {
+///
+/// `locale` is [`configured_locale`], used until the config is read; from then on the
+/// language is the one in the config that was read.
+pub async fn run(cli: Cli, locale: Locale) -> Result<()> {
   if let Some(setup) = cli.init.as_deref() {
     return init(&cli, setup);
   }
 
-  let body = cli.body()?;
-  let config = load_config(&cli)?;
+  let body = cli.body(locale)?;
+  let config = load_config(&cli, locale)?;
+  let locale = Locale::resolve(&config.gui.language);
 
   // Encryption is designed in docs/specs/message.md but not implemented, and a config
   // that asks for it must not quietly get plaintext on the wire instead.
   if config.encryption.is_enabled() {
-    return Err(Failure::Config(format!(
-      "encryption.mode is {} but encryption arrives in a later version of HiveMe; \
-       set it to Off to publish in plain text",
-      config.encryption.mode
+    return Err(Failure::Config(t_with(
+      locale,
+      "cli.encryptionUnavailable",
+      &[("mode", &config.encryption.mode.to_string())],
     )));
   }
 
@@ -60,13 +83,13 @@ pub async fn run(cli: Cli) -> Result<()> {
   // Everything the user could have got wrong is settled before the network is touched,
   // so that a mistake such as `--json` with input that is not JSON is reported at once
   // rather than after a connection attempt that was never going to help.
-  let publication = Publication::build(&cli, &config, &body.text)?;
+  let publication = Publication::build(&cli, &config, &body.text, locale)?;
 
   let client = MqttClient::connect(&config, Role::Cli).await?;
   log::debug!("publishing to {topic} at qos {qos}, retain {retain}");
   let published = publication.send(&client, &topic, qos, retain).await;
   if published.is_ok() {
-    println!("Message sent to {topic}.");
+    println!("{}", t_with(locale, "cli.sent", &[("topic", &topic)]));
   }
 
   // The broker is told we are leaving whether or not the publish worked, so that it
@@ -88,9 +111,9 @@ enum Publication {
 }
 
 impl Publication {
-  fn build(cli: &Cli, config: &Config, body: &str) -> Result<Self> {
+  fn build(cli: &Cli, config: &Config, body: &str, locale: Locale) -> Result<Self> {
     if cli.json {
-      Ok(Self::RawJson(json_payload(body)?))
+      Ok(Self::RawJson(json_payload(body, locale)?))
     } else {
       Ok(Self::Envelope(Box::new(build_message(cli, config, body))))
     }
@@ -114,30 +137,38 @@ impl Publication {
 /// user has the HiveMQ Cloud console open and can paste a URL and credentials. Copying
 /// one line beats retyping three values, and the password is the one that is hardest to
 /// notice a typo in.
+///
+/// The outcome is reported in the language of the config as it was left, which is the
+/// language of the setup string when the string carries one.
 fn init(cli: &Cli, setup: &str) -> Result<()> {
   let setup = BrokerInit::parse(setup).map_err(|error| Failure::Usage(error.to_string()))?;
   log::debug!("read a setup string for {}", setup.redacted().url);
 
   let path = config_path(cli.config.as_deref())?;
   let (file, outcome) = ConfigFile::initialize(&path, &setup)?;
-  let message = match outcome {
-    InitOutcome::Unchanged => "Config is not changed",
-    InitOutcome::Updated => "Config has been updated",
-    InitOutcome::Created => "Config has been created",
+  let key = match outcome {
+    InitOutcome::Unchanged => "cli.configUnchanged",
+    InitOutcome::Updated => "cli.configUpdated",
+    InitOutcome::Created => "cli.configCreated",
   };
-  println!("{message}: {}", file.path().display());
+  let locale = Locale::resolve(&file.config().gui.language);
+  println!(
+    "{}",
+    t_with(locale, key, &[("path", &file.path().display().to_string())])
+  );
   Ok(())
 }
 
 /// Reads the config, or writes a default one and says so.
-fn load_config(cli: &Cli) -> Result<Config> {
+fn load_config(cli: &Cli, locale: Locale) -> Result<Config> {
   let path = config_path(cli.config.as_deref())?;
   let existed = path.exists();
   let (file, _) = ConfigFile::load_or_create(&path)?;
   if !existed {
-    return Err(Failure::Config(format!(
-      "no config yet, so a default one was written to {}; fill in the broker block and run again",
-      file.path().display()
+    return Err(Failure::Config(t_with(
+      locale,
+      "cli.configWritten",
+      &[("path", &file.path().display().to_string())],
     )));
   }
   log::debug!("read the config from {}", file.path().display());
@@ -164,9 +195,9 @@ fn build_message(cli: &Cli, config: &Config, body: &str) -> Message {
 }
 
 /// The bytes of a `--json` publish, which are the user's own rather than an envelope.
-fn json_payload(text: &str) -> Result<Vec<u8>> {
+fn json_payload(text: &str, locale: Locale) -> Result<Vec<u8>> {
   serde_json::from_str::<serde_json::Value>(text)
-    .map_err(|source| Failure::Usage(format!("--json was given input that is not JSON: {source}")))?;
+    .map_err(|source| Failure::Usage(t_with(locale, "cli.notJson", &[("error", &source.to_string())])))?;
   Ok(text.as_bytes().to_vec())
 }
 
@@ -334,23 +365,23 @@ mod tests {
   #[test]
   fn json_input_is_published_exactly_as_it_was_given() {
     let text = r#"{ "stage": "deploy",  "ok": true }"#;
-    assert_eq!(json_payload(text).unwrap(), text.as_bytes());
+    assert_eq!(json_payload(text, Locale::EnUs).unwrap(), text.as_bytes());
   }
 
   #[test]
   fn the_publication_is_settled_before_anything_connects() {
     let config = config();
     assert!(matches!(
-      Publication::build(&cli(&["hello"]), &config, "hello").unwrap(),
+      Publication::build(&cli(&["hello"]), &config, "hello", Locale::EnUs).unwrap(),
       Publication::Envelope(_)
     ));
     assert_eq!(
-      Publication::build(&cli(&["--json", "{}"]), &config, "{}").unwrap(),
+      Publication::build(&cli(&["--json", "{}"]), &config, "{}", Locale::EnUs).unwrap(),
       Publication::RawJson(b"{}".to_vec())
     );
     // The whole point of building first: this never reaches the broker.
     assert_eq!(
-      Publication::build(&cli(&["--json", "not json"]), &config, "not json")
+      Publication::build(&cli(&["--json", "not json"]), &config, "not json", Locale::EnUs)
         .unwrap_err()
         .code(),
       2
@@ -359,16 +390,47 @@ mod tests {
 
   #[test]
   fn json_input_that_is_not_json_is_a_usage_error() {
-    let failure = json_payload("not json").unwrap_err();
+    let failure = json_payload("not json", Locale::EnUs).unwrap_err();
     assert_eq!(failure.code(), 2);
-    assert!(failure.to_string().contains("--json"), "{failure}");
+    assert!(
+      failure
+        .line()
+        .starts_with("hmc: usage: --json was given input that is not JSON: "),
+      "{failure}"
+    );
+    // The flag keeps its name in every language, and serde's reason stays English.
+    let failure = json_payload("not json", Locale::It).unwrap_err();
+    assert!(
+      failure
+        .line()
+        .starts_with("hmc: usage: --json ha ricevuto un input che non è JSON: expected"),
+      "{failure}"
+    );
   }
 
   #[test]
   fn a_json_scalar_is_still_json() {
     for text in ["1", "\"text\"", "true", "null", "[1,2]"] {
-      assert!(json_payload(text).is_ok(), "{text}");
+      assert!(json_payload(text, Locale::EnUs).is_ok(), "{text}");
     }
+  }
+
+  #[test]
+  fn the_language_before_the_config_is_read_is_the_one_inside_it() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("HiveMe.json");
+    assert_eq!(configured_locale(Some(&path)), Locale::EnUs, "no config means English");
+    assert!(!path.exists(), "looking for the language never writes a config");
+
+    std::fs::write(&path, r#"{ "gui": { "language": "zh-Hant" } }"#).unwrap();
+    assert_eq!(configured_locale(Some(&path)), Locale::ZhTw);
+
+    std::fs::write(&path, "{ not json").unwrap();
+    assert_eq!(
+      configured_locale(Some(&path)),
+      Locale::EnUs,
+      "an unreadable config means English"
+    );
   }
 
   #[test]

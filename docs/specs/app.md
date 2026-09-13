@@ -21,7 +21,7 @@ with TLS.
 | [message.md](message.md) | The JSON message envelope, its payload, parse tiers, compatibility rules, and the encryption design |
 | [cli.md](cli.md) | `hmc`: usage, behavior, exit codes, the interactive mode trigger |
 | [gui.md](gui.md) | `hmg`: layout, notifications, storage, IPC, settings, window |
-| [tui.md](tui.md) | The terminal UI of `hmc`: layout, keys, theme, languages, startup; specified, not built |
+| [tui.md](tui.md) | The terminal UI of `hmc`: layout, keys, theme, languages, startup; the languages are built, the terminal UI is specified |
 | [session.md](session.md) | The backend both applications share: operations, events, types, notifications, two processes on one installation; `hmg` runs on it |
 | [hivemq-cloud.md](hivemq-cloud.md) | What the broker offers, how HiveMe connects, and the REST API |
 
@@ -162,8 +162,8 @@ HiveMe/
                                   # Messages, TopicTree, MessageView, Composer, Config, About
     lib/                          # store.tsx, service.ts, protocol.ts, constants.ts, format.ts, types.ts, message.ts
     generated/                    # config.ts, message.ts generated from schemas/ (committed)
-    i18n/                         # index.ts, locales/*.json (nine locales; the files move to locales/ in phase 2, planned)
-  locales/                        # planned, phase 2: the nine catalogs shared by the frontend and hmc
+    i18n/                         # index.ts, index.test.ts: react-i18next over the catalogs in locales/
+  locales/                        # the nine catalogs, shared by the frontend and hmc
   src-tauri/                      # Tauri 2 app, package `hmg`, lib `hmg_lib`, binary `hmg`
     Cargo.toml, tauri.conf.json, build.rs, capabilities/default.json, icons/
     tauri.windows.conf.json       # Windows only: the bundle entry that carries hmc
@@ -172,7 +172,7 @@ HiveMe/
   crates/
     hiveme-core/                  # config, message, topic, rules, mqtt, storage (feature), session (feature), cloud (feature, later)
       src/session/                # the shared backend of session.md: mod, config, mqtt, notify, history, update, types
-      src/i18n/                   # planned, phase 2: locale resolution, catalogs, plural rules, formatting
+      src/i18n/                   # locale resolution, catalogs, plural rules, formatting (feature i18n)
     hmc/                          # CLI binary `hmc`
       build.rs, icons/            # the Windows executable icon and version information
       src/tui/                    # planned, phases 3 to 5: the terminal UI of tui.md
@@ -266,8 +266,8 @@ Their phase numbers are that plan's, not the initialization plan's.
 | Terminal UI and shared session specified | [tui.md](tui.md), [session.md](session.md) | `docs/specs` | TUI 0 | done |
 | Shared session: `hmg` on `hiveme_core::session`, `Role::Tui`, the `Toaster` split | [session.md](session.md) | `hiveme-core::session`, `src-tauri` | TUI 1 | done |
 | SQLite busy timeout for two processes on one database | [session.md](session.md#two-processes-one-installation), [gui.md](gui.md#storage) | `hiveme-core::storage` | TUI 1 | done |
-| Setup string carries the language; `hmc --init` applies it | [config.md](config.md#the-setup-string), [cli.md](cli.md#setting-up) | `hiveme-core::config::init`, `crates/hmc` | TUI 2 | planned |
-| Shared catalogs in `locales/`, `hiveme_core::i18n`, translated `hmc` lines and help | [tui.md](tui.md#languages), [gui.md](gui.md#languages) | `locales`, `hiveme-core::i18n`, `crates/hmc`, `src/i18n` | TUI 2 | planned |
+| Setup string carries the language; `hmc --init` applies it | [config.md](config.md#the-setup-string), [cli.md](cli.md#setting-up) | `hiveme-core::config::init`, `crates/hmc` | TUI 2 | done |
+| Shared catalogs in `locales/`, `hiveme_core::i18n`, translated `hmc` lines and help | [cli.md](cli.md#languages), [tui.md](tui.md#languages), [gui.md](gui.md#languages) | `locales`, `hiveme-core::i18n`, `crates/hmc`, `src/i18n` | TUI 2 | done |
 | Terminal UI shell: trigger, toolbar, tabs, footer, snackbar, help, theme, keys, OS notifications, update notice | [tui.md](tui.md), [cli.md](cli.md#interactive-mode) | `crates/hmc/src/tui` | TUI 3 | planned |
 | Terminal UI Messages tab: topic tree, message view, composer | [tui.md](tui.md#topic-tree) | `crates/hmc/src/tui/messages` | TUI 4 | planned |
 | Terminal UI Settings and About tabs | [tui.md](tui.md#settings) | `crates/hmc/src/tui/settings`, `crates/hmc/src/tui/about.rs` | TUI 5 | planned |
@@ -471,3 +471,27 @@ The entries below are against [the terminal UI plan](../plans/plan-terminal-ui.m
     terminal UI, closing the terminal and `SIGTERM` included, so that the MQTT
     connection is closed and the broker session discarded however it ends. Decision
     26 and section 5.11 of the plan record it.
+28. Phase 2: clap writes the `Usage`, `Arguments`, and `Options` headings and the
+    descriptions of `--help` and `--version` in English itself, so `cli::command` gives
+    every argument a heading from the catalog, puts the usage heading in the help
+    template, and replaces the two built-in flags with equivalent ones; `clap` gains its
+    `string` feature for the headings. The English rendering is byte for byte clap's
+    default, which a test proves against the doc comments. clap's own parse errors and
+    the placeholders of the usage line stay English, since they are clap's text rather
+    than lines `hmc` authors; [cli.md](cli.md#languages) says so.
+29. Phase 2: section 3.3 of the plan picks the language from "the config they loaded",
+    but the help is printed before any config is loaded. `cli::config_argument` finds
+    `--config` on the raw command line and `run::configured_locale` reads `gui.language`
+    from that file, without writing it, before clap parses; a publish then switches to
+    the language of the config it loaded, and `--init` reports in the language of the
+    config it left.
+30. Phase 2: the format functions are named after `src/lib/format.ts` (`integer`,
+    `decimal`, `bytes`, `duration`, `time`, `date_time`, `day`, and `local` for the wall
+    clock of a timestamp), and `Locale` carries `plural` and `plural_categories`, which
+    section 3.3 leaves unnamed. The keys are `help.printHelp` and `help.printVersion`
+    for the two built-in flags and `cli.*` for the lines, one per line;
+    `--topic: <reason>` has no key, because its two halves are an option name and a
+    core diagnostic. The Italian heading for positional arguments is `Parametri`, since
+    `Argomenti` is that catalog's word for topics. A setup string with a blank
+    `language` counts as one without it, and `BrokerInit` leaves the field out when it
+    has no language, so the schema lets it be `null`.

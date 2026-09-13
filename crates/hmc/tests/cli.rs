@@ -312,6 +312,9 @@ fn init_updates_only_different_values_in_the_shared_gui_config() {
   gui.save().unwrap();
   let mut expected = gui.config().clone();
   setup.password = "updated-password".to_owned();
+  // A string with no language leaves the Japanese of the file alone, and the outcome is
+  // reported in it.
+  setup.language = None;
   expected.broker.password = setup.password.clone();
 
   hmc()
@@ -320,7 +323,7 @@ fn init_updates_only_different_values_in_the_shared_gui_config() {
     .args(["--init", &setup.to_json()])
     .assert()
     .success()
-    .stdout(format!("Config has been updated: {}\n", path.display()));
+    .stdout(format!("設定を更新しました: {}\n", path.display()));
 
   let reread = ConfigFile::load(&path).unwrap();
   assert_eq!(reread.config(), &expected);
@@ -414,6 +417,210 @@ fn init_does_not_publish() {
     .timeout(std::time::Duration::from_secs(30))
     .assert()
     .success();
+}
+
+/// A config in `language` that would connect, written to a fresh scratch directory.
+fn usable_in(language: &str) -> (tempfile::TempDir, PathBuf) {
+  let (directory, path) = scratch();
+  let mut config = usable();
+  config.gui.language = language.to_owned();
+  write(&path, &config);
+  (directory, path)
+}
+
+#[test]
+fn the_help_is_in_the_language_of_the_config() {
+  let (_directory, path) = usable_in("de");
+  let before = std::fs::read(&path).unwrap();
+  for arguments in [
+    vec!["--config".to_owned(), path.display().to_string(), "--help".to_owned()],
+    vec!["--help".to_owned(), "-c".to_owned(), path.display().to_string()],
+    vec![format!("--config={}", path.display()), "-h".to_owned()],
+  ] {
+    hmc().args(&arguments).assert().success().stdout(
+      predicate::str::starts_with("HiveMe CLI: eine Nachricht an den MQTT-Broker senden")
+        .and(predicate::str::contains("Verwendung: hmc"))
+        .and(predicate::str::contains("Optionen:"))
+        .and(predicate::str::contains("-h, --help           Hilfe anzeigen"))
+        .and(predicate::str::contains("Usage:").not()),
+    );
+  }
+  assert_eq!(
+    std::fs::read(&path).unwrap(),
+    before,
+    "printing help never writes the config"
+  );
+
+  let (_directory, path) = usable_in("zh-Hant-HK");
+  hmc()
+    .arg("--config")
+    .arg(&path)
+    .arg("--help")
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("用法: hmc").and(predicate::str::contains("顯示說明")));
+}
+
+#[test]
+fn the_help_is_english_without_a_config_and_writes_none() {
+  let (_directory, path) = scratch();
+  hmc()
+    .arg("--config")
+    .arg(&path)
+    .arg("--help")
+    .assert()
+    .success()
+    .stdout(
+      predicate::str::starts_with("HiveMe CLI: send a message to the MQTT broker")
+        .and(predicate::str::contains("Usage: hmc")),
+    );
+  assert!(!path.exists(), "printing help never creates a config");
+
+  let (_directory, path) = usable_in("tlh");
+  hmc()
+    .arg("--config")
+    .arg(&path)
+    .arg("--help")
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("Print help"));
+}
+
+#[test]
+fn the_help_follows_the_config_the_environment_names() {
+  let (_directory, path) = usable_in("es");
+  hmc()
+    .env("HIVEME_CONFIG", &path)
+    .arg("--help")
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("Uso: hmc").and(predicate::str::contains("Mostrar la ayuda")));
+}
+
+#[test]
+fn a_usage_error_is_in_the_language_of_the_config_behind_the_same_prefix() {
+  let (_directory, path) = usable_in("de");
+  hmc()
+    .arg("--config")
+    .arg(&path)
+    .write_stdin("")
+    .assert()
+    .code(2)
+    .stdout(predicate::str::is_empty())
+    .stderr("hmc: usage: nichts zu senden: stdin war leer\n");
+
+  hmc()
+    .arg("--config")
+    .arg(&path)
+    .args(["--json", "not json"])
+    .assert()
+    .code(2)
+    .stderr(predicate::str::starts_with(
+      "hmc: usage: --json hat eine Eingabe erhalten, die kein JSON ist: ",
+    ));
+
+  // A diagnostic hiveme-core writes stays English, as hmg shows it.
+  hmc()
+    .arg("--config")
+    .arg(&path)
+    .args(["-t", "build/#", "hello"])
+    .assert()
+    .code(2)
+    .stderr(predicate::str::starts_with("hmc: usage: --topic: "));
+}
+
+#[test]
+fn a_config_failure_hmc_writes_is_in_the_language_of_the_config() {
+  let (_directory, path) = scratch();
+  let mut config = usable();
+  config.gui.language = "fr".to_owned();
+  config.encryption.mode = EncryptionMode::Required;
+  write(&path, &config);
+  hmc()
+    .arg("--config")
+    .arg(&path)
+    .arg("hello")
+    .assert()
+    .code(3)
+    .stderr(predicate::str::starts_with(
+      "hmc: config: encryption.mode vaut Required, mais le chiffrement arrive",
+    ));
+}
+
+#[test]
+fn init_reports_in_the_language_of_the_setup_string() {
+  let (_directory, path) = scratch();
+  let mut setup = BrokerInit::parse(&setup_string()).unwrap();
+  setup.language = Some("de".to_owned());
+  hmc()
+    .arg("--config")
+    .arg(&path)
+    .args(["--init", &setup.to_json()])
+    .assert()
+    .success()
+    .stdout(format!("Konfiguration wurde erstellt: {}\n", path.display()));
+  let written: Config = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+  assert_eq!(written.gui.language, "de");
+
+  // The same string again changes nothing, and says so in German.
+  hmc()
+    .arg("--config")
+    .arg(&path)
+    .args(["--init", &setup.to_json()])
+    .assert()
+    .success()
+    .stdout(format!("Konfiguration ist unverändert: {}\n", path.display()));
+
+  // A different language is an update, reported in the new language.
+  setup.language = Some("fr".to_owned());
+  hmc()
+    .arg("--config")
+    .arg(&path)
+    .args(["--init", &setup.to_json()])
+    .assert()
+    .success()
+    .stdout(format!("La configuration a été mise à jour : {}\n", path.display()));
+  let written: Config = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+  assert_eq!(written.gui.language, "fr");
+  assert_eq!(written.broker.username, "hiveme-sam");
+}
+
+#[test]
+fn init_without_a_language_keeps_the_one_in_the_config() {
+  let (_directory, path) = scratch();
+  let mut setup = BrokerInit::parse(&setup_string()).unwrap();
+  setup.language = None;
+  hmc()
+    .arg("--config")
+    .arg(&path)
+    .args(["--init", &setup.to_json()])
+    .assert()
+    .success()
+    .stdout(format!("Config has been created: {}\n", path.display()));
+  let mut written: Config = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+  assert_eq!(written.gui.language, "en-US", "absent means English on a new config");
+
+  written.gui.language = "ja".to_owned();
+  write(&path, &written);
+  hmc()
+    .arg("--config")
+    .arg(&path)
+    .args(["--init", &setup.to_json()])
+    .assert()
+    .success()
+    .stdout(format!("設定は変更されていません: {}\n", path.display()));
+}
+
+#[test]
+fn a_setup_string_that_is_not_usable_is_reported_by_the_core_in_english() {
+  let (_directory, path) = usable_in("ja");
+  hmc()
+    .arg("--config")
+    .arg(&path)
+    .args(["--init", "not json"])
+    .assert()
+    .code(2)
+    .stderr(predicate::str::starts_with("hmc: usage: ").and(predicate::str::contains("setup string")));
 }
 
 #[test]

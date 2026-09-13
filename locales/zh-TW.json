@@ -4,7 +4,7 @@
     "disconnect": "中斷與代理伺服器的連線",
     "pauseNotifications": "暫停通知",
     "resumeNotifications": "恢復通知",
-    "clearTopic": "清除所選主題的歷史記錄",
+    "clearTopic": "清除所選主題的歷史紀錄",
     "settings": "設定 (F10)",
     "about": "關於"
   },
@@ -16,13 +16,13 @@
   },
   "topics": {
     "filter": "篩選主題",
-    "empty": "暫無訊息。主題收到第一則訊息後便會顯示在這裏。",
+    "empty": "尚無訊息。主題收到第一則訊息後就會顯示在這裡。",
     "noMatch": "沒有符合篩選條件的主題。",
     "unread_other": "{{count, number}} 則未讀訊息"
   },
   "messages": {
-    "selectTopic": "選擇一個主題以閱讀訊息。",
-    "empty": "此主題暫無訊息。",
+    "selectTopic": "選取一個主題以閱讀訊息。",
+    "empty": "此主題尚無訊息。",
     "unknownSender": "未知",
     "newerVersion": "較新版本",
     "retained": "由代理伺服器保留",
@@ -30,20 +30,20 @@
     "copyBody": "複製",
     "copyJson": "複製原始 JSON",
     "copiedBody": "內文已複製到剪貼簿。",
-    "copiedJson": "負載已複製到剪貼簿。",
+    "copiedJson": "酬載已複製到剪貼簿。",
     "data": "資料",
     "bytes_other": "{{count, number}} 位元組",
     "qos": "QoS {{qos}}",
     "encrypted": "已加密（金鑰 {{kid}}）",
     "unknownLevel": "{{level}}（{{fallback}}）",
-    "resizeTopics": "調整主題窗格闊度"
+    "resizeTopics": "調整主題窗格寬度"
   },
   "composer": {
-    "level": "級別",
+    "level": "等級",
     "topic": "主題",
     "title": "標題",
     "placeholder": "輸入訊息。按 Enter 傳送，按 Shift+Enter 換行。",
-    "placeholderJson": "輸入 JSON 負載。按 Enter 傳送，按 Shift+Enter 換行。",
+    "placeholderJson": "輸入 JSON 酬載。按 Enter 傳送，按 Shift+Enter 換行。",
     "send": "傳送",
     "options": "更多選項",
     "sendAsJson": "作為原始 JSON",
@@ -51,7 +51,7 @@
     "qos": "QoS",
     "retain": "保留訊息",
     "disconnected": "連線至代理伺服器後即可傳送訊息。",
-    "noTopic": "選擇一個主題以傳送訊息。"
+    "noTopic": "選取一個主題以傳送訊息。"
   },
   "footer": {
     "state": {
@@ -76,10 +76,10 @@
     "topics": "主題",
     "notifications": "通知",
     "appearance": "外觀",
-    "history": "歷史記錄",
+    "history": "歷史紀錄",
     "update": "更新",
     "advanced": "進階",
-    "advancedHint": "這些功能已訂立規格，但尚未實作。",
+    "advancedHint": "這些功能已訂定規格，但尚未實作。",
     "encryption": "加密",
     "cloudApi": "雲端 API",
     "notImplemented": "已完成設計，但尚未實作。請參閱規格。",
@@ -91,13 +91,13 @@
       "ws": "WebSocket"
     },
     "url": "網址",
-    "urlHint": "請按 HiveMQ Cloud 控制台顯示的內容原樣貼上網址。通訊協定請在旁邊的清單中選擇，毋須加在網址前面。",
+    "urlHint": "請依 HiveMQ Cloud 控制台顯示的內容原樣貼上網址。通訊協定請在旁邊的清單中選取，無須加在網址前面。",
     "urlConnectsTo": "連線至 {{url}}，連接埠為 {{port}}。",
     "username": "使用者名稱",
     "password": "密碼",
     "showPassword": "顯示密碼",
     "hidePassword": "隱藏密碼",
-    "tlsIsAutomatic": "TLS 毋須設定。HiveMQ Cloud 叢集提供的憑證鏈可追溯至作業系統已信任的公共憑證授權機構。",
+    "tlsIsAutomatic": "TLS 無須設定。HiveMQ Cloud 叢集提供的憑證鏈可追溯至作業系統已信任的公用憑證授權單位。",
     "connection": "連線",
     "clientIdPrefix": "用戶端 ID 前綴",
     "keepAliveSecs": "保持連線間隔（秒）",
@@ -153,8 +153,8 @@
       "Emerald": "翡翠"
     },
     "language": "語言",
-    "historyHint": "設定訊息資料庫的保留範圍。超過任一限制時，訊息便會被刪除；設為 0 可關閉對應限制。",
-    "maxMessagesPerTopic": "每個主題的訊息數目",
+    "historyHint": "設定訊息資料庫的保留範圍。超過任一限制時，訊息就會被刪除；設為 0 可關閉對應限制。",
+    "maxMessagesPerTopic": "每個主題的訊息數",
     "retentionDays": "保留時間（天）",
     "checkInterval": "檢查更新",
     "interval": {
@@ -164,12 +164,12 @@
     }
   },
   "about": {
-    "tagline": "一種訊息格式、兩個應用程式及一個 HiveMQ Cloud 叢集。",
+    "tagline": "一種訊息格式、兩個應用程式，以及一個 HiveMQ Cloud 叢集。",
     "author": "作者",
     "github": "GitHub",
     "device": "裝置",
     "configPath": "設定檔",
-    "databasePath": "歷史記錄資料庫",
+    "databasePath": "歷史紀錄資料庫",
     "license": "授權條款",
     "copyright": "版權所有 © 2026"
   },
@@ -194,5 +194,37 @@
       "GB": "GB",
       "TB": "TB"
     }
+  },
+  "cli": {
+    "sent": "訊息已傳送至 {{topic}}。",
+    "configUnchanged": "設定未變更：{{path}}",
+    "configUpdated": "設定已更新：{{path}}",
+    "configCreated": "設定已建立：{{path}}",
+    "noMessage": "沒有訊息：請以引數傳入或透過管線輸入，請參閱 hmc --help",
+    "stdinUnreadable": "無法從 stdin 讀取訊息：{{error}}",
+    "stdinEmpty": "沒有可發布的內容：stdin 是空的",
+    "messageEmpty": "沒有可發布的內容：訊息是空的",
+    "notJson": "--json 收到的輸入不是 JSON：{{error}}",
+    "encryptionUnavailable": "encryption.mode 為 {{mode}}，但加密功能將在 HiveMe 的後續版本推出；請將其設為 Off 以明文發布",
+    "configWritten": "尚無設定，已將預設設定寫入 {{path}}；請填寫 broker 區塊後再執行",
+    "runtimeUnavailable": "無法啟動非同步執行階段：{{error}}"
+  },
+  "help": {
+    "about": "HiveMe CLI：向 MQTT 代理伺服器傳送訊息",
+    "usage": "用法",
+    "arguments": "引數",
+    "options": "選項",
+    "message": "訊息內文。省略時從 stdin 讀取",
+    "init": "根據設定字串初始化共用設定，然後結束",
+    "topic": "相對於 hiveme 的主題；會忽略開頭的斜線 [預設值：hiveme]",
+    "json": "將 MESSAGE（或 stdin）作為不含信封的原始 JSON 酬載發布",
+    "title": "訊息的選用標題",
+    "level": "debug | info | success | warn | error [預設值：info；與主題無關]",
+    "qos": "0 | 1 | 2 [預設值：publish.qos]",
+    "retain": "設定保留旗標",
+    "config": "設定檔路徑",
+    "verbose": "將連線詳細資料記錄到 stderr",
+    "printHelp": "顯示說明",
+    "printVersion": "顯示版本"
   }
 }

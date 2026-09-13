@@ -189,6 +189,11 @@ async fn next_message(incoming: &mut Receiver<IncomingMessage>) -> IncomingMessa
 
 /// Fails with the process output when `hmc` did not exit 0.
 fn assert_published(output: &std::process::Output, topic: &str) {
+  assert_published_with(output, &format!("Message sent to {topic}.\n"));
+}
+
+/// Fails with the process output when `hmc` did not exit 0 and print `confirmation`.
+fn assert_published_with(output: &std::process::Output, confirmation: &str) {
   assert!(
     output.status.success(),
     "hmc exited {:?}\nstdout: {}\nstderr: {}",
@@ -196,10 +201,7 @@ fn assert_published(output: &std::process::Output, topic: &str) {
     String::from_utf8_lossy(&output.stdout),
     String::from_utf8_lossy(&output.stderr)
   );
-  assert_eq!(
-    String::from_utf8_lossy(&output.stdout),
-    format!("Message sent to {topic}.\n")
-  );
+  assert_eq!(String::from_utf8_lossy(&output.stdout), confirmation);
 }
 
 #[test]
@@ -238,6 +240,43 @@ fn a_message_argument_reaches_a_subscriber_as_an_envelope() {
         other => panic!("the payload did not parse as an envelope: {other:?}"),
       }
 
+      subscriber.disconnect().await.expect("the subscriber says goodbye");
+    },
+  );
+}
+
+#[test]
+fn the_confirmation_is_in_the_language_of_the_config() {
+  with_broker(
+    "the_confirmation_is_in_the_language_of_the_config",
+    |fixture| async move {
+      let (subscriber, mut incoming) = fixture.subscriber().await;
+      let directory = tempfile::tempdir().expect("a temporary directory");
+      for (language, confirmation) in [
+        ("de", "Nachricht an hiveme/lang gesendet.\n"),
+        ("ja", "hiveme/lang にメッセージを送信しました。\n"),
+      ] {
+        let mut config = fixture.config.clone();
+        config.gui.language = language.to_owned();
+        let path = directory.path().join(format!("{language}.json"));
+        std::fs::write(
+          &path,
+          serde_json::to_string_pretty(&config).expect("the config serializes"),
+        )
+        .expect("the config is written");
+
+        let output = tokio::task::spawn_blocking(move || run_hmc(&path, vec!["-t", "lang", "hallo"], None))
+          .await
+          .expect("the hmc process runs");
+        assert_published_with(&output, confirmation);
+        // Only the words around the message change; the message itself is the user's.
+        let received = next_message(&mut incoming).await;
+        assert_eq!(received.topic, "hiveme/lang");
+        match received.parse() {
+          Parsed::Envelope(envelope) => assert_eq!(envelope.payload.expect("the payload").body, "hallo"),
+          other => panic!("the payload did not parse as an envelope: {other:?}"),
+        }
+      }
       subscriber.disconnect().await.expect("the subscriber says goodbye");
     },
   );

@@ -17,9 +17,10 @@ path = "src/main.rs"
 winresource = { workspace = true }
 
 [dependencies]
-clap = { workspace = true }
+# `string` lets the help carry headings from the catalogs rather than only literals.
+clap = { workspace = true, features = ["string"] }
 env_logger = { workspace = true }
-hiveme-core = { workspace = true }
+hiveme-core = { workspace = true, features = ["i18n"] }
 log = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

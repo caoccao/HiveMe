@@ -6,8 +6,8 @@ snackbar, OS notifications, and the update notice, rendered with
 [ratatui](https://ratatui.rs/) in the terminal, in all nine languages, on the same
 backend `hmg` uses. The one-shot publish mode of [cli.md](cli.md) is unchanged.
 
-**Status: specified, not built.** [The terminal UI plan](../plans/plan-terminal-ui.md)
-builds it phase by phase. Every section below names the phase that builds it, and the
+**Status: the languages are built; the terminal UI is specified, not built.**
+[The terminal UI plan](../plans/plan-terminal-ui.md) builds it phase by phase. Every section below names the phase that builds it, and the
 status table in [app.md](app.md#status) records what has landed. Until a section's
 phase is done, this document describes intent rather than code, the way
 [message.md](message.md#encryption) describes encryption.
@@ -66,7 +66,7 @@ applications.
 | `crates/hmc/src/tui/clipboard.rs` | `arboard`, then the OSC 52 escape sequence |
 | `crates/hmc/src/tui/notify.rs` | The `Toaster` of [session.md](session.md#notifications): `notify-rust`, or the Windows toast crate |
 | `crates/hmc/src/tui/open.rs` | Opens URLs and the config directory |
-| `crates/hiveme-core/src/i18n/` | Locale resolution, the catalogs, plural rules, formatting; see [Languages](#languages) |
+| `crates/hiveme-core/src/i18n/` | Locale resolution, the catalogs, plural rules, formatting; see [Languages](#languages). Built in phase 2 |
 | `locales/*.json` | The nine catalogs, shared with the frontend |
 
 Third party ratatui widgets (`tui-textarea`, `tui-tree-widget`) are used only if they
@@ -355,17 +355,23 @@ the Appearance settings mean the same thing in both.
 
 ## Languages
 
-*Phase 2 for the catalogs and the publish and init lines, phase 3 for the terminal UI.*
+*Phase 2 for the catalogs and the publish and init lines, which are built; phase 3 for
+the terminal UI.*
 
 `hmc` ships the same nine languages as `hmg`: German (`de`), US English (`en-US`),
 Spanish (`es`), French (`fr`), Italian (`it`), Japanese (`ja`), Simplified Chinese
 (`zh-CN`), and Traditional Chinese for Hong Kong (`zh-HK`) and Taiwan (`zh-TW`).
 
-- The catalogs are one shared set. `src/i18n/locales/*.json` moves to `locales/*.json`
-  at the repository root; the frontend imports it from there and `hiveme_core::i18n`
-  embeds it with `include_str!`. Keys the terminal UI and the CLI add live in the same
-  files, under the `tui`, `cli`, and `help` namespaces, so the frontend's catalog test
-  covers them as well.
+- The catalogs are one shared set, `locales/*.json` at the repository root; the
+  frontend imports it from there and `hiveme_core::i18n`, behind the `i18n` feature
+  that `hmc` turns on, embeds it with `include_str!`. Keys the terminal UI and the CLI
+  add live in the same files, under the `tui`, `cli`, and `help` namespaces, so the
+  frontend's catalog test covers them as well.
+- The lookups are `t(locale, key)`, `t_with(locale, key, values)` for `{{name}}`
+  placeholders, and `t_count(locale, key, count)` for the `_one`, `_many`, and `_other`
+  keys, with `{{count, number}}` grouped. A key a locale lacks falls back to `en-US`,
+  then to the key itself. `Locale::resolve` is `resolveLanguage` of
+  `src/i18n/index.ts`.
 - Language selection: `gui.language` of the config that was loaded; `en-US` when there
   is no config; and `--init` prefers the `language` inside the setup string when it
   carries one. Regional and script tags resolve as the GUI resolves them, and an
@@ -383,10 +389,12 @@ Spanish (`es`), French (`fr`), Italian (`it`), Japanese (`ja`), Simplified Chine
   change; protocol values, topic names, JSON, message content, device names,
   identifiers, and URLs remain as received.
 - Formatting is done in `hiveme_core::i18n` by hand, without an ICU dependency: CLDR
-  plural categories for the nine locales (`one` and `other` for `de`, `en-US`, `es`,
-  and `it`; `one` for 0 and 1 in `fr`; `other` only for `ja` and Chinese), digit
-  grouping per locale, byte sizes, durations, and time, date, and date-time patterns
-  through `chrono`. The values the frontend's catalog test asserts (`1.000` in `de`,
+  plural categories for the nine locales (`one` and `other` for `de` and `en-US`; `one`,
+  `many` for a nonzero multiple of a million, and `other` for `es` and `it`; the same
+  for `fr` with `one` for 0 and 1; `other` only for `ja` and Chinese), digit grouping
+  per locale (none below five digits in `es` and `it`, a narrow no-break space in
+  `fr`), and `format::{integer, decimal, bytes, duration, time, date_time, day}`, the
+  twins of `src/lib/format.ts`, with the month names and field orders `Intl` uses. The values the frontend's catalog test asserts (`1.000` in `de`,
   `1 000 000 octets` in `fr` with a narrow no-break space, `1 バイト` in `ja`) are
   the values Rust produces.
 - A Rust test mirrors the frontend's: every locale covers every `en-US` key, the

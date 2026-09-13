@@ -202,5 +202,37 @@
       "GB": "GB",
       "TB": "TB"
     }
+  },
+  "cli": {
+    "sent": "Messaggio inviato a {{topic}}.",
+    "configUnchanged": "La configurazione non è cambiata: {{path}}",
+    "configUpdated": "La configurazione è stata aggiornata: {{path}}",
+    "configCreated": "La configurazione è stata creata: {{path}}",
+    "noMessage": "nessun messaggio: passalo come argomento o tramite pipe, vedi hmc --help",
+    "stdinUnreadable": "impossibile leggere il messaggio da stdin: {{error}}",
+    "stdinEmpty": "niente da pubblicare: stdin era vuoto",
+    "messageEmpty": "niente da pubblicare: il messaggio è vuoto",
+    "notJson": "--json ha ricevuto un input che non è JSON: {{error}}",
+    "encryptionUnavailable": "encryption.mode è {{mode}}, ma la crittografia arriverà in una versione successiva di HiveMe; impostalo su Off per pubblicare in chiaro",
+    "configWritten": "nessuna configurazione ancora, quindi ne è stata scritta una predefinita in {{path}}; compila il blocco broker ed esegui di nuovo",
+    "runtimeUnavailable": "impossibile avviare il runtime asincrono: {{error}}"
+  },
+  "help": {
+    "about": "HiveMe CLI: invia un messaggio al broker MQTT",
+    "usage": "Utilizzo",
+    "arguments": "Parametri",
+    "options": "Opzioni",
+    "message": "Corpo del messaggio. Letto da stdin se omesso",
+    "init": "Inizializza la configurazione condivisa da una stringa di configurazione, poi esci",
+    "topic": "Argomento relativo a hiveme; le barre iniziali vengono ignorate [predefinito: hiveme]",
+    "json": "Pubblica MESSAGE (o stdin) come payload JSON grezzo, senza la busta",
+    "title": "Titolo facoltativo del messaggio",
+    "level": "debug | info | success | warn | error [predefinito: info; indipendente dall’argomento]",
+    "qos": "0 | 1 | 2 [predefinito: publish.qos]",
+    "retain": "Imposta il flag retain",
+    "config": "Percorso del file di configurazione",
+    "verbose": "Registra i dettagli della connessione su stderr",
+    "printHelp": "Mostra l’aiuto",
+    "printVersion": "Mostra la versione"
   }
 }

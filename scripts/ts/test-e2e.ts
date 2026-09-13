@@ -359,7 +359,9 @@ try {
   assert.equal(Object.hasOwn((await readConfig()).topics, "default"), false);
   assert.equal(Object.hasOwn((await readConfig()).topics, "prefix"), false);
   assert.equal(await execute("return Array.from(document.querySelectorAll(\'label\'), e => e.textContent).includes(\'Prefix\');"), false);
-  assert.equal(Object.hasOwn(JSON.parse(await invoke<string>("get_broker_init")), "prefix"), false);
+  const brokerInit = JSON.parse(await invoke<string>("get_broker_init"));
+  assert.equal(Object.hasOwn(brokerInit, "prefix"), false);
+  assert.equal(brokerInit.language, (await readConfig()).gui.language, "Copy CLI setup carries the window's language.");
   await clickText("tab", "Messages");
   console.info("PASS: Appearance opens first, changes save immediately, and there is no default-topic setting.");
 

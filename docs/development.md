@@ -90,7 +90,7 @@ the built frontend together with real IPC, MQTT delivery, and SQLite history.
 A cluster is set up in `hmg`, which shows a one line setup string to paste into `hmc`:
 
 ```sh
-cargo run -p hmc -- --config ./HiveMe.json --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret"}'
+cargo run -p hmc -- --config ./HiveMe.json --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret","language":"en-US"}'
 cargo run -p hmc -- --config ./HiveMe.json "hello"
 echo hello | cargo run -p hmc -- --config ./HiveMe.json
 cargo run -p hmc -- --help
@@ -98,8 +98,9 @@ cargo run -p hmc -- --help
 
 Press **Copy CLI setup** in the Broker section of the `hmg` Settings tab to get the
 string; the format is in [specs/config.md](specs/config.md#the-setup-string).
-Publishing before any `--init` writes a default config and exits 3. Full reference in
-[specs/cli.md](specs/cli.md).
+Publishing before any `--init` writes a default config and exits 3. The help and the
+lines `hmc` prints follow `gui.language` of the config, so `--help` against a German
+config is German. Full reference in [specs/cli.md](specs/cli.md).
 
 ## Packaging `hmc`
 
@@ -206,6 +207,11 @@ More detail lives in [specs/hivemq-cloud.md](specs/hivemq-cloud.md) and
 * Everything `hmg` does between the broker and the window is the shared session in
   `crates/hiveme-core/src/session/`, behind the `session` feature; `src-tauri/src` only
   adapts it to Tauri. See [specs/session.md](specs/session.md).
+* The nine catalogs are `locales/*.json` at the repository root. The frontend imports
+  them in `src/i18n/index.ts`, and `hiveme_core::i18n` embeds them into `hmc`, so a key
+  is added to all nine files at once. Both `pnpm test` and
+  `cargo test -p hiveme-core --lib i18n` fail on a key that a locale lacks or whose
+  placeholders differ from English.
 * One-shot `hmc` does not link SQLite. From phase 3 of the
   [terminal UI plan](plans/plan-terminal-ui.md) `hmc` turns the `session` feature on
   for its terminal UI and links SQLite and `ureq` from then on.

@@ -8,9 +8,10 @@ schema, defaults, path resolution, loading, and atomic writes. Compatibility fol
 BetterMediaInfo's nested `Default` and `#[serde(default)]` pattern: present values
 are retained and missing sections or children receive their defaults in memory.
 The CLI uses the full shared schema, including GUI-only fields and their defaults.
-From phase 3 of [the terminal UI plan](../plans/plan-terminal-ui.md) the `gui` block
-is read by the interactive mode of `hmc` as well as by `hmg`; it keeps its name
-because renaming it would break every existing file for a word.
+`hmc` reads `gui.language` for its help and the lines it prints, and from phase 3 of
+[the terminal UI plan](../plans/plan-terminal-ui.md) the interactive mode of `hmc`
+reads the rest of the `gui` block as well, except the window; the block keeps its
+name because renaming it would break every existing file for a word.
 
 The machine readable schema is [`schemas/config.schema.json`](../../schemas/config.schema.json),
 generated from the `hiveme-core::config` types with `cargo xtask schema`. The schema,
@@ -163,7 +164,7 @@ value the applications use when the key is absent.
 | `notifications.rules[]` | object[] | no | the three built-ins | See [gui.md](gui.md#notifications). |
 | `gui.displayMode` | `Auto`, `Light`, `Dark` | no | `Auto` | `Auto` follows `prefers-color-scheme` in `hmg` and the terminal's own colors in interactive `hmc`; see [tui.md](tui.md#theme). |
 | `gui.theme` | theme name | no | `Ocean` | One of the twenty palette names listed in [gui.md](gui.md#theme). Honored by both applications. |
-| `gui.language` | BCP 47 tag | no | `en-US` | Supports `de`, `en-US`, `es`, `fr`, `it`, `ja`, `zh-CN`, `zh-HK`, and `zh-TW`. Regional tags resolve to a bundled locale; unsupported tags fall back to English. Read by `hmg`, and by `hmc` from phase 2 of the terminal UI plan. See [GUI languages](gui.md#languages) and [tui.md](tui.md#languages). |
+| `gui.language` | BCP 47 tag | no | `en-US` | Supports `de`, `en-US`, `es`, `fr`, `it`, `ja`, `zh-CN`, `zh-HK`, and `zh-TW`. Regional tags resolve to a bundled locale; unsupported tags fall back to English. Read by `hmg` and by `hmc`, and written by `hmc --init` from the setup string. See [GUI languages](gui.md#languages), [CLI languages](cli.md#languages), and [tui.md](tui.md#languages). |
 | `gui.history.maxMessagesPerTopic` | integer | no | 1000 | Older rows beyond this count are deleted per topic. 0 keeps everything. Pruning runs in whichever application holds the database. |
 | `gui.history.retentionDays` | integer | no | 30 | 0 disables time based pruning. |
 | `gui.window.position` | `{ x, y }` | no | `-1, -1` | Negative means "center the window". `hmg` only. |
@@ -256,7 +257,8 @@ and runs it to initialize the shared config.
   "v": 1,
   "url": "mqtts://abc123.s1.eu.hivemq.cloud:8883",
   "username": "hiveme-sam",
-  "password": "s3cret"
+  "password": "s3cret",
+  "language": "en-US"
 }
 ```
 
@@ -268,12 +270,10 @@ and runs it to initialize the shared config.
 | `url` | `broker.url` | Must be `mqtts` for a `hivemq.cloud` host, which accepts TLS only. Naming no scheme means `mqtts`, so the URL the console shows can be pasted in as it stands. |
 | `username` | `broker.username` | Required. |
 | `password` | `broker.password` | Required, plain text, because the CONNECT packet needs it in plain text. |
-| `language` | `gui.language` | Optional; phase 2 of [the terminal UI plan](../plans/plan-terminal-ui.md), not built yet. `hmg` fills it from `gui.language` so that `hmc` speaks the same language. `hmc --init` writes it on create and updates a `gui.language` that differs; absent means `en-US` on a fresh file and no change to an existing one. An unsupported tag is kept as written and resolves to English, as `gui.language` already does. Adding it does not bump `v`: an optional field with a default is a compatible change. |
+| `language` | `gui.language` | Optional. `hmg` fills it from `gui.language` so that `hmc` speaks the same language. `hmc --init` writes it on create and updates a `gui.language` that differs; absent, `null`, or blank means `en-US` on a fresh file and no change to an existing one. An unsupported tag is kept as written and resolves to English, as `gui.language` already does. A string without the field is still version 1: an optional field is a compatible change, and a writer that has no language leaves the field out. |
 
 The schema is generated from the Rust type into `schemas/broker-init.schema.json`, and
-the example above is validated against it by `cargo xtask check-spec`. The example
-gains `"language": "en-US"` in phase 2, when the type carries the field; until then
-the checked example is the one above.
+the example above is validated against it by `cargo xtask check-spec`.
 
 `ConfigFile::initialize` owns setup application in the shared Rust library. The CLI
 only parses its arguments, resolves the shared path, calls the initializer, and prints

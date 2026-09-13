@@ -29,7 +29,7 @@ Its layout and architecture deliberately mirror the sibling project
 | `src/lib/message.ts` | The reader that renders the parse tiers |
 | `src/lib/format.ts` | Times, sizes, and the hex preview |
 | `src/lib/constants.ts` | Names, links, and the layout constants |
-| `src/i18n/` | react-i18next with nine locales; see [Languages](#languages). The catalogs themselves move to `locales/` in phase 2 of [the terminal UI plan](../plans/plan-terminal-ui.md), shared with `hmc` |
+| `src/i18n/` | react-i18next with nine locales; see [Languages](#languages). The catalogs themselves are `locales/*.json` at the repository root, shared with `hmc` |
 
 ## Layout
 
@@ -262,12 +262,12 @@ catalogs.
 Catalog tests check key coverage, interpolation variables, and plural forms in every
 locale, including keys selected dynamically by connection state, theme, and severity.
 
-From phase 2 of [the terminal UI plan](../plans/plan-terminal-ui.md) the nine catalogs
-live in `locales/` at the repository root, one set for both applications: the frontend
-imports them from there, and `hiveme_core::i18n` embeds the same files for `hmc`. The
-keys the terminal UI and the CLI add sit in the same files under the `tui`, `cli`, and
-`help` namespaces, so the catalog test above covers them as well. Which strings `hmc`
-translates is in [tui.md](tui.md#languages).
+The nine catalogs live in `locales/` at the repository root, one set for both
+applications: `src/i18n/index.ts` imports them from there, and `hiveme_core::i18n`
+embeds the same files for `hmc`. The keys the CLI adds sit in the same files under the
+`cli` and `help` namespaces, and the terminal UI adds `tui`, so the catalog test above
+covers them as well; the frontend does not use them. Which strings `hmc` translates is
+in [cli.md](cli.md#languages) and [tui.md](tui.md#languages).
 
 ## Theme
 
@@ -637,7 +637,7 @@ clipboard, with the setup JSON from [config.md](config.md#the-setup-string) alre
 included as a single-quoted argument:
 
 ```sh
-hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret"}'
+hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret","language":"en-US"}'
 ```
 
 The user pastes the command into a terminal and runs it without adding anything.
@@ -654,9 +654,8 @@ command before writing it to the clipboard. Copy CLI setup first flushes pending
 settings and waits for the write to finish, so the copied string uses the current
 credentials. A failed save prevents copying an older setup string.
 
-From phase 2 of [the terminal UI plan](../plans/plan-terminal-ui.md) the string also
-carries `gui.language`, so that the `hmc` it initializes speaks the language this
-window is in. See [config.md](config.md#the-setup-string).
+The string also carries `gui.language`, so that the `hmc` it initializes speaks the
+language this window is in. See [config.md](config.md#the-setup-string).
 
 ## Window
 

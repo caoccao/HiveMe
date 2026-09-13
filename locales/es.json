@@ -202,5 +202,37 @@
       "GB": "GB",
       "TB": "TB"
     }
+  },
+  "cli": {
+    "sent": "Mensaje enviado a {{topic}}.",
+    "configUnchanged": "La configuración no ha cambiado: {{path}}",
+    "configUpdated": "La configuración se ha actualizado: {{path}}",
+    "configCreated": "La configuración se ha creado: {{path}}",
+    "noMessage": "no hay mensaje: páselo como argumento o por una tubería, consulte hmc --help",
+    "stdinUnreadable": "no se puede leer el mensaje de stdin: {{error}}",
+    "stdinEmpty": "nada que publicar: stdin estaba vacío",
+    "messageEmpty": "nada que publicar: el mensaje está vacío",
+    "notJson": "--json recibió una entrada que no es JSON: {{error}}",
+    "encryptionUnavailable": "encryption.mode es {{mode}}, pero el cifrado llegará en una versión posterior de HiveMe; establézcalo en Off para publicar en texto sin cifrar",
+    "configWritten": "aún no hay configuración, así que se escribió una predeterminada en {{path}}; complete el bloque broker y vuelva a ejecutar",
+    "runtimeUnavailable": "no se puede iniciar el entorno de ejecución asíncrono: {{error}}"
+  },
+  "help": {
+    "about": "HiveMe CLI: enviar un mensaje al bróker MQTT",
+    "usage": "Uso",
+    "arguments": "Argumentos",
+    "options": "Opciones",
+    "message": "Cuerpo del mensaje. Se lee de stdin si se omite",
+    "init": "Inicializar la configuración compartida a partir de una cadena de configuración y salir",
+    "topic": "Tema relativo a hiveme; se ignoran las barras iniciales [predeterminado: hiveme]",
+    "json": "Publicar MESSAGE (o stdin) como carga útil JSON sin procesar, sin el sobre",
+    "title": "Título opcional del mensaje",
+    "level": "debug | info | success | warn | error [predeterminado: info; independiente del tema]",
+    "qos": "0 | 1 | 2 [predeterminado: publish.qos]",
+    "retain": "Activar el indicador de retención",
+    "config": "Ruta del archivo de configuración",
+    "verbose": "Registrar los detalles de la conexión en stderr",
+    "printHelp": "Mostrar la ayuda",
+    "printVersion": "Mostrar la versión"
   }
 }

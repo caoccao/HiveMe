@@ -28,20 +28,26 @@ mod cli;
 mod failure;
 mod run;
 
+use std::ffi::OsString;
 use std::process::ExitCode;
 
-use clap::Parser;
+use hiveme_core::i18n::{Locale, t_with};
 
 use crate::cli::Cli;
 use crate::failure::Failure;
 
 fn main() -> ExitCode {
+  // The help is written in the language of the config, so the config is looked at
+  // before clap is, and before logging is set up, which makes that look silent.
+  let arguments: Vec<OsString> = std::env::args_os().collect();
+  let locale = run::configured_locale(cli::config_argument(&arguments).as_deref());
+
   // clap prints its own usage errors and exits 2, which is the code the specification
   // gives them, so a parse failure never reaches the mapping below.
-  let cli = Cli::parse();
+  let cli = Cli::parse_in(locale, arguments);
   init_logging(cli.verbose);
 
-  match runtime().and_then(|runtime| runtime.block_on(run::run(cli))) {
+  match runtime(locale).and_then(|runtime| runtime.block_on(run::run(cli, locale))) {
     Ok(()) => ExitCode::SUCCESS,
     Err(failure) => {
       eprintln!("{}", failure.line());
@@ -55,11 +61,17 @@ fn main() -> ExitCode {
 /// A single thread is enough: one publish, one acknowledgement, and the event loop that
 /// carries them. It also starts faster, which matters for something a script runs in a
 /// loop.
-fn runtime() -> Result<tokio::runtime::Runtime, Failure> {
+fn runtime(locale: Locale) -> Result<tokio::runtime::Runtime, Failure> {
   tokio::runtime::Builder::new_current_thread()
     .enable_all()
     .build()
-    .map_err(|source| Failure::Unexpected(format!("cannot start the async runtime: {source}")))
+    .map_err(|source| {
+      Failure::Unexpected(t_with(
+        locale,
+        "cli.runtimeUnavailable",
+        &[("error", &source.to_string())],
+      ))
+    })
 }
 
 /// Sends the `log` output to stderr, never to stdout.

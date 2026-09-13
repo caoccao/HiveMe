@@ -194,5 +194,37 @@
       "GB": "GB",
       "TB": "TB"
     }
+  },
+  "cli": {
+    "sent": "消息已发送到 {{topic}}。",
+    "configUnchanged": "配置未更改：{{path}}",
+    "configUpdated": "配置已更新：{{path}}",
+    "configCreated": "配置已创建：{{path}}",
+    "noMessage": "没有消息：请作为参数传入或通过管道输入，参见 hmc --help",
+    "stdinUnreadable": "无法从 stdin 读取消息：{{error}}",
+    "stdinEmpty": "没有可发布的内容：stdin 为空",
+    "messageEmpty": "没有可发布的内容：消息为空",
+    "notJson": "--json 收到的输入不是 JSON：{{error}}",
+    "encryptionUnavailable": "encryption.mode 为 {{mode}}，但加密将在 HiveMe 的后续版本中提供；请将其设为 Off 以明文发布",
+    "configWritten": "尚无配置，已将默认配置写入 {{path}}；请填写 broker 部分后重新运行",
+    "runtimeUnavailable": "无法启动异步运行时：{{error}}"
+  },
+  "help": {
+    "about": "HiveMe CLI：向 MQTT 代理服务器发送消息",
+    "usage": "用法",
+    "arguments": "参数",
+    "options": "选项",
+    "message": "消息正文。省略时从 stdin 读取",
+    "init": "根据配置字符串初始化共享配置，然后退出",
+    "topic": "相对于 hiveme 的主题；忽略开头的斜杠 [默认：hiveme]",
+    "json": "将 MESSAGE（或 stdin）作为不带信封的原始 JSON 载荷发布",
+    "title": "消息的可选标题",
+    "level": "debug | info | success | warn | error [默认：info；与主题无关]",
+    "qos": "0 | 1 | 2 [默认：publish.qos]",
+    "retain": "设置保留标志",
+    "config": "配置文件路径",
+    "verbose": "将连接详情记录到 stderr",
+    "printHelp": "显示帮助",
+    "printVersion": "显示版本"
   }
 }

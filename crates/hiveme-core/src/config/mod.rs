@@ -595,13 +595,14 @@ impl Rule {
   }
 }
 
-/// Settings that only `hmg` reads.
+/// The settings of the user interface. `hmg` reads all of them; `hmc` reads `language`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Gui {
   pub display_mode: DisplayMode,
   pub theme: Theme,
-  /// A BCP 47 tag. The GUI supports de, en-US, es, fr, it, ja, zh-CN, zh-HK, and zh-TW.
+  /// A BCP 47 tag. Both applications support de, en-US, es, fr, it, ja, zh-CN, zh-HK,
+  /// and zh-TW; another tag resolves to the nearest of those, or to en-US.
   pub language: String,
   pub history: History,
   pub window: Window,

@@ -180,7 +180,7 @@
       ]
     },
     "Gui": {
-      "description": "Settings that only `hmg` reads.",
+      "description": "The settings of the user interface. `hmg` reads all of them; `hmc` reads `language`.",
       "properties": {
         "displayMode": {
           "$ref": "#/$defs/DisplayMode",
@@ -195,7 +195,7 @@
         },
         "language": {
           "default": "en-US",
-          "description": "A BCP 47 tag. The GUI supports de, en-US, es, fr, it, ja, zh-CN, zh-HK, and zh-TW.",
+          "description": "A BCP 47 tag. Both applications support de, en-US, es, fr, it, ja, zh-CN, zh-HK,\nand zh-TW; another tag resolves to the nearest of those, or to en-US.",
           "type": "string"
         },
         "theme": {
