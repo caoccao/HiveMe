@@ -137,9 +137,7 @@ pub fn set_config_quietly(config: Config) -> Result<()> {
 /// Everything the CONNECT packet or the subscription list is built from. Changing a
 /// theme must not drop the connection, and changing a password must.
 pub fn needs_reconnect(before: &Config, after: &Config) -> bool {
-  before.broker != after.broker || before.topics.prefix != after.topics.prefix || {
-    before.topics.subscriptions != after.topics.subscriptions
-  }
+  before.broker != after.broker || before.topics.subscriptions != after.topics.subscriptions
 }
 
 /// The directory the config lives in, for the "open config file" command.
@@ -165,10 +163,6 @@ mod tests {
     let mut password = before.clone();
     password.broker.password = "new".to_owned();
     assert!(needs_reconnect(&before, &password));
-
-    let mut prefix = before.clone();
-    prefix.topics.prefix = "other".to_owned();
-    assert!(needs_reconnect(&before, &prefix));
 
     let mut subscriptions = before.clone();
     subscriptions.topics.subscriptions.clear();

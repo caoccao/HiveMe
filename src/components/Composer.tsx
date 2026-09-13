@@ -15,139 +15,245 @@
 * limitations under the License.
 */
 
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import {
-  Box,
-  Checkbox,
-  Divider,
-  FormControlLabel,
-  IconButton,
-  ListItemText,
-  Menu,
-  MenuItem,
-  TextField,
-  Tooltip,
+  Box, Button, Checkbox, Collapse, FormControlLabel, MenuItem, Radio, RadioGroup,
+  Select, TextField, Tooltip, Typography,
 } from '@mui/material';
-import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
-import SendIcon from '@mui/icons-material/Send';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useTranslation } from 'react-i18next';
 import * as Protocol from '../lib/protocol';
+import { levelColor } from '../lib/message';
 import { useAppStore } from '../lib/store';
 
-/** Enter sends; Shift+Enter is a newline. Exported so the behavior can be tested. */
-export function isSendKey(event: { key: string; shiftKey: boolean; ctrlKey: boolean; altKey: boolean }): boolean {
-  return event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey;
+interface Draft {
+  body: string;
+  topic: string;
+  title: string;
+  level: Protocol.Level;
+  qos: number | null;
+  retain: boolean;
+  asJson: boolean;
+  expanded: boolean;
+}
+
+const EMPTY_DRAFT: Draft = {
+  body: '',
+  topic: '',
+  title: '',
+  level: Protocol.Level.Info,
+  qos: null,
+  retain: false,
+  asJson: false,
+  expanded: false,
+};
+
+export function isSendKey(event: {
+  key: string;
+  shiftKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  metaKey?: boolean;
+  isComposing?: boolean;
+}): boolean {
+  return event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey
+    && !event.metaKey && !event.isComposing;
 }
 
 export default function Composer() {
   const { t } = useTranslation();
+  const id = useId();
   const selectedTopic = useAppStore((state) => state.selectedTopic);
   const status = useAppStore((state) => state.status);
   const publish = useAppStore((state) => state.publish);
 
-  const [body, setBody] = useState('');
-  const [title, setTitle] = useState('');
-  const [asJson, setAsJson] = useState(false);
-  const [qos, setQos] = useState<number | null>(null);
-  const [retain, setRetain] = useState<boolean | null>(null);
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  // Messages stays mounted across tabs. Drafts live only in this window's memory.
+  const [drafts, setDrafts] = useState(() => new Map<string, Draft>());
   const [sending, setSending] = useState(false);
+  const sendPending = useRef(false);
+  const draft = selectedTopic === null ? EMPTY_DRAFT : drafts.get(selectedTopic) ?? EMPTY_DRAFT;
+  const { body, topic, title, level, qos, retain, asJson, expanded } = draft;
+  const color = levelColor(level);
 
   const connected = status.state === Protocol.ConnectionState.Connected;
   const disabled = !connected || selectedTopic === null || sending;
   const reason = !connected ? t('composer.disconnected') : selectedTopic === null ? t('composer.noTopic') : '';
+  const placeholder = asJson ? t('composer.placeholderJson') : t('composer.placeholder');
+
+  const updateDraft = (changes: Partial<Draft>) => {
+    if (selectedTopic === null) return;
+    setDrafts((previous) => new Map(previous).set(selectedTopic, {
+      ...(previous.get(selectedTopic) ?? EMPTY_DRAFT), ...changes,
+    }));
+  };
 
   const send = async () => {
-    if (disabled || body.trim() === '' || !selectedTopic) {
-      return;
-    }
+    if (disabled || sendPending.current || body.trim() === '' || !selectedTopic) return;
+    sendPending.current = true;
     setSending(true);
-    const options: Protocol.PublishOptions = {
-      json: asJson,
-      qos,
-      retain,
-      title: asJson || title.trim() === '' ? null : title.trim(),
-      level: null,
-    };
-    const sent = await publish(selectedTopic, body, options);
-    setSending(false);
-    if (sent) {
-      setBody('');
-      setTitle('');
+    try {
+      const options: Protocol.PublishOptions = {
+        topic: topic.trim() || null,
+        json: asJson,
+        qos,
+        retain,
+        title: asJson || title.trim() === '' ? null : title.trim(),
+        level: asJson ? null : level,
+      };
+      const sent = await publish(selectedTopic, body, options);
+      if (sent) {
+        // Completion belongs to the originating topic, even if selection changed.
+        setDrafts((previous) => {
+          const current = previous.get(selectedTopic);
+          if (!current || current.body !== body) return previous;
+          return new Map(previous).set(selectedTopic, { ...current, body: '' });
+        });
+      }
+    } finally {
+      sendPending.current = false;
+      setSending(false);
     }
   };
 
   return (
-    <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-      {!asJson && (
-        <TextField
-          placeholder={t('composer.title')}
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          disabled={disabled}
+    <Box
+      onKeyDownCapture={(event) => {
+        // Dropdown menu items live in a portal; Enter there chooses an option.
+        if (!event.currentTarget.contains(event.target as Node)) return;
+        if (isSendKey({ ...event, isComposing: event.nativeEvent.isComposing })) {
+          event.preventDefault();
+          event.stopPropagation();
+          void send();
+        }
+      }}
+      sx={{
+        borderTop: 1, borderColor: 'divider', p: '4px',
+        display: 'flex', flexDirection: 'column',
+        flexShrink: 0, maxHeight: '70%', overflow: 'auto',
+        '& .MuiOutlinedInput-root': { p: '4px' },
+        '& .MuiOutlinedInput-input': { p: 0 },
+        '& .MuiButton-root': { p: '2px 4px', minHeight: 24 },
+        '& .MuiButton-endIcon': { ml: '4px', mr: 0 },
+        '& .MuiRadio-root, & .MuiCheckbox-root': { p: '2px' },
+      }}
+    >
+      <Tooltip title={reason}>
+        <Box sx={{ mb: '4px' }}>
+          <TextField
+            placeholder={placeholder}
+            value={body}
+            onChange={(event) => updateDraft({ body: event.target.value })}
+            disabled={disabled}
+            multiline
+            minRows={3}
+            maxRows={6}
+            fullWidth
+            size="small"
+            slotProps={{ htmlInput: { 'aria-label': placeholder } }}
+          />
+        </Box>
+      </Tooltip>
+
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: '4px' }}>
+        <Select
+          name="composer-level"
+          value={level}
+          onChange={(event) => updateDraft({ level: event.target.value as Protocol.Level })}
+          disabled={disabled || asJson}
           size="small"
-          fullWidth
-          slotProps={{ htmlInput: { 'aria-label': t('composer.title') } }}
-        />
-      )}
-      <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 0.5 }}>
-        <Tooltip title={reason}>
-          <Box sx={{ flex: 1 }}>
-            <TextField
-              placeholder={asJson ? t('composer.placeholderJson') : t('composer.placeholder')}
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-              onKeyDown={(event) => {
-                if (isSendKey(event)) {
-                  event.preventDefault();
-                  send();
-                }
-              }}
-              disabled={disabled}
-              multiline
-              maxRows={6}
-              fullWidth
-              size="small"
-              slotProps={{
-                htmlInput: { 'aria-label': asJson ? t('composer.placeholderJson') : t('composer.placeholder') },
-              }}
-            />
-          </Box>
-        </Tooltip>
-        <IconButton
-          color="primary"
+          inputProps={{ 'aria-label': t('composer.level') }}
+          sx={{
+            minWidth: 96, height: 24,
+            '& .MuiSelect-select': { pr: '24px', color: color === 'default' ? 'text.primary' : `${color}.main` },
+          }}
+        >
+          {[Protocol.Level.Info, Protocol.Level.Error, Protocol.Level.Success, Protocol.Level.Warn].map((value) => {
+            const optionColor = levelColor(value);
+            return (
+              <MenuItem key={value} value={value} sx={{ color: optionColor === 'default' ? 'text.primary' : `${optionColor}.main` }}>
+                {t(`levels.${value}`)}
+              </MenuItem>
+            );
+          })}
+        </Select>
+        <Button
+          color="inherit"
+          endIcon={expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+          aria-expanded={expanded}
+          aria-controls={id + '-options'}
+          onClick={() => updateDraft({ expanded: !expanded })}
+          disabled={selectedTopic === null}
+        >
+          {t('composer.options')}
+        </Button>
+        <Button
+          variant="outlined"
           aria-label={t('composer.send')}
           disabled={disabled || body.trim() === ''}
-          onClick={send}
+          onClick={() => void send()}
+          sx={{ minWidth: 64 }}
         >
-          <SendIcon fontSize="small" />
-        </IconButton>
-        <IconButton aria-label={t('composer.options')} onClick={(event) => setAnchor(event.currentTarget)}>
-          <ArrowDropDownIcon fontSize="small" />
-        </IconButton>
+          {t('composer.send')}
+        </Button>
       </Box>
 
-      <Menu anchorEl={anchor} open={anchor !== null} onClose={() => setAnchor(null)}>
-        <MenuItem>
-          <FormControlLabel
-            control={<Checkbox checked={asJson} onChange={(event) => setAsJson(event.target.checked)} />}
-            label={t('composer.sendAsJson')}
+      <Collapse id={id + '-options'} in={expanded} unmountOnExit>
+        <Box sx={{ pt: '4px', display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr)', alignItems: 'center', gap: '4px' }}>
+          <Typography component="label" htmlFor={id + '-topic'} sx={{ textAlign: 'right' }}>
+            {t('composer.topic')}
+          </Typography>
+          <TextField
+            id={id + '-topic'}
+            value={topic}
+            onChange={(event) => updateDraft({ topic: event.target.value.replace(/^\/+/, '') })}
+            disabled={disabled}
+            size="small"
+            fullWidth
           />
-        </MenuItem>
-        <Divider />
-        <MenuItem onClick={() => setQos(null)} selected={qos === null}>
-          <ListItemText primary={t('composer.qosDefault')} />
-        </MenuItem>
-        {[0, 1, 2].map((value) => (
-          <MenuItem key={value} onClick={() => setQos(value)} selected={qos === value}>
-            <ListItemText primary={t('composer.qos', { qos: value })} />
-          </MenuItem>
-        ))}
-        <Divider />
-        <MenuItem onClick={() => setRetain(retain === true ? null : true)} selected={retain === true}>
-          <ListItemText primary={t('composer.retain')} />
-        </MenuItem>
-      </Menu>
+          <Typography component="label" htmlFor={id + '-title'} sx={{ textAlign: 'right' }}>
+            {t('composer.title')}
+          </Typography>
+          <TextField
+            id={id + '-title'}
+            value={title}
+            onChange={(event) => updateDraft({ title: event.target.value })}
+            disabled={disabled || asJson}
+            size="small"
+            fullWidth
+          />
+          <Typography id={id + '-qos'} sx={{ textAlign: 'right' }}>
+            {t('composer.qos')}
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', rowGap: '4px', columnGap: '16px' }}>
+            <RadioGroup
+              row
+              aria-labelledby={id + '-qos'}
+              name={id + '-qos'}
+              value={qos ?? 'config'}
+              onChange={(_, value) => updateDraft({ qos: value === 'config' ? null : Number(value) })}
+              sx={{ columnGap: '4px' }}
+            >
+              <FormControlLabel value="config" control={<Radio size="small" />} label={t('composer.qosDefault')} disabled={disabled} sx={{ m: 0 }} />
+              {[0, 1, 2].map((value) => (
+                <FormControlLabel key={value} value={value} control={<Radio size="small" />} label={value} disabled={disabled} sx={{ m: 0 }} />
+              ))}
+            </RadioGroup>
+            <FormControlLabel
+              control={<Checkbox size="small" checked={retain} onChange={(event) => updateDraft({ retain: event.target.checked })} />}
+              label={t('composer.retain')}
+              disabled={disabled}
+              sx={{ ml: 0, mr: 0 }}
+            />
+            <FormControlLabel
+              control={<Checkbox size="small" checked={asJson} onChange={(event) => updateDraft({ asJson: event.target.checked })} />}
+              label={t('composer.sendAsJson')}
+              disabled={disabled}
+              sx={{ ml: 0, mr: 0 }}
+            />
+          </Box>
+        </Box>
+      </Collapse>
     </Box>
   );
 }

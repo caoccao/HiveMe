@@ -28,9 +28,9 @@
     "unknownSender": "sconosciuto",
     "newerVersion": "versione più recente",
     "retained": "Conservato dal broker",
-    "actions": "Azioni del messaggio",
-    "copyBody": "Copia il corpo",
-    "copyJson": "Copia JSON",
+    "actions": "Opzioni di copia",
+    "copyBody": "Copia",
+    "copyJson": "Copia JSON grezzo",
     "copiedBody": "Il corpo è negli appunti.",
     "copiedJson": "Il payload è negli appunti.",
     "data": "dati",
@@ -43,15 +43,17 @@
     "bytes_many": "{{count, number}} byte"
   },
   "composer": {
-    "title": "Titolo (facoltativo)",
+    "level": "Livello",
+    "topic": "Argomento",
+    "title": "Titolo",
     "placeholder": "Scrivi un messaggio. Invio invia, Maiusc+Invio aggiunge una riga.",
     "placeholderJson": "Scrivi un payload JSON. Invio invia, Maiusc+Invio aggiunge una riga.",
     "send": "Invia",
-    "options": "Opzioni di invio",
-    "sendAsJson": "Invia come JSON grezzo",
-    "qosDefault": "QoS dalla configurazione",
-    "qos": "QoS {{qos}}",
-    "retain": "Conserva questo messaggio",
+    "options": "Altre opzioni",
+    "sendAsJson": "Come JSON grezzo",
+    "qosDefault": "Configurazione",
+    "qos": "QoS",
+    "retain": "Conserva messaggio",
     "disconnected": "Connettiti al broker per inviare un messaggio.",
     "noTopic": "Seleziona un argomento per inviare un messaggio."
   },
@@ -115,7 +117,6 @@
     "copyCliSetup": "Copia configurazione CLI",
     "copyCliSetupHint": "Copia il comando completo hmc --init. Contiene la password del broker in chiaro.",
     "cliSetupCopied": "Comando di configurazione CLI copiato. Incollalo nel terminale ed eseguilo.",
-    "prefix": "Prefisso",
     "subscriptions": "Sottoscrizioni",
     "subscriptionFilter": "Filtro di sottoscrizione {{index}}",
     "absolute": "Assoluto",
@@ -185,10 +186,11 @@
     "skipThisVersion": "Ignora questa versione"
   },
   "levels": {
-    "debug": "debug",
-    "info": "informazioni",
-    "warn": "avviso",
-    "error": "errore"
+    "success": "Successo",
+    "debug": "Debug",
+    "info": "Informazioni",
+    "warn": "Avviso",
+    "error": "Errore"
   },
   "format": {
     "seconds": "{{seconds}} s",

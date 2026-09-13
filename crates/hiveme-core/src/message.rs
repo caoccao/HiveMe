@@ -59,9 +59,10 @@ pub enum Level {
   Debug,
   #[default]
   Info,
+  Success,
   Warn,
   Error,
-  /// A level this build does not know, kept verbatim.
+  /// A level this build does not know, normalized to lowercase.
   Other(String),
 }
 
@@ -71,6 +72,7 @@ impl Level {
     match self {
       Self::Debug => "debug",
       Self::Info => "info",
+      Self::Success => "success",
       Self::Warn => "warn",
       Self::Error => "error",
       Self::Other(raw) => raw,
@@ -79,9 +81,10 @@ impl Level {
 
   /// Reads a level from its wire form. An unrecognized value becomes [`Level::Other`].
   pub fn parse(raw: &str) -> Self {
-    match raw {
+    match raw.to_lowercase().as_str() {
       "debug" => Self::Debug,
       "info" => Self::Info,
+      "success" => Self::Success,
       "warn" => Self::Warn,
       "error" => Self::Error,
       other => Self::Other(other.to_owned()),
@@ -98,21 +101,21 @@ impl Level {
     if self.is_known() { self.clone() } else { Self::Info }
   }
 
-  /// Every level this build knows, in increasing severity.
-  pub fn known() -> [Self; 4] {
-    [Self::Debug, Self::Info, Self::Warn, Self::Error]
+  /// Every level this build knows, in display order.
+  pub fn known() -> [Self; 5] {
+    [Self::Debug, Self::Info, Self::Success, Self::Warn, Self::Error]
   }
 }
 
 impl std::fmt::Display for Level {
   fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    formatter.write_str(self.as_str())
+    formatter.write_str(&self.as_str().to_lowercase())
   }
 }
 
 impl Serialize for Level {
   fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(self.as_str())
+    serializer.serialize_str(&self.as_str().to_lowercase())
   }
 }
 
@@ -130,8 +133,8 @@ impl schemars::JsonSchema for Level {
   fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
     schemars::json_schema!({
       "type": "string",
-      "description": "Message severity. An open enum: a value outside the examples is kept verbatim and displayed as `info`.",
-      "examples": ["debug", "info", "warn", "error"],
+      "description": "Message severity, normalized to lowercase. An open enum: a value outside the examples is preserved in lowercase and displayed as `info`.",
+      "examples": ["debug", "info", "success", "warn", "error"],
       "default": "info",
     })
   }

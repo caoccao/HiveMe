@@ -186,9 +186,6 @@ impl Config {
       issues.push("broker.reconnect.initialDelayMs is greater than maxDelayMs".to_owned());
     }
 
-    if let Err(reason) = crate::topic::validate_prefix(&self.topics.prefix) {
-      issues.push(format!("topics.prefix: {reason}"));
-    }
     if self.topics.subscriptions.is_empty() {
       issues.push("topics.subscriptions is empty, hmg would receive nothing".to_owned());
     }
@@ -246,14 +243,14 @@ impl Config {
     copy
   }
 
-  /// The absolute topic a relative one resolves to under this config.
-  pub fn resolve_topic(&self, topic: &str, absolute: bool) -> String {
-    crate::topic::resolve(&self.topics.prefix, topic, absolute)
+  /// The publish topic under the fixed root, ignoring leading input slashes.
+  pub fn resolve_topic(&self, topic: &str) -> String {
+    crate::topic::resolve_publish(crate::topic::ROOT_TOPIC, topic)
   }
 
   /// The absolute topic `hmc` publishes to when no topic is given.
   pub fn default_topic(&self) -> String {
-    self.resolve_topic("", false)
+    self.resolve_topic("")
   }
 
   /// The absolute filters `hmg` subscribes to.
@@ -262,7 +259,7 @@ impl Config {
       .topics
       .subscriptions
       .iter()
-      .map(|subscription| subscription.resolve(&self.topics.prefix))
+      .map(|subscription| subscription.resolve(crate::topic::ROOT_TOPIC))
       .collect()
   }
 
@@ -428,20 +425,17 @@ impl Default for Reconnect {
   }
 }
 
-/// The topic namespace.
+/// Subscriptions under the fixed `hiveme` root.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Topics {
-  /// Prepended to every relative topic. May be empty, which puts topics at the root.
-  pub prefix: String,
-  /// What `hmg` subscribes to, relative to the prefix.
+  /// What `hmg` subscribes to, relative to `hiveme`.
   pub subscriptions: Vec<Subscription>,
 }
 
 impl Default for Topics {
   fn default() -> Self {
     Self {
-      prefix: "hiveme".to_owned(),
       subscriptions: vec![Subscription::Relative("#".to_owned())],
     }
   }
@@ -449,12 +443,12 @@ impl Default for Topics {
 
 /// One entry of `topics.subscriptions`.
 ///
-/// A bare string is relative to the prefix, unless it starts with `$`, which the MQTT
+/// A bare string is relative to `hiveme`, unless it starts with `$`, which the MQTT
 /// specification reserves for broker topics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(untagged)]
 pub enum Subscription {
-  /// A filter relative to `topics.prefix`.
+  /// A filter relative to `hiveme`.
   Relative(String),
   /// A filter that says for itself whether the prefix applies.
   Explicit {
@@ -557,7 +551,7 @@ fn is_false(value: &bool) -> bool {
 pub struct Rule {
   /// Unique within the config. Reusing a built-in id overrides that rule.
   pub id: String,
-  /// An MQTT topic filter, relative to `topics.prefix` unless `absolute` is true.
+  /// An MQTT topic filter, relative to `hiveme` unless `absolute` is true.
   pub topic: String,
   #[serde(default, skip_serializing_if = "is_false")]
   pub absolute: bool,

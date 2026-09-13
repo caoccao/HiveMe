@@ -120,8 +120,10 @@ export interface MessageRow {
   outgoing: boolean;
 }
 
-/** The per-message overrides the composer's send menu offers. */
+/** The publish overrides controlled by the composer's collapsible options panel. */
 export interface PublishOptions {
+  /** Relative to the selected topic; leading slashes are ignored. */
+  topic?: string | null;
   json?: boolean;
   qos?: number | null;
   retain?: boolean | null;
@@ -151,11 +153,12 @@ export interface UpdateCheckResult {
 export enum Level {
   Debug = 'debug',
   Info = 'info',
+  Success = 'success',
   Warn = 'warn',
   Error = 'error',
 }
 
-export const LEVELS: Level[] = [Level.Debug, Level.Info, Level.Warn, Level.Error];
+export const LEVELS: Level[] = [Level.Debug, Level.Info, Level.Success, Level.Warn, Level.Error];
 
 /** Which color scheme the GUI follows. */
 export enum DisplayMode {

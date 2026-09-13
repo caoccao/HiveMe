@@ -255,7 +255,6 @@ export default function MainContent() {
 
       <Box
         sx={{
-          p: 1,
           border: 1,
           borderColor: 'divider',
           borderTop: 0,
@@ -278,7 +277,7 @@ export default function MainContent() {
                 flexDirection: 'column',
                 flex: 1,
                 minHeight: 0,
-                ...(!ownsScroll && { overflow: 'auto' }),
+                ...(!ownsScroll && { p: 1, overflow: 'auto' }),
               }}
             >
               {control.type === Protocol.TabType.Messages && <Messages />}

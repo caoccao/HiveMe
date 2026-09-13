@@ -19,27 +19,27 @@ Arguments:
   [MESSAGE]  Message body. Read from stdin when omitted
 
 Options:
-      --init <JSON>     Initialize the shared config from a setup string, then exit
-  -t, --topic <TOPIC>   Topic relative to topics.prefix [default: the prefix itself]
-  -T, --absolute-topic  Treat --topic as an absolute topic
-      --json            Publish MESSAGE (or stdin) as a raw JSON payload without the envelope
-      --title <TITLE>   Optional title for the message
-  -l, --level <LEVEL>   debug | info | warn | error [default: info; independent of topic]
-  -q, --qos <QOS>       0 | 1 | 2 [default: publish.qos]
-  -r, --retain          Set the retain flag
-  -c, --config <PATH>   Config file path
-  -v, --verbose         Log connection details to stderr
-  -h, --help            Print help
-  -V, --version         Print version
+      --init <JSON>    Initialize the shared config from a setup string, then exit
+  -t, --topic <TOPIC>  Topic relative to hiveme; leading slashes are ignored [default: hiveme]
+      --json           Publish MESSAGE (or stdin) as a raw JSON payload without the envelope
+      --title <TITLE>  Optional title for the message
+  -l, --level <LEVEL>  debug | info | success | warn | error [default: info; independent of topic]
+  -q, --qos <QOS>      0 | 1 | 2 [default: publish.qos]
+  -r, --retain         Set the retain flag
+  -c, --config <PATH>  Config file path
+  -v, --verbose        Log connection details to stderr
+  -h, --help           Print help
+  -V, --version        Print version
 ```
 
 ## Examples
 
 ```sh
-hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret","prefix":"hiveme"}'
-hmc "Build finished"                  # publish to the prefix itself
+hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret"}'
+hmc "Build finished"                  # publish to hiveme
+hmc --level success "Build succeeded" # success payload on hiveme
 hmc --level error "Disk full"         # error payload on the default topic
-hmc -T -t '$SYS/status' "up"          # publish to an absolute topic
+hmc -t /build/ci "Build finished"     # publish to hiveme/build/ci
 echo "Build finished" | hmc           # read the body from stdin
 hmc --json '{"stage":"deploy","ok":true}'
 ```
@@ -51,7 +51,7 @@ username, and password from the HiveMQ Cloud console. **Copy CLI setup** copies 
 complete command, including the JSON, ready to paste into a terminal and run:
 
 ```sh
-hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret","prefix":"hiveme"}'
+hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret"}'
 ```
 
 The format is in [config.md](config.md#the-setup-string) and is generated into
@@ -61,12 +61,12 @@ The format is in [config.md](config.md#the-setup-string) and is generated into
   so an option that would be ignored is refused instead.
 - It uses `hiveme-core::config::ConfigFile::initialize`, sharing the complete config
   schema, defaults, loader, and atomic writer with `hmg`.
-- It compares `broker.url`, `broker.username`, `broker.password`, and an optional
-  `topics.prefix` with the existing config. Matching values leave the file untouched
+- It compares `broker.url`, `broker.username`, and `broker.password` with the existing
+  config. Matching values leave the file untouched
   and print `Config is not changed: <path>` on stdout.
 - Different values update only those fields and print `Config has been updated: <path>`.
   All other values, including GUI preferences, device identity, unknown keys, and
-  omitted fields, remain intact. An omitted setup prefix keeps the existing one.
+  omitted fields, remain intact. The setup string has no topic configuration.
 - When there is no file, it creates the full shared config, including defaults for
   fields the CLI does not use, and prints `Config has been created: <path>`.
 - It never connects, so a setup string can be applied while the cluster is unreachable.
@@ -96,17 +96,21 @@ authority, which the operating system already trusts. See
 
 ### The topic
 
-- Without `--topic`, hmc always publishes to `topics.prefix` itself (`hiveme` by
-  default), regardless of log level. There is no configurable default topic.
-  An explicit `--topic` is joined with the prefix; `--absolute-topic` skips the
-  prefix and requires `--topic`. See [config.md](config.md#topic-resolution).
-- The resolved topic is checked before connecting. An invalid `--topic` is a usage
-  error. An invalid prefix, or an empty prefix without an explicit topic, is a config
-  error.
+- The root is always `hiveme`; there is no configurable topic prefix. Without
+  `--topic`, hmc publishes to `hiveme`, regardless of log level.
+- `--topic` is always relative to `hiveme`. Leading slashes are removed, so `-t ci`,
+  `-t /ci`, and `-t ///ci` all publish to `hiveme/ci`. An empty or slash-only topic
+  publishes to `hiveme`. Internal and trailing slashes stay as entered.
+- There is no absolute-topic flag. hmc and hmg use the same Rust resolver; hmg uses
+  the selected tree topic as its base. See [config.md](config.md#topic-resolution).
+- The resolved topic is checked before connecting. An invalid `--topic` is a usage error.
 
 ### The message
 
 - `--level` defaults to `info` independently of the MQTT topic and notification rules.
+  Input is case-insensitive: `info`, `INFO`, `Info`, and mixed-case spellings are
+  accepted and normalized to lowercase before publishing. For example,
+  `hmc --level SUCCESS "Build succeeded"` writes `"level":"success"` in JSON.
   `hmc --level warn "Disk at 87%"` and `hmc --level error "Build failed"` both publish
   to `hiveme` with different `payload.level` values under the default configuration.
   `--topic` selects a custom topic without changing the payload level.

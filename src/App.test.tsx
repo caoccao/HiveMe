@@ -89,7 +89,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   failSave = false;
   backendTopics = topics;
-  backendConfig = { version: 1, broker: {}, topics: { prefix: 'hiveme' }, gui: { language: 'en-US' } };
+  backendConfig = { version: 1, broker: {}, topics: { subscriptions: ['#'] }, gui: { language: 'en-US' } };
   useAppStore.setState({
     config: null,
     about: null,
@@ -137,9 +137,8 @@ describe('the application window', () => {
     expect(screen.queryByText(/Select a topic/)).not.toBeInTheDocument();
   });
 
-  it('opens on hiveme with an empty database even when the topic prefix is customized', async () => {
+  it('opens on hiveme with an empty database even after a different topic was selected', async () => {
     backendTopics = [];
-    backendConfig.topics = { prefix: 'team' };
     useAppStore.setState({ selectedTopic: 'team/build' });
     render(<App />);
 

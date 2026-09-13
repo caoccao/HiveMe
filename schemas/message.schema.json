@@ -25,10 +25,11 @@
     },
     "Level": {
       "default": "info",
-      "description": "Message severity. An open enum: a value outside the examples is kept verbatim and displayed as `info`.",
+      "description": "Message severity, normalized to lowercase. An open enum: a value outside the examples is preserved in lowercase and displayed as `info`.",
       "examples": [
         "debug",
         "info",
+        "success",
         "warn",
         "error"
       ],

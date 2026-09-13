@@ -293,25 +293,28 @@ fn a_json_publish_arrives_unchanged_and_claims_no_envelope() {
 }
 
 #[test]
-fn an_absolute_topic_leaves_the_prefix_behind() {
-  with_broker("an_absolute_topic_leaves_the_prefix_behind", |fixture| async move {
-    let mut subscriber = MqttClient::connect(&fixture.config, Role::Gui)
-      .await
-      .expect("the subscriber connects");
-    let mut incoming = subscriber.take_incoming().expect("the incoming channel");
-    subscriber
-      .subscribe(["elsewhere/#"], Qos::AtLeastOnce)
-      .await
-      .expect("the broker accepts the subscription");
+fn leading_slashes_are_removed_before_publishing_under_hiveme() {
+  with_broker(
+    "leading_slashes_are_removed_before_publishing_under_hiveme",
+    |fixture| async move {
+      let mut subscriber = MqttClient::connect(&fixture.config, Role::Gui)
+        .await
+        .expect("the subscriber connects");
+      let mut incoming = subscriber.take_incoming().expect("the incoming channel");
+      subscriber
+        .subscribe(["hiveme/elsewhere/#"], Qos::AtLeastOnce)
+        .await
+        .expect("the broker accepts the subscription");
 
-    let output = fixture.hmc(vec!["-T", "-t", "elsewhere/status", "up"], None).await;
-    assert_published(&output, "elsewhere/status");
+      let output = fixture.hmc(vec!["-t", "/elsewhere/status", "up"], None).await;
+      assert_published(&output, "hiveme/elsewhere/status");
 
-    let received = next_message(&mut incoming).await;
-    assert_eq!(received.topic, "elsewhere/status");
+      let received = next_message(&mut incoming).await;
+      assert_eq!(received.topic, "hiveme/elsewhere/status");
 
-    subscriber.disconnect().await.expect("the subscriber says goodbye");
-  });
+      subscriber.disconnect().await.expect("the subscriber says goodbye");
+    },
+  );
 }
 
 #[test]
@@ -447,31 +450,30 @@ fn a_real_cloud_cluster_accepts_a_message_from_hmc() {
       String::from_utf8_lossy(&output.stderr)
     );
 
-    // A namespace of its own, so the test cannot disturb a real installation sharing
-    // the cluster. This is the one thing a user would not do.
-    let mut config: Config = serde_json::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
-    config.topics.prefix = format!("hiveme-test/{}", &config.device.id[..8]);
-    std::fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
+    // Use an explicit child topic to keep this cloud probe isolated.
+    let config: Config = serde_json::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+    let relative_topic = format!("test/{}", &config.device.id[..8]);
+    let topic = config.resolve_topic(&relative_topic);
 
     let mut subscriber = MqttClient::connect(&config, Role::Gui)
       .await
       .expect("the cluster accepts the subscriber");
     let mut incoming = subscriber.take_incoming().expect("the incoming channel");
     subscriber
-      .subscribe(config.subscription_filters(), Qos::AtLeastOnce)
+      .subscribe([topic.as_str()], Qos::AtLeastOnce)
       .await
-      .expect("the credential may subscribe under the test prefix");
+      .expect("the credential may subscribe to the test topic");
 
     let output = tokio::task::spawn_blocking({
       let config_path = config_path.clone();
-      move || run_hmc(&config_path, vec!["hello from hmc"], None)
+      move || run_hmc(&config_path, vec!["-t", &relative_topic, "hello from hmc"], None)
     })
     .await
     .expect("the hmc process runs");
-    assert_published(&output, &config.default_topic());
+    assert_published(&output, &topic);
 
     let received = next_message(&mut incoming).await;
-    assert_eq!(received.topic, config.default_topic());
+    assert_eq!(received.topic, topic);
     match received.parse() {
       Parsed::Envelope(envelope) => {
         assert_eq!(envelope.payload.as_ref().unwrap().body, "hello from hmc");

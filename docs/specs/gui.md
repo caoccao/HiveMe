@@ -18,7 +18,7 @@ Its layout and architecture deliberately mirror the sibling project
 | `src/components/Messages.tsx` | Tab 0: the split pane and its draggable divider |
 | `src/components/TopicTree.tsx` | The topic hierarchy and its filter |
 | `src/components/MessageView.tsx` | The chat view, its bubbles, and the JSON tree |
-| `src/components/Composer.tsx` | The input box, the send button, and its options menu |
+| `src/components/Composer.tsx` | The input box, the send button, and its collapsible options |
 | `src/components/Config.tsx` | The Settings tab |
 | `src/components/About.tsx` | The About tab |
 | `src/components/Footer.tsx` | The status bar |
@@ -78,7 +78,7 @@ Shortcuts: `Ctrl+1` to `Ctrl+9` select a tab, `Ctrl+W` closes the current tab,
 
 `TopicTree.tsx` renders `@mui/x-tree-view` with the topic hierarchy split on `/`. The
 `hiveme` topic is always visible and selectable, even with no database rows, after
-clearing history, while disconnected, or when the topic prefix is customized.
+clearing history or while disconnected. The root is fixed and has no config setting.
 Every startup selects `hiveme`, highlights it, and loads its entire subtree, so the composer
 is ready as soon as the connection is available. The selected topic has a highlighted
 background and a bold label in the theme color. Clicking a topic label selects it
@@ -97,7 +97,8 @@ messages and all recursive descendants and marks that subtree read. Matching is
 case sensitive and requires a `/` boundary: `hiveme/building` is not a child of
 `hiveme/build`. The empty leading segment of an absolute path is only a group.
 
-The filter field above the tree matches on the whole path, keeps a parent whose child
+The filter field has 4 px margins from the top and sides of the topic pane and a
+4 px gap before the tree. It matches on the whole path, keeps a parent whose child
 matches, and expands what it found. `hiveme` stays visible even when the filter does
 not match it.
 
@@ -120,37 +121,94 @@ and events, while the same envelope on two topics remains two rows.
 | Message | Rendering |
 |---------|-----------|
 | Sent by this device (`sender.id == device.id`) | Rounded bubble aligned right; regular messages use a dark fill with white text |
-| Sent by anyone else | Rounded bubble aligned left with the sender name and app above it |
-| Envelope tier | `title` in bold, `body`, and a collapsed `data` JSON tree; metadata is in the options menu |
+| Sent by anyone else | Rounded bubble aligned left with available sender details above it |
+| Envelope tier | `title` in bold, `body`, and a collapsed `data` JSON tree; metadata is in the hover row |
 | Raw JSON tier | Monospace bubble with a collapsible JSON tree |
 | Raw text tier | Monospace bubble |
 | Raw bytes | Hex preview with a size label |
 | Encrypted | Lock icon and "encrypted (key `<kid>`)" plus sender |
-| `v` newer than supported | Normal rendering with a "newer version" chip in the options menu |
+| `v` newer than supported | Normal rendering with a "newer version" chip in the hover row |
+
+Each message shows its topic path relative to the selected tree topic,
+including messages sent by the current device. For example, selecting `hiveme/a`
+shows `b/c` below a message on `hiveme/a/b/c`, immediately to the left of its level
+badge. A message on the selected topic has an
+empty relative path, so no topic label is shown. The path updates when selection
+changes and preserves the topic's original characters and levels. The path uses a
+muted gray from the active theme to distinguish it from the sender details.
+
+Incoming messages show the sender's name above the bubble, falling back to the
+sender ID. Application names are neither displayed
+nor used as a sender fallback. Outgoing messages omit the sender. A message without
+sender details omits the header, without an unknown-sender placeholder. Sender
+headers stay visible. Relative paths appear with the entire metadata row only
+while the pointer is over the message. Labels wrap when needed.
 
 Bubble colors follow `payload.level`, independently of the topic or direction:
-`info` and `debug` use the regular background, `warn` uses a warning-colored border
-and tinted background, and `error` uses an error-colored border and tinted background.
+`info` and `debug` use the regular background. `success` uses MUI's success palette,
+`warn` uses its warning palette, and `error` uses its error palette for the border,
+tinted bubble background, and level badge.
 Colors come from the active theme and work in both light and dark modes. Unknown
 levels display as `info` while preserving the raw level label.
 
 Bubbles use generous padding, 24 px corners, and readable message text. A separate
-row below each bubble contains its timestamp, a direct copy-body button, and an
-options button. This row is hidden until the pointer is over the message or its
-controls, and it remains visible while its menu is open. Keyboard focus also reveals
-the controls. Its space is reserved so hovering does not move adjacent messages.
+row below each bubble is aligned to its right edge and contains the relative path,
+a rectangular level badge, QoS, timestamp, and a split copy button. Retained status
+and a newer-version marker also appear here when applicable. The entire row,
+including the relative path, is hidden until the pointer is over the message or
+its controls and hides again when the pointer leaves. Its space is reserved so
+hovering does not move adjacent messages.
 
 The timestamp shows hours and minutes in the selected language, with the full date
-and time in its tooltip. The options menu offers copy JSON and shows the payload
-level, QoS, retained status, and newer-version marker. Both copy actions use the
+and time in its tooltip. The split button copies the body directly; its arrow opens
+a right-aligned menu containing **Copy** and **Copy Raw JSON**. Both copy actions use the
 clipboard plugin and report success or failure through the snackbar.
 
 ### Composer
 
-`Composer.tsx` sits at the bottom of the message view: a multi-line `TextField` and a
-send `IconButton`. Enter sends, Shift+Enter inserts a newline. A small menu on the
-send button toggles "send as raw JSON" and overrides QoS and retain for that one
-message. The composer is disabled while disconnected or while no topic is selected.
+`Composer.tsx` sits at the bottom of the message view. A multi-line `TextField`
+fills the available width with 4 px padding around the composer and 4 px gaps
+between its rows and most controls. The Messages tab adds no extra padding, so the right
+and bottom gaps to the panel's inner border are also 4 px. Fields have 4 px internal
+padding, buttons and selection controls use compact padding, and the message input
+starts at three lines and grows to six. Below it, a **Level** dropdown,
+**More Options**, and **Send** share a row aligned to the right. The dropdown sits
+immediately left of More Options and offers **Info**, **Error**, **Success**, and
+**Warn**, in that order, with Info selected by default. It sets `payload.level` and
+uses normal MUI text color for Info, `error.main` for Error, `success.main` for
+Success, and `warning.main` for Warn, both in the menu and in the selected value. It
+stays available when More Options is collapsed. Its selection is preserved but
+disabled in raw JSON mode, which publishes the supplied JSON unchanged. The chevron to the
+right of More Options indicates whether the options below are expanded or collapsed.
+Enter sends from any focused composer control: the message box, closed Level dropdown, Topic, Title, QoS
+radios, checkboxes, More Options, or Send. It does not also activate the focused
+control. Inside the open dropdown menu, Enter selects the highlighted level without
+sending. Shift+Enter inserts a newline in the message box. Enter used for text
+composition does not send. The composer is disabled while disconnected or while
+no topic is selected.
+
+The options start collapsed and contain three rows:
+
+1. **Topic**: relative to the selected tree topic. An empty field uses that topic
+   itself. Leading slashes are stripped: with `hiveme/build` selected, `ci` and `/ci`
+   both publish to `hiveme/build/ci`. Resolution uses the same Rust function as hmc.
+2. **Title**: empty by default. Preserved but disabled and excluded from publishing
+   when raw JSON is selected.
+3. **QoS**: radio buttons **Config**, **0**, **1**, **2**, followed on the same row
+   by **Retain Message** and **As Raw JSON**. Config is selected by default and uses
+   the current configured QoS at send time. Both checkboxes start unchecked. An
+   unchecked Retain Message explicitly sends without retain, regardless of the config
+   default. The QoS group and each checkbox are separated by 16 px horizontally.
+   Controls wrap with a 4 px row gap when the pane is too narrow to fit them on one line.
+
+Collapsing the panel only hides the controls; every option remains in effect.
+The message draft, selected level, option values, and expansion state are remembered separately for
+each selected tree topic in window memory. Selecting a previously unused topic starts
+with the defaults; returning to a topic restores its values, including after visiting
+another tab or reconnecting. They are never written to config, browser storage, or
+SQLite and reset when the window restarts. Successful sending clears only the
+originating topic's message text, preserving its options; failure preserves the text
+as well. A send completing after selection changes cannot clear another topic's draft.
 
 Sending publishes through the same core path as `hmc`, so a message from the composer
 is indistinguishable from one `hmc` sent. The bubble appears as soon as the broker has
@@ -187,6 +245,10 @@ Startup uses the saved language. English is the default and the fallback for
 unsupported tags. Regional tags such as `de-DE` resolve to their bundled language;
 Chinese script and region tags resolve to the corresponding Chinese locale.
 All English UI text uses US English spelling and terminology.
+Visible level labels start with a capital letter and share one translation catalog
+across the composer, message badges, and notification-rule choices. Protocol values
+remain lowercase in generated JSON and the database's `level` field. CLI level
+arguments accept any capitalization and are normalized before publishing.
 
 All frontend labels, tooltips, accessible names, theme and severity labels,
 confirmations, empty states, and encrypted-message placeholders use the catalogs.
@@ -228,9 +290,9 @@ A rule matches an MQTT topic filter and a payload log level to an OS notificatio
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
 | `id` | string | required | Unique within the config. The built-ins are `info`, `warn`, `error`. |
-| `topic` | string | required | MQTT topic filter, relative to `topics.prefix` unless `absolute` is true. `+` and `#` are allowed. |
+| `topic` | string | required | MQTT topic filter, relative to `hiveme` unless `absolute` is true. `+` and `#` are allowed. |
 | `absolute` | boolean | false | |
-| `level` | string | `info` | The `payload.level` to match. The topic never determines a message's level; publishing defaults to `info`. |
+| `level` | string | `info` | The `payload.level` to match: `debug`, `info`, `success`, `warn`, or `error`. The topic never determines a message's level; publishing defaults to `info`. |
 | `enabled` | boolean | true | |
 | `title` | string | `{title|topic}` | Template. |
 | `body` | string | `{body}` | Template. |
@@ -338,8 +400,11 @@ links SQLite. The database runs in WAL mode.
   so the tables are created with `IF NOT EXISTS` and the version is written afterward.
   A database from a newer build is refused rather than guessed at.
 - Inserts de-duplicate on `(topic_id, msg_id)`, which is how a message the composer
-  sent and the copy the broker echoes back collapse into one bubble. The second insert
-  refreshes only `qos` and `retain`, so the row stays the one this installation sent.
+  sent and the copy the broker echoes back collapse into one bubble, regardless of
+  arrival order. An outgoing publish sets the row's outgoing flag and preserves the
+  QoS and retain options used to send it; a subscription echo cannot replace them
+  with its delivery flags. An echo stored before the outgoing publish is reconciled
+  as sent and removed from the unread count.
 - A payload that is not a HiveMe envelope has no identifier of its own, so one is
   generated. Two identical third party messages are therefore two rows, which is right:
   they are two messages, and only an envelope can claim otherwise.
@@ -423,7 +488,7 @@ Status         = { state, host, port, clientId, subscriptions, attempt, retryInM
 TopicNode      = { id, label, topic, unread, messages, children: TopicNode[] }
 MessageRow     = { rowId, topic, id, ts, receivedTs, senderId, senderName, app,
                    tier, level, title, body, raw, rawLength, qos, retain, outgoing }
-PublishOptions = { json?, qos?, retain?, title?, level? }
+PublishOptions = { topic?, json?, qos?, retain?, title?, level? }
 ```
 
 - `Status.state` is `Connecting`, `Connected`, `Reconnecting`, or `Disconnected`,
@@ -445,6 +510,9 @@ PublishOptions = { json?, qos?, retain?, title?, level? }
   payload that is not valid UTF-8 cannot travel as JSON text. `rawLength` is the byte
   count. `src/lib/message.ts` reads `raw` again to render the envelope and the JSON
   tree, which is what keeps the two readers comparable.
+- `PublishOptions.topic` is the relative input under the selected `topic` argument.
+  The shared core strips leading slashes and joins it to that selected path. An absent
+  or empty input sends to the selected topic itself.
 - `PublishOptions.json` publishes the body as a raw JSON payload with no envelope, as
   `hmc --json` does, and refuses input that is not JSON. An absent `qos` or `retain`
   means the configured default, and an absent `level` means `info`, independently of
@@ -482,7 +550,7 @@ Light Mode, and Dark Mode buttons with icons; Theme and Language use dropdown li
 |----------|-------------|-------------------|
 | Appearance | `gui` | `displayMode`, `theme`, `language` |
 | Broker | `broker` | `url` as a protocol list and the rest of the URL, then `username` and `password` on one row, with a visibility toggle and **Copy CLI setup**; **Connection** with `clientIdPrefix`, `keepAliveSecs`, `sessionExpirySecs`, `connectTimeoutSecs`; **Reconnect** with `reconnect.initialDelayMs`, `reconnect.maxDelayMs` |
-| Topics | `topics` | `prefix`, `default`; **Subscriptions**, where each row is a filter and an "absolute" box |
+| Topics | `topics` | **Subscriptions**, where each row is a filter and an "absolute" box |
 | Notifications | `notifications` | `enabled`, `notifyOwnMessages`; **Rules**, a table of `id`, `topic`, `level`, `enabled`, `title`, `body` with add and delete |
 | History | `gui.history` | `maxMessagesPerTopic`, `retentionDays` |
 | Update | `update` | `checkInterval` |
@@ -540,7 +608,7 @@ clipboard, with the setup JSON from [config.md](config.md#the-setup-string) alre
 included as a single-quoted argument:
 
 ```sh
-hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret","prefix":"hiveme"}'
+hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret"}'
 ```
 
 The user pastes the command into a terminal and runs it without adding anything.

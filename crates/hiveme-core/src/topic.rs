@@ -24,6 +24,24 @@
 /// The longest topic MQTT allows, in bytes of UTF-8.
 pub const MAX_TOPIC_BYTES: usize = 65_535;
 
+/// The application's fixed MQTT root. It is not configurable.
+pub const ROOT_TOPIC: &str = "hiveme";
+
+/// Resolves a publish topic relative to its base, removing leading slashes from input.
+///
+/// The GUI uses its selected topic as the base; the CLI uses `ROOT_TOPIC`.
+/// Existing MQTT paths in the base and empty levels inside the input stay intact.
+pub fn resolve_publish(base: &str, topic: &str) -> String {
+  let topic = topic.trim_start_matches('/');
+  if topic.is_empty() {
+    return base.to_owned();
+  }
+  if base.is_empty() {
+    return topic.to_owned();
+  }
+  format!("{base}/{topic}")
+}
+
 /// The absolute topic that `topic` names under `prefix`.
 ///
 /// An absolute topic, or an empty prefix, is returned unchanged.
@@ -36,21 +54,6 @@ pub fn resolve(prefix: &str, topic: &str, absolute: bool) -> String {
     return prefix.to_owned();
   }
   format!("{prefix}/{topic}")
-}
-
-/// Rejects a prefix that could not be joined onto a topic.
-pub fn validate_prefix(prefix: &str) -> Result<(), String> {
-  if prefix.is_empty() {
-    return Ok(());
-  }
-  if prefix.starts_with('/') || prefix.ends_with('/') {
-    return Err("a prefix must not start or end with '/'".to_owned());
-  }
-  if prefix.contains('+') || prefix.contains('#') {
-    return Err("a prefix must not contain the wildcards '+' or '#'".to_owned());
-  }
-  reject_control_characters(prefix)?;
-  Ok(())
 }
 
 /// Rejects a topic that cannot be published to.
@@ -146,6 +149,24 @@ mod tests {
   use super::*;
 
   #[test]
+  fn publish_input_is_always_relative_and_leading_slashes_are_removed() {
+    for base in ["hiveme", "hiveme/build", "custom/prefix"] {
+      for input in ["ci", "/ci", "///ci"] {
+        assert_eq!(resolve_publish(base, input), format!("{base}/ci"));
+      }
+      for input in ["", "/", "///"] {
+        assert_eq!(resolve_publish(base, input), base);
+      }
+    }
+    assert_eq!(resolve_publish("", "/ci"), "ci");
+    assert_eq!(resolve_publish("", "/"), "");
+    assert_eq!(resolve_publish("hiveme", "/a//b/"), "hiveme/a//b/");
+    assert_eq!(resolve_publish("/existing/topic/", "/ci"), "/existing/topic//ci");
+    assert_eq!(resolve_publish("hiveme", "/$SYS/status"), "hiveme/$SYS/status");
+    assert!(validate_topic(&resolve_publish("hiveme", "/bad/#")).is_err());
+  }
+
+  #[test]
   fn a_relative_topic_takes_the_prefix() {
     assert_eq!(resolve("hiveme", "info", false), "hiveme/info");
     assert_eq!(resolve("hiveme", "build/done", false), "hiveme/build/done");
@@ -169,18 +190,6 @@ mod tests {
   #[test]
   fn the_prefix_alone_resolves_to_itself() {
     assert_eq!(resolve("hiveme", "", false), "hiveme");
-  }
-
-  #[test]
-  fn prefixes_are_validated() {
-    assert!(validate_prefix("").is_ok());
-    assert!(validate_prefix("hiveme").is_ok());
-    assert!(validate_prefix("hiveme/devices").is_ok());
-    assert!(validate_prefix("/hiveme").is_err());
-    assert!(validate_prefix("hiveme/").is_err());
-    assert!(validate_prefix("hive+me").is_err());
-    assert!(validate_prefix("hiveme/#").is_err());
-    assert!(validate_prefix("hive\0me").is_err());
   }
 
   #[test]

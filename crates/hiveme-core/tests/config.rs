@@ -70,7 +70,7 @@ fn config_deserialization_preserves_present_nodes_while_filling_missing_children
   let config: Config = serde_json::from_str(
     r#"{
       "broker": { "keepAliveSecs": 60, "tls": { "verifyServer": false }, "reconnect": { "initialDelayMs": 500 } },
-      "topics": { "prefix": "team" },
+      "topics": { "subscriptions": ["build/#"] },
       "publish": { "retain": true },
       "notifications": { "enabled": false },
       "gui": {
@@ -87,7 +87,7 @@ fn config_deserialization_preserves_present_nodes_while_filling_missing_children
   expected.broker.keep_alive_secs = 60;
   expected.broker.tls.verify_server = false;
   expected.broker.reconnect.initial_delay_ms = 500;
-  expected.topics.prefix = "team".to_owned();
+  expected.topics.subscriptions = vec![Subscription::Relative("build/#".to_owned())];
   expected.publish.retain = true;
   expected.notifications.enabled = false;
   expected.gui.theme = Theme::Forest;
@@ -115,7 +115,7 @@ fn the_documented_defaults_are_the_real_defaults() {
   assert!(config.broker.tls.verify_server);
   assert_eq!(config.broker.reconnect.initial_delay_ms, 1_000);
   assert_eq!(config.broker.reconnect.max_delay_ms, 30_000);
-  assert_eq!(config.topics.prefix, "hiveme");
+  assert!(serde_json::to_value(&config.topics).unwrap().get("prefix").is_none());
   assert!(serde_json::to_value(&config.topics).unwrap().get("default").is_none());
   assert_eq!(
     config.topics.subscriptions,
@@ -348,16 +348,6 @@ fn every_validation_rule_rejects_its_own_mistake() {
       "initialDelayMs",
     ),
     case(
-      "a prefix with a leading slash",
-      |c: &mut Config| c.topics.prefix = "/hiveme".to_owned(),
-      "topics.prefix",
-    ),
-    case(
-      "a wildcard in the prefix",
-      |c: &mut Config| c.topics.prefix = "hiveme/#".to_owned(),
-      "topics.prefix",
-    ),
-    case(
       "no subscriptions",
       |c: &mut Config| c.topics.subscriptions.clear(),
       "topics.subscriptions",
@@ -466,7 +456,7 @@ fn every_problem_is_reported_at_once() {
   for expected in [
     "device.id",
     "broker.url",
-    "topics.prefix",
+    "topics.subscriptions",
     "publish.qos",
     "share the id",
   ] {
@@ -554,17 +544,22 @@ fn a_redacted_config_hides_every_secret() {
 fn topics_resolve_against_the_prefix() {
   let config = valid();
   assert_eq!(config.default_topic(), "hiveme");
-  assert_eq!(config.resolve_topic("build/done", false), "hiveme/build/done");
-  assert_eq!(config.resolve_topic("$SYS/uptime", true), "$SYS/uptime");
+  assert_eq!(config.resolve_topic("build/done"), "hiveme/build/done");
+  assert_eq!(config.resolve_topic("/build/done"), "hiveme/build/done");
+  assert_eq!(config.resolve_topic("/$SYS/uptime"), "hiveme/$SYS/uptime");
   assert_eq!(config.subscription_filters(), vec!["hiveme/#".to_owned()]);
 }
 
 #[test]
-fn an_empty_prefix_allows_explicit_topics_at_the_root() {
-  let mut config = valid();
-  config.topics.prefix.clear();
-  assert!(config.validate().is_ok());
-  assert_eq!(config.resolve_topic("custom", false), "custom");
+fn publishing_has_a_fixed_root_and_no_prefix_setting() {
+  let config: Config = serde_json::from_value(serde_json::json!({
+    "topics": { "prefix": "elsewhere" }
+  }))
+  .unwrap();
+  assert_eq!(config.default_topic(), "hiveme");
+  assert_eq!(config.resolve_topic("/custom"), "hiveme/custom");
+  assert_eq!(config.subscription_filters(), vec!["hiveme/#".to_owned()]);
+  assert!(serde_json::to_value(&config.topics).unwrap().get("prefix").is_none());
 }
 
 #[test]

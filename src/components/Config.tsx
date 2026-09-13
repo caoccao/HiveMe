@@ -221,7 +221,6 @@ export default function Config() {
   };
 
   const broker = config.broker ?? {};
-  const topics = config.topics ?? {};
   const notifications = config.notifications ?? {};
   const gui = config.gui ?? {};
   const rules = notifications.rules ?? [];
@@ -373,15 +372,6 @@ export default function Config() {
   const topicsPanel = (
     <Box>
       <SectionHeader icon={<TopicIcon fontSize="small" />} title={t('settings.topics')} />
-      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-        <TextField
-          label={t('settings.prefix')}
-          value={topics.prefix ?? ''}
-          onChange={(event) => update((next) => ((next.topics ??= {}).prefix = event.target.value))}
-          sx={{ minWidth: 200 }}
-        />
-      </Box>
-
       <Section>
         <SectionHeader
           icon={<RssFeedIcon fontSize="small" />}

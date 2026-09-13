@@ -285,10 +285,11 @@
     },
     "Level": {
       "default": "info",
-      "description": "Message severity. An open enum: a value outside the examples is kept verbatim and displayed as `info`.",
+      "description": "Message severity, normalized to lowercase. An open enum: a value outside the examples is preserved in lowercase and displayed as `info`.",
       "examples": [
         "debug",
         "info",
+        "success",
         "warn",
         "error"
       ],
@@ -421,7 +422,7 @@
           "type": "string"
         },
         "topic": {
-          "description": "An MQTT topic filter, relative to `topics.prefix` unless `absolute` is true.",
+          "description": "An MQTT topic filter, relative to `hiveme` unless `absolute` is true.",
           "type": "string"
         }
       },
@@ -477,7 +478,7 @@
     "Subscription": {
       "anyOf": [
         {
-          "description": "A filter relative to `topics.prefix`.",
+          "description": "A filter relative to `hiveme`.",
           "type": "string"
         },
         {
@@ -497,7 +498,7 @@
           "type": "object"
         }
       ],
-      "description": "One entry of `topics.subscriptions`.\n\nA bare string is relative to the prefix, unless it starts with `$`, which the MQTT\nspecification reserves for broker topics."
+      "description": "One entry of `topics.subscriptions`.\n\nA bare string is relative to `hiveme`, unless it starts with `$`, which the MQTT\nspecification reserves for broker topics."
     },
     "Theme": {
       "description": "The GUI palette.",
@@ -545,18 +546,13 @@
       "type": "object"
     },
     "Topics": {
-      "description": "The topic namespace.",
+      "description": "Subscriptions under the fixed `hiveme` root.",
       "properties": {
-        "prefix": {
-          "default": "hiveme",
-          "description": "Prepended to every relative topic. May be empty, which puts topics at the root.",
-          "type": "string"
-        },
         "subscriptions": {
           "default": [
             "#"
           ],
-          "description": "What `hmg` subscribes to, relative to the prefix.",
+          "description": "What `hmg` subscribes to, relative to `hiveme`.",
           "items": {
             "$ref": "#/$defs/Subscription"
           },
@@ -772,7 +768,6 @@
     "topics": {
       "$ref": "#/$defs/Topics",
       "default": {
-        "prefix": "hiveme",
         "subscriptions": [
           "#"
         ]

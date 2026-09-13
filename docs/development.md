@@ -90,7 +90,7 @@ the built frontend together with real IPC, MQTT delivery, and SQLite history.
 A cluster is set up in `hmg`, which shows a one line setup string to paste into `hmc`:
 
 ```sh
-cargo run -p hmc -- --config ./HiveMe.json --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret","prefix":"hiveme"}'
+cargo run -p hmc -- --config ./HiveMe.json --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret"}'
 cargo run -p hmc -- --config ./HiveMe.json "hello"
 echo hello | cargo run -p hmc -- --config ./HiveMe.json
 cargo run -p hmc -- --help
@@ -261,7 +261,25 @@ The scenario verifies:
 - Appearance opens first, settings save automatically, and no default-topic setting exists.
 - `hmc haha` prints `Message sent to hiveme.`; all log levels stay in the payload,
   arrive on the root MQTT topic, and appear in the GUI without synthetic level topics.
+  This includes `success`, which renders with the MUI success palette.
+  Uppercase and mixed-case CLI levels are accepted; payload JSON and stored level
+  fields are checked for lowercase values.
 - The GUI composer sends directly to the selected root and reconciles the broker echo.
+- Enter sends once from any focused composer control without also activating it;
+  Shift+Enter adds a line in the message box, and text composition does not send.
+- Message hover controls show level, QoS, time, and a split copy button whose menu
+  contains Copy and Copy Raw JSON.
+- Message headers show incoming sender details. Relative topic paths appear below
+  the bubble before the level badge and update with selection; the entire row hides
+  when the pointer leaves. Outgoing messages hide the sender and empty paths are omitted.
+- The root is fixed at `hiveme`, with no prefix setting in config, settings, or setup
+  strings. CLI and GUI topic input strip leading slashes and resolve relative to
+  `hiveme` or the selected tree topic, respectively.
+- The composer layout has 4 px margins to the panel edges, a three-row input minimum,
+  both checkboxes on the QoS row, and an Info / Error / Success / Warn dropdown left
+  of More Options. The entire panel state is remembered per topic in memory and
+  resets on restart. Expanded options remain active when collapsed. Topic, title,
+  level, QoS, retain, and raw JSON overrides are checked against actual published data.
 - Selecting an intermediate topic loads its recursive children from SQLite.
   Topic labels preserve expansion; only the left icon expands or collapses children.
 - Restart restores stored history while selecting `hiveme`. An unknown JSON field
@@ -308,7 +326,7 @@ password in plain text; treat the file as a credential.
 The `hmc` test runs the real `hmc --init` with that string and then publishes through
 it, which is the walkthrough of [specs/cli.md](specs/cli.md) end to end over TLS.
 
-Both tests publish under `hiveme-test/<device>` rather than the configured prefix, so
+Both tests publish under a unique `hiveme/test/<device>` child topic, so
 they cannot disturb the messages a real installation keeps on the same cluster. Both
 are opt in and never run in CI. `HIVEME_TEST_BROKER_URL`, `HIVEME_TEST_USERNAME`, and
 `HIVEME_TEST_PASSWORD` still work for the `hiveme-core` test, so a CI secret needs no

@@ -144,17 +144,11 @@ fn load_config(cli: &Cli) -> Result<Config> {
   Ok(file.into_config())
 }
 
-/// The absolute topic this run publishes to.
-///
-/// A bad `--topic` is the user's mistake and a bad `topics.prefix` is the config's, so
-/// the two are reported as different categories even though the check is the same.
+/// The topic under `hiveme` this run publishes to.
 fn resolve_topic(cli: &Cli, config: &Config) -> Result<String> {
   let requested = cli.topic.as_deref().unwrap_or("");
-  let topic = config.resolve_topic(requested, cli.absolute_topic);
-  hiveme_core::topic::validate_topic(&topic).map_err(|reason| match cli.topic.as_deref() {
-    Some(_) => Failure::Usage(format!("--topic: {reason}")),
-    None => Failure::Config(format!("topics.prefix: {reason}")),
-  })?;
+  let topic = config.resolve_topic(requested);
+  hiveme_core::topic::validate_topic(&topic).map_err(|reason| Failure::Usage(format!("--topic: {reason}")))?;
   Ok(topic)
 }
 
@@ -223,19 +217,28 @@ mod tests {
   }
 
   #[test]
-  fn an_absolute_topic_skips_the_prefix() {
+  fn leading_slashes_do_not_bypass_the_prefix() {
     let config = config();
-    assert_eq!(
-      resolve_topic(&cli(&["-T", "-t", "$SYS/status", "hello"]), &config).unwrap(),
-      "$SYS/status"
-    );
+    for input in ["ci", "/ci", "///ci"] {
+      assert_eq!(
+        resolve_topic(&cli(&["-t", input, "hello"]), &config).unwrap(),
+        "hiveme/ci"
+      );
+    }
+    assert_eq!(resolve_topic(&cli(&["-t", "/", "hello"]), &config).unwrap(), "hiveme");
   }
 
   #[test]
-  fn an_empty_prefix_puts_topics_at_the_root() {
-    let mut config = config();
-    config.topics.prefix = String::new();
-    assert_eq!(resolve_topic(&cli(&["-t", "info", "hello"]), &config).unwrap(), "info");
+  fn unknown_config_fields_cannot_change_the_root() {
+    let config: Config = serde_json::from_value(serde_json::json!({
+      "topics": { "prefix": "elsewhere" }
+    }))
+    .unwrap();
+    assert_eq!(resolve_topic(&cli(&["hello"]), &config).unwrap(), "hiveme");
+    assert_eq!(
+      resolve_topic(&cli(&["-t", "/ci", "hello"]), &config).unwrap(),
+      "hiveme/ci"
+    );
   }
 
   #[test]
@@ -244,15 +247,6 @@ mod tests {
     let failure = resolve_topic(&cli(&["-t", "build/#", "hello"]), &config).unwrap_err();
     assert_eq!(failure.code(), 2);
     assert!(failure.to_string().contains("--topic"), "{failure}");
-  }
-
-  #[test]
-  fn an_empty_prefix_requires_an_explicit_topic() {
-    let mut config = config();
-    config.topics.prefix.clear();
-    let failure = resolve_topic(&cli(&["hello"]), &config).unwrap_err();
-    assert_eq!(failure.code(), 3);
-    assert!(failure.to_string().contains("topics.prefix"), "{failure}");
   }
 
   #[test]
@@ -268,7 +262,7 @@ mod tests {
   #[test]
   fn every_level_uses_the_same_default_or_custom_topic() {
     let config = config();
-    for level in ["debug", "info", "warn", "error"] {
+    for level in ["debug", "info", "success", "warn", "error"] {
       for (arguments, expected) in [
         (vec!["--level", level, "hello"], "hiveme"),
         (

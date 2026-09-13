@@ -28,9 +28,9 @@
     "unknownSender": "inconnu",
     "newerVersion": "version plus récente",
     "retained": "Conservé par le courtier",
-    "actions": "Actions du message",
-    "copyBody": "Copier le corps",
-    "copyJson": "Copier le JSON",
+    "actions": "Options de copie",
+    "copyBody": "Copier",
+    "copyJson": "Copier le JSON brut",
     "copiedBody": "Le corps est dans le presse-papiers.",
     "copiedJson": "La charge utile est dans le presse-papiers.",
     "data": "données",
@@ -43,15 +43,17 @@
     "bytes_many": "{{count, number}} octets"
   },
   "composer": {
-    "title": "Titre (facultatif)",
+    "level": "Niveau",
+    "topic": "Sujet",
+    "title": "Titre",
     "placeholder": "Rédigez un message. Entrée envoie, Maj+Entrée ajoute une ligne.",
     "placeholderJson": "Saisissez une charge utile JSON. Entrée envoie, Maj+Entrée ajoute une ligne.",
     "send": "Envoyer",
-    "options": "Options d’envoi",
-    "sendAsJson": "Envoyer en JSON brut",
-    "qosDefault": "QoS de la configuration",
-    "qos": "QoS {{qos}}",
-    "retain": "Conserver ce message",
+    "options": "Plus d’options",
+    "sendAsJson": "En JSON brut",
+    "qosDefault": "Configuration",
+    "qos": "QoS",
+    "retain": "Conserver le message",
     "disconnected": "Connectez-vous au courtier pour envoyer un message.",
     "noTopic": "Sélectionnez un sujet pour envoyer un message."
   },
@@ -115,7 +117,6 @@
     "copyCliSetup": "Copier la configuration CLI",
     "copyCliSetupHint": "Copie la commande complète hmc --init. Elle contient le mot de passe du courtier en clair.",
     "cliSetupCopied": "Commande de configuration CLI copiée. Collez-la dans votre terminal et exécutez-la.",
-    "prefix": "Préfixe",
     "subscriptions": "Abonnements",
     "subscriptionFilter": "Filtre d’abonnement {{index}}",
     "absolute": "Absolu",
@@ -185,10 +186,11 @@
     "skipThisVersion": "Ignorer cette version"
   },
   "levels": {
-    "debug": "débogage",
-    "info": "info",
-    "warn": "avertissement",
-    "error": "erreur"
+    "success": "Succès",
+    "debug": "Débogage",
+    "info": "Info",
+    "warn": "Avertissement",
+    "error": "Erreur"
   },
   "format": {
     "seconds": "{{seconds}} s",

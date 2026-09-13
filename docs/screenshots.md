@@ -27,7 +27,7 @@ Point a throwaway config at it, so the screenshots do not carry real credentials
   "version": 1,
   "device": { "id": "0f7a1c2e-5d4b-4a6e-9c1d-2b3e4f5a6b7c", "name": "sams-desktop" },
   "broker": { "url": "mqtt://127.0.0.1:21883", "username": "demo", "password": "demo" },
-  "topics": { "prefix": "hiveme", "default": "", "subscriptions": ["#"] },
+  "topics": { "subscriptions": ["#"] },
   "gui": { "displayMode": "Light", "theme": "Amber" }
 }
 ```

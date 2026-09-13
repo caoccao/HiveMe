@@ -134,12 +134,6 @@ pub struct BrokerInit {
   pub username: String,
   /// Plain text, because the CONNECT packet needs it in plain text.
   pub password: String,
-  /// The topic namespace, carried so that `hmc` publishes where `hmg` is listening.
-  ///
-  /// Absent means the receiving config keeps the prefix it already has, which is what
-  /// a string written by a build that predates this field looks like.
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub prefix: Option<String>,
 }
 
 impl Default for BrokerInit {
@@ -149,7 +143,6 @@ impl Default for BrokerInit {
       url: String::new(),
       username: String::new(),
       password: String::new(),
-      prefix: None,
     }
   }
 }
@@ -165,7 +158,6 @@ impl BrokerInit {
       url: config.broker.url.clone(),
       username: config.broker.username.clone(),
       password: config.broker.password.clone(),
-      prefix: Some(config.topics.prefix.clone()),
     }
   }
 
@@ -218,11 +210,6 @@ impl BrokerInit {
     if self.password.is_empty() {
       issues.push("password is empty".to_owned());
     }
-    if let Some(prefix) = self.prefix.as_deref()
-      && let Err(reason) = crate::topic::validate_prefix(prefix)
-    {
-      issues.push(format!("prefix: {reason}"));
-    }
     if issues.is_empty() {
       Ok(())
     } else {
@@ -239,9 +226,6 @@ impl BrokerInit {
     config.broker.url = self.url.clone();
     config.broker.username = self.username.clone();
     config.broker.password = self.password.clone();
-    if let Some(prefix) = self.prefix.as_deref() {
-      config.topics.prefix = prefix.to_owned();
-    }
   }
 
   /// A copy safe to log or to put in a bug report.
@@ -297,7 +281,6 @@ mod tests {
       url: "mqtts://abc123.s1.eu.hivemq.cloud:8883".to_owned(),
       username: "hiveme-sam".to_owned(),
       password: "s3cret".to_owned(),
-      prefix: Some("hiveme".to_owned()),
     }
   }
 
@@ -349,25 +332,20 @@ mod tests {
     });
     std::fs::write(&path, serde_json::to_string(&document).unwrap()).unwrap();
     let mut setup = cloud();
-    setup.prefix = Some("team".to_owned());
     let (file, outcome) = ConfigFile::initialize(&path, &setup).unwrap();
     assert_eq!(outcome, InitOutcome::Updated);
     document["broker"]["password"] = Value::from("s3cret");
-    document["topics"] = serde_json::json!({ "prefix": "team" });
     let written: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(
       written, document,
       "unrelated values and omitted defaults must stay intact"
     );
-    assert_eq!(file.config().topics.prefix, "team");
     assert_eq!(file.config().publish.qos, 2);
 
-    // Older setup strings omit the prefix, so a different password must not reset it.
-    setup.prefix = None;
+    // Updating credentials again must preserve all unrelated values.
     setup.password = "changed again".to_owned();
-    let (file, outcome) = ConfigFile::initialize(&path, &setup).unwrap();
+    let (_, outcome) = ConfigFile::initialize(&path, &setup).unwrap();
     assert_eq!(outcome, InitOutcome::Updated);
-    assert_eq!(file.config().topics.prefix, "team");
     document["broker"]["password"] = Value::from("changed again");
     let written: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(written, document);
@@ -424,7 +402,6 @@ mod tests {
     config.broker.url = "mqtts://abc123.s1.eu.hivemq.cloud:8883".to_owned();
     config.broker.username = "hiveme-sam".to_owned();
     config.broker.password = "s3cret".to_owned();
-    config.topics.prefix = "team".to_owned();
 
     let init = BrokerInit::from_config(&config);
     let parsed = BrokerInit::parse(&init.to_json()).unwrap();
@@ -434,7 +411,7 @@ mod tests {
     assert_eq!(fresh.broker.url, config.broker.url);
     assert_eq!(fresh.broker.username, config.broker.username);
     assert_eq!(fresh.broker.password, config.broker.password);
-    assert_eq!(fresh.topics.prefix, "team");
+    assert_eq!(fresh.default_topic(), "hiveme");
   }
 
   #[test]
@@ -453,15 +430,14 @@ mod tests {
   }
 
   #[test]
-  fn a_string_without_a_prefix_keeps_the_one_the_config_has() {
+  fn setup_has_no_topic_configuration() {
+    let setup = cloud();
+    let json = serde_json::to_value(&setup).unwrap();
+    assert!(json.get("prefix").is_none());
+    assert!(json_schema()["properties"].get("prefix").is_none());
     let mut config = Config::default();
-    config.topics.prefix = "team".to_owned();
-    let init = BrokerInit {
-      prefix: None,
-      ..cloud()
-    };
-    init.apply_to(&mut config);
-    assert_eq!(config.topics.prefix, "team");
+    setup.apply_to(&mut config);
+    assert_eq!(config.default_topic(), "hiveme");
   }
 
   #[test]
@@ -521,15 +497,6 @@ mod tests {
   }
 
   #[test]
-  fn a_prefix_with_a_wildcard_is_refused() {
-    let init = BrokerInit {
-      prefix: Some("team/#".to_owned()),
-      ..cloud()
-    };
-    assert!(init.validate().unwrap_err().to_string().contains("prefix"));
-  }
-
-  #[test]
   fn the_password_is_hidden_when_the_string_is_logged() {
     let redacted = cloud().redacted();
     assert_eq!(redacted.password, REDACTED);
@@ -543,7 +510,7 @@ mod tests {
     assert!(schema.get("$id").is_some());
     assert_eq!(schema["type"], "object");
     let properties = schema["properties"].as_object().expect("properties");
-    for field in ["v", "url", "username", "password", "prefix"] {
+    for field in ["v", "url", "username", "password"] {
       assert!(properties.contains_key(field), "{field} is missing from the schema");
     }
   }

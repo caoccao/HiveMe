@@ -63,9 +63,17 @@ and `appVersion`. Every field inside is optional and unknown keys are allowed.
 |-------|------|----------|-------|
 | `body` | string | yes | The main text. May be empty when `data` carries the content. |
 | `title` | string | no | Used as the notification title when present. |
-| `level` | string | no, default `info` | Open enum: `debug`, `info`, `warn`, `error`. An unknown value displays as `info` with the raw string shown. |
+| `level` | string | no, default `info` | Case-insensitive open enum: `debug`, `info`, `success`, `warn`, `error`. Normalized to lowercase. Unknown values display with the Info fallback and the lowercase level name. |
 | `data` | object | no | Free form JSON for scripts. Rendered as a collapsible tree in the GUI. |
 | `contentType` | string | no | A hint for `body`, such as `text/markdown`. Defaults to `text/plain`. |
+
+Levels are case-insensitive when read and normalized to lowercase in the shared
+model, serialized JSON, and the database's `level` field. Only display labels use
+an initial capital. Unknown level names are preserved in lowercase.
+
+`success` marks a successful result and uses the GUI's MUI success palette. The
+shared `success.json` fixture verifies that both readers recognize it, and Rust
+preserves it when serializing. As with every level, it does not change the MQTT topic.
 
 ## Encrypted envelope
 

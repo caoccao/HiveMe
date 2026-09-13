@@ -61,6 +61,30 @@ fn missing_optional_keys_take_their_defaults() {
   assert!(payload.content_type.is_none());
 }
 
+/// A successful result is a recognized level in both readers of the shared fixture.
+#[test]
+fn success_is_a_known_level_and_survives_serialization() {
+  let message = envelope("success.json");
+  let level = message.level();
+  assert_eq!(level, Level::Success);
+  assert!(level.is_known());
+  assert!(Level::known().contains(&level));
+  assert_eq!(level.displayed(), Level::Success);
+  assert_eq!(serde_json::to_value(&message).unwrap()["payload"]["level"], "success");
+}
+
+#[test]
+fn levels_are_case_insensitive_and_serialize_in_lowercase() {
+  for input in ["INFO", "Error", "SuCcEsS", "WARN", "DeBuG", "CUSTOM"] {
+    let expected = input.to_lowercase();
+    let level: Level = serde_json::from_value(serde_json::json!(input)).unwrap();
+    assert_eq!(level.to_string(), expected);
+    assert_eq!(serde_json::to_value(&level).unwrap(), expected);
+    assert_eq!(level.is_known(), expected != "custom");
+  }
+  assert_eq!(serde_json::to_value(Level::Other("CUSTOM".into())).unwrap(), "custom");
+}
+
 /// Rule 3: an unknown level parses, is kept verbatim, and displays as `info`.
 #[test]
 fn an_unknown_level_still_parses() {

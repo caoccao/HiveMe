@@ -27,9 +27,9 @@
     "unknownSender": "unknown",
     "newerVersion": "newer version",
     "retained": "Retained by the broker",
-    "actions": "Message actions",
-    "copyBody": "Copy body",
-    "copyJson": "Copy JSON",
+    "actions": "Copy options",
+    "copyBody": "Copy",
+    "copyJson": "Copy Raw JSON",
     "copiedBody": "The body is on the clipboard.",
     "copiedJson": "The payload is on the clipboard.",
     "data": "data",
@@ -41,15 +41,17 @@
     "resizeTopics": "Resize the topic pane"
   },
   "composer": {
-    "title": "Title (optional)",
+    "level": "Level",
+    "topic": "Topic",
+    "title": "Title",
     "placeholder": "Write a message. Enter sends, Shift+Enter adds a line.",
     "placeholderJson": "Write a JSON payload. Enter sends, Shift+Enter adds a line.",
     "send": "Send",
-    "options": "Send options",
-    "sendAsJson": "Send as raw JSON",
-    "qosDefault": "QoS from the config",
-    "qos": "QoS {{qos}}",
-    "retain": "Retain this message",
+    "options": "More Options",
+    "sendAsJson": "As Raw JSON",
+    "qosDefault": "Config",
+    "qos": "QoS",
+    "retain": "Retain Message",
     "disconnected": "Connect to the broker to send a message.",
     "noTopic": "Select a topic to send a message."
   },
@@ -111,7 +113,6 @@
     "copyCliSetup": "Copy CLI setup",
     "copyCliSetupHint": "Copies the complete hmc --init command. It contains the broker password in plain text.",
     "cliSetupCopied": "CLI setup command copied. Paste it into your terminal and run it.",
-    "prefix": "Prefix",
     "subscriptions": "Subscriptions",
     "subscriptionFilter": "Subscription filter {{index}}",
     "absolute": "Absolute",
@@ -181,10 +182,11 @@
     "skipThisVersion": "Skip this version"
   },
   "levels": {
-    "debug": "debug",
-    "info": "info",
-    "warn": "warning",
-    "error": "error"
+    "success": "Success",
+    "debug": "Debug",
+    "info": "Info",
+    "warn": "Warn",
+    "error": "Error"
   },
   "format": {
     "seconds": "{{seconds}}s",

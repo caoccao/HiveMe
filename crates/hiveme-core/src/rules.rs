@@ -95,7 +95,7 @@ impl RuleEngine {
         .notifications
         .rules
         .iter()
-        .map(|rule| CompiledRule::from_rule(rule, &config.topics.prefix))
+        .map(|rule| CompiledRule::from_rule(rule, crate::topic::ROOT_TOPIC))
         .collect(),
     }
   }

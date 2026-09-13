@@ -2,6 +2,55 @@
 
 ## Unreleased
 
+* CLI level input is case-insensitive. Levels are normalized to lowercase in the
+  shared message model, generated JSON, and database level fields; only UI labels
+  use an initial capital.
+
+* Capitalized visible level labels throughout the UI. The composer dropdown uses
+  normal text color for Info and MUI error, success, and warning colors for Error,
+  Success, and Warn, including both its selected value and menu items.
+
+* Added a level dropdown left of More Options: Info (default), Error, Success, and
+  Warn. Its selection is remembered with the entire composer state per topic in
+  memory, including while options are collapsed. Raw JSON preserves the selection
+  without applying it to the payload.
+
+* Added the `success` payload level to CLI publishing, message parsing, and
+  notification-rule choices. Its message bubble and badge use MUI's success palette
+  in light and dark modes, with labels translated into all nine languages.
+
+* Fixed the topic filter spacing to 4 px at the top, left, right, and below the field.
+
+* Enter now sends from any focused control in the message input panel, including
+  option fields, radios, checkboxes, and buttons. Shift+Enter still adds a line in
+  the message box, and text composition does not send.
+
+* Messages show their relative topic path in muted gray below the bubble, immediately
+  before the level badge. The entire row appears only on hover. Paths update with
+  selection and are omitted when empty. Incoming sender names or IDs appear above the bubble, without the
+  application name; outgoing and senderless messages omit the sender header.
+
+* Message hover controls now show the level badge, QoS, timestamp, and a split copy
+  button with Copy and Copy Raw JSON in its menu, aligned below the bubble.
+
+* Tightened the message composer's outer spacing and field padding to 4 px, including
+  the right and bottom panel edges. The input starts at three lines, with compact
+  controls and both checkboxes on the QoS row, separated from the radio group and
+  each other by 16 px.
+
+* Made `hiveme` the fixed root and removed topic-prefix configuration from settings,
+  config files, and CLI setup strings. Publish input is always relative, with leading
+  slashes stripped: hmc resolves under `hiveme`, and hmg under the selected topic.
+  Removed hmc’s absolute-topic flag.
+
+* Redesigned the message composer with a full-width multi-line input, right-aligned
+  More Options and Send buttons, and three expandable option rows. Topic, title,
+  QoS, retain, and raw JSON settings remain active when collapsed. Drafts and options
+  are remembered per topic in memory only and reset when the app restarts.
+
+* Fixed broker echoes racing with a GUI send: sent messages now keep their outgoing
+  status and the QoS and retain options used to publish them.
+
 * Added a native end-to-end test covering CLI confirmation, MQTT topics and payload
   levels, GUI rendering and sending, settings, tree expansion, and SQLite history
   after restart. Linux CI runs it with a real local broker and WebDriver.
@@ -10,7 +59,7 @@
   icon to the left toggles expansion.
 
 * Removed the default-topic setting from the shared config and settings UI. Without
-  an explicit topic, hmc always publishes to the prefix itself (`hiveme` by default).
+  an explicit topic, hmc always publishes to `hiveme`.
 
 * Selecting a topic now shows its direct messages and every recursive child topic.
   Parent paths without direct messages are selectable. History is filtered in SQL,
@@ -24,14 +73,14 @@
   the resolved topic. Failed publishes do not print a success message.
 
 * Restyled messages with rounded bubbles and more padding. Timestamps, direct copy,
-  and options appear below the bubble on hover or keyboard focus, without shifting
-  the layout. Payload level and delivery details are available in the options menu.
+  and options appear below the bubble only on hover, without shifting
+  the layout. Payload level and delivery details appear in the same hover row.
 
 * All log levels now publish to `hiveme` by default and remain in the JSON payload.
   Notification rules match both the MQTT topic and payload level. Message boxes use
   regular colors for info, warning colors for warn, and error colors for error.
 * hmg always shows, selects, and highlights `hiveme` at startup, even without history,
-  while disconnected, or with a custom topic prefix. Existing history keeps its original
+  or while disconnected. Existing history keeps its original
   topic paths. No config or history migration was added.
 
 * Moved CLI config initialization into the shared Rust config library. Matching
@@ -75,7 +124,7 @@
   state the GUI status bar will render, and, for the GUI, reconnection with backoff and
   jitter that sends the subscriptions again when the broker has forgotten the session.
 * Added `hmc`, the command line publisher: a message from an argument or from stdin, a
-  topic relative to the configured prefix or absolute, `--json` for a payload HiveMe
+  topic relative to `hiveme`, `--json` for a payload HiveMe
   does not shape, a payload level independent of the topic,
   and an exit code per kind of failure so a script can tell a wrong password from an
   unacknowledged message. A first run with no config writes one and says where.

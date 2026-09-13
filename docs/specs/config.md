@@ -86,7 +86,6 @@ value the applications use when the key is absent.
     }
   },
   "topics": {
-    "prefix": "hiveme",
     "subscriptions": ["#"]
   },
   "publish": {
@@ -149,8 +148,7 @@ value the applications use when the key is absent.
 | `broker.tls.caFile` | path or null | no | null | Extra PEM roots appended to the native trust store. |
 | `broker.reconnect.initialDelayMs` | integer | no | 1000 | |
 | `broker.reconnect.maxDelayMs` | integer | no | 30000 | Exponential backoff with jitter, `hmg` only. |
-| `topics.prefix` | string | no | `hiveme` | May be empty, in which case relative topics are absolute. No leading or trailing `/`, no wildcards. |
-| `topics.subscriptions` | (string or object)[] | no | `["#"]` | Filters relative to the prefix. A filter starting with `$`, or written as `{ "filter": "...", "absolute": true }`, is used verbatim. |
+| `topics.subscriptions` | (string or object)[] | no | `["#"]` | Filters relative to `hiveme`. A filter starting with `$`, or written as `{ "filter": "...", "absolute": true }`, is used verbatim. |
 | `publish.qos` | 0, 1, 2 | no | 1 | |
 | `publish.retain` | boolean | no | false | |
 | `publish.timeoutSecs` | integer | no | 10 | How long `hmc` waits for the acknowledgement. |
@@ -174,18 +172,21 @@ value the applications use when the key is absent.
 
 ## Topic resolution
 
-- Without `--topic`, hmc always publishes to the prefix itself (`hiveme` by default).
-  This behavior is built in; there is no default-topic setting. If the prefix is
-  empty, hmc requires an explicit topic. hmg always selects `hiveme` at startup.
-- A relative topic `t` resolves to `<prefix>/t`, or to `t` when the prefix is empty.
-  An empty relative topic resolves to the prefix itself. Both cannot be empty.
+- The root topic is always `hiveme`. There is no topic-prefix or default-topic
+  setting in the config or setup string. Without `--topic`, hmc publishes to `hiveme`.
+  hmg always selects `hiveme` at startup.
+- Publish input is always relative. The shared Rust resolver strips all leading `/`
+  characters and appends the remaining input to the base. The base is `hiveme` for
+  hmc and the selected tree topic for hmg. Empty or slash-only input uses the base.
+  Internal and trailing slashes are preserved.
+- For example, hmc `-t ci` and `-t /ci` both publish to `hiveme/ci`. With
+  `hiveme/build` selected in hmg, either input publishes to `hiveme/build/ci`.
 - Log levels live in `payload.level` and never determine the topic. Existing config
   values and historical topic paths are preserved; no migration is added.
-- `hmc --topic` is relative. `hmc --absolute-topic` (`-T`) makes it verbatim.
 - Topics are validated before publishing: non-empty, no wildcard characters, no NUL
   byte, at most 65535 bytes of UTF-8.
 - Topic filters in `topics.subscriptions` and in notification rules are relative
-  unless marked absolute, and may use the MQTT wildcards `+` and `#`.
+  to `hiveme` unless marked absolute, and may use the MQTT wildcards `+` and `#`.
 - Filter matching follows the MQTT 5 specification, including the rule that a
   wildcard filter does not match a topic starting with `$`.
 
@@ -203,7 +204,6 @@ Settings tab open. Every problem is reported at once rather than one at a time.
 | `broker.username` is not empty | `broker.username` |
 | A password is reachable: the field, `passwordRef`, or `HIVEME_PASSWORD` | `broker.password` |
 | `broker.reconnect.initialDelayMs` is not greater than `maxDelayMs` | `initialDelayMs` |
-| `topics.prefix` has no leading or trailing `/` and no wildcard | `topics.prefix` |
 | `topics.subscriptions` is not empty, and every filter is well formed | `topics.subscriptions` |
 | `publish.qos` is 0, 1, or 2 | `publish.qos` |
 | Every notification rule has a non-empty id, and no two share one | `empty id`, `share the id` |
@@ -250,8 +250,7 @@ and runs it to initialize the shared config.
   "v": 1,
   "url": "mqtts://abc123.s1.eu.hivemq.cloud:8883",
   "username": "hiveme-sam",
-  "password": "s3cret",
-  "prefix": "hiveme"
+  "password": "s3cret"
 }
 ```
 
@@ -263,7 +262,6 @@ and runs it to initialize the shared config.
 | `url` | `broker.url` | Must be `mqtts` for a `hivemq.cloud` host, which accepts TLS only. Naming no scheme means `mqtts`, so the URL the console shows can be pasted in as it stands. |
 | `username` | `broker.username` | Required. |
 | `password` | `broker.password` | Required, plain text, because the CONNECT packet needs it in plain text. |
-| `prefix` | `topics.prefix` | Optional. Carried so that `hmc` publishes where `hmg` is listening. Absent leaves the receiving config's prefix alone. |
 
 The schema is generated from the Rust type into `schemas/broker-init.schema.json`, and
 the example above is validated against it by `cargo xtask check-spec`.
@@ -280,8 +278,8 @@ the outcome with the path:
 
 An update preserves `device.id`, GUI preferences, rules, unknown keys, and all other
 values, including unknown enum values and extra keys inside unchanged arrays. It does
-not fill in unrelated omitted defaults. An omitted setup `prefix` keeps the existing
-prefix. Setup values are validated before any write; existing unrelated settings are
+not fill in unrelated omitted defaults. Setup values are validated before any write;
+existing unrelated settings are
 left alone and the complete config is validated before connecting. An unreadable file
 is never replaced, and a newer-version file may be reported unchanged but cannot be
 updated. Failed initialization does not leave an intermediate default config behind.

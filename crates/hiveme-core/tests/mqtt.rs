@@ -162,10 +162,7 @@ impl Broker {
     format!("mqtt://{}:{}", self.host, self.port)
   }
 
-  /// A config pointing at this broker, in a topic namespace of its own.
-  ///
-  /// Every test gets its own prefix so that a retained message or a slow delivery in
-  /// one cannot reach another.
+  /// A config pointing at this test’s isolated broker.
   fn config(&self, device: &str) -> Config {
     let mut config = Config::default();
     config.device.id = device.to_owned();
@@ -176,7 +173,6 @@ impl Broker {
     config.broker.reconnect.initial_delay_ms = 200;
     config.broker.reconnect.max_delay_ms = 2_000;
     config.publish.timeout_secs = 20;
-    config.topics.prefix = format!("hiveme/{device}");
     config
   }
 
@@ -349,7 +345,7 @@ fn a_published_message_comes_back_on_the_subscription() {
         .with_title("CI")
         .with_level(Level::Warn)
         .with_ttl_secs(600);
-      let topic = config.resolve_topic("warn", false);
+      let topic = config.resolve_topic("warn");
       publisher
         .publish_message(&topic, &message, Qos::AtLeastOnce, false)
         .await
@@ -457,9 +453,9 @@ fn a_wildcard_subscription_collects_the_prefix_and_nothing_else() {
 
       let publisher = connect(&config, Role::Cli).await;
       let topics = [
-        config.resolve_topic("info", false),
-        config.resolve_topic("build/nightly", false),
-        config.resolve_topic("a/b/c", false),
+        config.resolve_topic("info"),
+        config.resolve_topic("build/nightly"),
+        config.resolve_topic("a/b/c"),
       ];
       for topic in &topics {
         publisher
@@ -709,7 +705,7 @@ fn a_real_cloud_cluster_accepts_a_message() {
     setup.apply_to(&mut config);
     // A namespace of its own, so a test run cannot disturb the messages a real
     // installation keeps on the same cluster.
-    config.topics.prefix = format!("hiveme-test/{}", &config.device.id[..8]);
+    let topic = config.resolve_topic(&format!("test/{}", &config.device.id[..8]));
     config.validate().expect("the test config is usable");
 
     let mut subscriber = MqttClient::connect(&config, Role::Gui)
@@ -717,16 +713,15 @@ fn a_real_cloud_cluster_accepts_a_message() {
       .expect("the cluster accepts the subscriber");
     let mut incoming = subscriber.take_incoming().expect("the incoming channel");
     subscriber
-      .subscribe(config.subscription_filters(), Qos::AtLeastOnce)
+      .subscribe([topic.as_str()], Qos::AtLeastOnce)
       .await
-      .expect("the credential may subscribe under the test prefix");
+      .expect("the credential may subscribe to the test topic");
 
     let publisher = MqttClient::connect(&config, Role::Cli)
       .await
       .expect("the cluster accepts the publisher");
     let sender = Sender::from_device(&config.device, "hmc");
     let message = Message::new_text(sender, "hello from the integration test");
-    let topic = config.default_topic();
     publisher
       .publish_message(&topic, &message, Qos::AtLeastOnce, false)
       .await

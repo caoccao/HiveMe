@@ -147,11 +147,13 @@ pub fn clear_topic(store: &Store, topic: &str) -> Result<u64> {
 
 /// Publishes from the composer, through the same core path `hmc` uses.
 ///
-/// The topic is absolute, because it is the tree node the user selected. The row is
+/// The topic is the selected tree node; the optional input topic is relative to it. The row is
 /// stored once the broker has the message, so that a publish that failed never leaves
 /// a bubble claiming it was sent; the copy the broker echoes back onto the GUI's own
 /// subscription collapses into that row by its message id.
 pub async fn publish(app: &AppHandle, topic: &str, body: &str, options: PublishOptions) -> Result<MessageRow> {
+  let resolved_topic = hiveme_core::topic::resolve_publish(topic, options.topic.as_deref().unwrap_or(""));
+  let topic = resolved_topic.as_str();
   let config = config::get_config();
 
   // Encryption is designed in docs/specs/message.md but not implemented, and a config

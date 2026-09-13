@@ -34,7 +34,7 @@ export type SecretRef =
 /**
  * One entry of `topics.subscriptions`.
  *
- * A bare string is relative to the prefix, unless it starts with `$`, which the MQTT
+ * A bare string is relative to `hiveme`, unless it starts with `$`, which the MQTT
  * specification reserves for broker topics.
  */
 export type Subscription =
@@ -299,7 +299,7 @@ export interface Rule {
   } | null;
   title?: string;
   /**
-   * An MQTT topic filter, relative to `topics.prefix` unless `absolute` is true.
+   * An MQTT topic filter, relative to `hiveme` unless `absolute` is true.
    */
   topic: string;
 }
@@ -318,15 +318,11 @@ export interface Publish {
   timeoutSecs?: number;
 }
 /**
- * The topic namespace.
+ * Subscriptions under the fixed `hiveme` root.
  */
 export interface Topics {
   /**
-   * Prepended to every relative topic. May be empty, which puts topics at the root.
-   */
-  prefix?: string;
-  /**
-   * What `hmg` subscribes to, relative to the prefix.
+   * What `hmg` subscribes to, relative to `hiveme`.
    */
   subscriptions?: Subscription[];
 }

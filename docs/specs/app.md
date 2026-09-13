@@ -52,18 +52,19 @@ The rule based notification system ships with three built-in rules:
 | `error` | error message |
 
 Rules are configurable. On every startup, hmg shows, selects, and highlights `hiveme`,
-even with an empty database or a custom topic prefix. Message boxes use regular
-colors for `info`, warning colors for `warn`, and error colors for `error`.
+even with an empty database. Message boxes use regular
+colors for `info`, MUI success colors for `success`, warning colors for `warn`, and
+error colors for `error`.
 Full reference in [gui.md](gui.md).
 
 ## Topics
 
-Topics are namespaced under a configurable prefix, `hiveme` by default. All log levels
-publish to `hiveme` by default; severity lives in `payload.level`, independently of
-the MQTT topic. The built-in notification rules match `hiveme/#` and filter by payload
-level. Custom topics remain supported. Topic arguments and rule filters are relative
-to the prefix unless explicitly marked absolute. Without an explicit topic, hmc
-always publishes to the prefix itself; this is not configurable. See
+The root topic is always `hiveme` and is not configurable. All log levels publish to
+`hiveme` by default; severity lives in `payload.level`, independently of the MQTT topic.
+The built-in notification rules match `hiveme/#` and filter by payload level. Publish
+input is always relative: leading slashes are stripped before joining it to `hiveme`
+in hmc or to the selected tree topic in hmg. Empty input uses that base topic itself.
+Subscription and rule filters are relative to `hiveme` unless marked absolute. See
 [config.md](config.md#topic-resolution).
 
 ## Authentication
@@ -87,7 +88,7 @@ revises them.
 | 3 | Producers and GUI strictness | Producers are the HiveMe tools plus the user's own scripts. The GUI is lenient: it parses the envelope when valid and otherwise shows the raw payload. |
 | 4 | Encryption key model | A symmetric pre-shared key, AES-256-GCM, HKDF derived, with a key id for rotation. Designed now, implemented in phase 6. |
 | 5 | Profiles | One `broker` object. The config is versioned so a `profiles` map can be added later. |
-| 6 | Topic layout | A configurable prefix, `hiveme` by default. Publishing without an explicit topic always uses the prefix itself. |
+| 6 | Topic layout | Fixed root `hiveme`, with no prefix setting. Publish inputs are relative, with leading slashes stripped. hmc uses the root; hmg uses the selected topic. |
 | 7 | Message history | Persisted in SQLite next to the config, bounded per topic and by retention days. |
 | 8 | Notification rules | Configurable, with the three built-in rules as defaults. |
 | 9 | Schema source of truth | Rust types with `serde` and `schemars` generate the JSON schemas. Tests fail when the committed schemas are stale. TypeScript types are generated from those schemas. |
@@ -210,7 +211,7 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Config load, save, and compatibility | [config.md](config.md) | `hiveme-core::config` | 1.1 | done |
 | Shared config initialization with unchanged, updated, and created outcomes | [config.md](config.md#the-setup-string), [cli.md](cli.md#setting-up) | `hiveme-core::config::ConfigFile::initialize`, `crates/hmc` | 3.1 | done |
 | Message envelope and parser | [message.md](message.md) | `hiveme-core::message` | 1.2 | done |
-| Fixed default publishing to the prefix; explicit topics and filters | [config.md](config.md#topic-resolution) | `hiveme-core::topic` | 1.3 | done |
+| Fixed root `hiveme`; shared relative publishing with leading-slash normalization | [config.md](config.md#topic-resolution) | `hiveme-core::topic` | 1.3 | done |
 | Notification rule engine | [gui.md](gui.md#notifications) | `hiveme-core::rules` | 1.3 | done |
 | Schema and spec tooling | [app.md](#spec-sync) | `xtask`, `scripts` | 1.4 | done |
 | MQTT client | [hivemq-cloud.md](hivemq-cloud.md#how-hiveme-connects) | `hiveme-core::mqtt` | 2.1 | done |
@@ -221,10 +222,17 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Message storage | [gui.md](gui.md#storage) | `hiveme-core::storage` | 4.2 | done |
 | Backend commands and events | [gui.md](gui.md#ipc) | `src-tauri` | 4.3 | done |
 | Payload levels independent of MQTT topics; message-box severity colors | [gui.md](gui.md#message-view), [cli.md](cli.md#the-message) | `hiveme-core::rules`, `crates/hmc`, `src/components/MessageView.tsx` | 4.4 | done |
+| Success level in shared messages, CLI publishing, notification-rule choices, and MUI success colors | [message.md](message.md#payload), [gui.md](gui.md#message-view) | `hiveme-core::message`, `crates/hmc`, `src/components/MessageView.tsx` | 4.4 | done |
+| Case-insensitive CLI levels and lowercase serialized/stored values with capitalized display labels | [message.md](message.md#payload), [cli.md](cli.md#the-message) | `hiveme-core::message`, `hiveme-core::storage`, `crates/hmc` | 4.4 | done |
 | Recursive topic selection with database filtering, shared pagination, and live descendant updates | [gui.md](gui.md#storage) | `hiveme-core::storage`, `src/lib/store.tsx`, `src-tauri/src/controller.rs` | 4.4 | done |
 | Rounded message bubbles with hover controls and direct copy | [gui.md](gui.md#message-view) | `src/components/MessageView.tsx` | 4.4 | done |
+| Incoming sender headers and relative topic paths before the level badge below each message | [gui.md](gui.md#message-view) | `src/components/MessageView.tsx` | 4.4 | done |
 | Always-visible, selected startup topic `hiveme`; label selection independent of icon expansion | [gui.md](gui.md#topic-tree) | `src/components/TopicTree.tsx`, `src/lib/store.tsx` | 4.4 | done |
+| Topic filter with consistent 4 px margins | [gui.md](gui.md#topic-tree) | `src/components/TopicTree.tsx` | 4.4 | done |
 | Messages tab | [gui.md](gui.md#layout) | `src/components` | 4.4 | done |
+| Compact full-width composer with 4 px panel margins, a three-row input minimum, checkboxes beside QoS, collapsible options that stay active, and per-topic drafts in memory | [gui.md](gui.md#composer) | `src/components/Composer.tsx` | 4.4 | done |
+| Enter sends from every focused composer control without also activating it | [gui.md](gui.md#composer) | `src/components/Composer.tsx` | 4.4 | done |
+| Level dropdown left of More Options, remembered with all composer state per topic in memory | [gui.md](gui.md#composer) | `src/components/Composer.tsx` | 4.4 | done |
 | Settings tab opening on Appearance, with immediate changes and automatic saving | [gui.md](gui.md#settings) | `src/components/Config.tsx`, `src/lib/store.tsx` | 4.5 | done |
 | Copy CLI setup command, ready to paste and run | [gui.md](gui.md#copy-cli-setup) | `src/components/Config.tsx` | 4.5 | done |
 | OS notifications | [gui.md](gui.md#notifications) | `src-tauri/notification.rs` | 4.6 | done |

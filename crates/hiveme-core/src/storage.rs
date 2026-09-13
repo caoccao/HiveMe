@@ -333,26 +333,40 @@ impl Store {
       }
     };
 
-    let existing: Option<i64> = connection
+    let existing: Option<(i64, bool, u8, bool)> = connection
       .query_row(
-        "SELECT id FROM messages WHERE topic_id = ?1 AND msg_id = ?2",
+        "SELECT id, outgoing, qos, retain FROM messages WHERE topic_id = ?1 AND msg_id = ?2",
         params![topic_id, message.msg_id],
-        |row| row.get(0),
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
       )
       .optional()
       .map_err(|source| failed("look up a message", source))?;
 
-    let (row_id, is_new) = match existing {
-      // The echo of a message the composer sent. The stored row already renders it, so
-      // only the delivery facts are refreshed and the bubble stays where it is.
-      Some(row_id) => {
+    let (row_id, is_new, outgoing, qos, retain) = match existing {
+      // The broker echo can arrive before or after the publish completes. Preserve
+      // the sender's publish options, which can differ from subscription delivery.
+      Some((row_id, was_outgoing, stored_qos, stored_retain)) => {
+        let outgoing = was_outgoing || message.outgoing;
+        let (qos, retain) = if was_outgoing && !message.outgoing {
+          (stored_qos, stored_retain)
+        } else {
+          (message.qos, message.retain)
+        };
         connection
           .execute(
-            "UPDATE messages SET qos = ?2, retain = ?3 WHERE id = ?1",
-            params![row_id, message.qos, message.retain],
+            "UPDATE messages SET qos = ?2, retain = ?3, outgoing = ?4 WHERE id = ?1",
+            params![row_id, qos, retain, outgoing],
           )
           .map_err(|source| failed("update a message", source))?;
-        (row_id, false)
+        if message.outgoing && !was_outgoing {
+          connection
+            .execute(
+              "UPDATE topics SET unread = MAX(0, unread - 1) WHERE id = ?1",
+              params![topic_id],
+            )
+            .map_err(|source| failed("reconcile an outgoing message", source))?;
+        }
+        (row_id, false, outgoing, qos, retain)
       }
       None => {
         connection
@@ -370,7 +384,7 @@ impl Store {
               message.sender_name,
               message.app,
               message.tier,
-              message.level,
+              message.level.as_ref().map(|level| level.to_lowercase()),
               message.title,
               message.body,
               message.raw,
@@ -386,7 +400,7 @@ impl Store {
             .execute("UPDATE topics SET unread = unread + 1 WHERE id = ?1", params![topic_id])
             .map_err(|source| failed("count an unread message", source))?;
         }
-        (row_id, true)
+        (row_id, true, message.outgoing, message.qos, message.retain)
       }
     };
 
@@ -401,13 +415,13 @@ impl Store {
         sender_name: message.sender_name.clone(),
         app: message.app.clone(),
         tier: message.tier.clone(),
-        level: message.level.clone(),
+        level: message.level.as_ref().map(|level| level.to_lowercase()),
         title: message.title.clone(),
         body: message.body.clone(),
         raw: message.raw.clone(),
-        qos: message.qos,
-        retain: message.retain,
-        outgoing: message.outgoing,
+        qos,
+        retain,
+        outgoing,
       },
       is_new,
       topic_is_new,

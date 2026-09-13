@@ -39,6 +39,25 @@ fn incoming(topic: &str, message: &Message) -> NewMessage {
 }
 
 #[test]
+fn payload_and_direct_insert_levels_are_stored_in_lowercase() {
+  let store = Store::in_memory().unwrap();
+  for input in ["INFO", "Error", "SuCcEsS", "WARN", "DeBuG", "CUSTOM"] {
+    let mut value = serde_json::to_value(envelope("device-1", input)).unwrap();
+    value["payload"]["level"] = serde_json::json!(input);
+    let mut message = NewMessage::from_payload("hiveme", serde_json::to_vec(&value).unwrap(), 1, false, false);
+    assert_eq!(message.level.as_deref(), Some(input.to_lowercase().as_str()));
+    // The insert boundary also handles callers that supply a row directly.
+    message.level = Some(input.to_owned());
+    let inserted = store.insert(&message).unwrap().message;
+    assert_eq!(inserted.level.as_deref(), Some(input.to_lowercase().as_str()));
+  }
+  for row in store.messages("hiveme", None, 100).unwrap() {
+    let level = row.level.unwrap();
+    assert_eq!(level, level.to_lowercase());
+  }
+}
+
+#[test]
 fn payload_levels_share_one_topic_and_keep_original_history_paths() {
   let store = Store::in_memory().unwrap();
   for level in [Level::Info, Level::Warn, Level::Error] {
@@ -150,6 +169,32 @@ fn the_broker_echo_of_a_sent_message_collapses_into_the_bubble_that_is_there() {
     store.messages("hiveme/info", None, 100).unwrap()[0].outgoing,
     "the row stays the one this installation sent"
   );
+}
+
+#[test]
+fn outgoing_options_survive_broker_echoes_in_either_arrival_order() {
+  for echo_first in [false, true] {
+    let store = Store::in_memory().unwrap();
+    let raw = envelope("this-device", "Composer override").to_bytes().unwrap();
+    let sent = NewMessage::from_payload("hiveme", raw.clone(), 2, true, true);
+    // The subscription has a lower QoS and live delivery does not set retain.
+    let echo = NewMessage::from_payload("hiveme", raw, 1, false, false);
+    let (first, second) = if echo_first { (&echo, &sent) } else { (&sent, &echo) };
+    let initial = store.insert(first).unwrap();
+    let merged = store.insert(second).unwrap();
+    assert!(initial.is_new);
+    assert!(!merged.is_new);
+    assert_eq!(initial.message.row_id, merged.message.row_id);
+    assert!(merged.message.outgoing);
+    assert_eq!(merged.message.qos, 2);
+    assert!(merged.message.retain);
+    let stored = store.messages("hiveme", None, 10).unwrap();
+    assert_eq!(stored.len(), 1);
+    assert!(stored[0].outgoing);
+    assert_eq!(stored[0].qos, 2);
+    assert!(stored[0].retain);
+    assert_eq!(store.topics().unwrap()[0].unread, 0);
+  }
 }
 
 #[test]

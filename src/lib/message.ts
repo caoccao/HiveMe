@@ -84,7 +84,10 @@ export function parseText(text: string): Parsed {
     return { tier: Tier.Text, text };
   }
   if (looksLikeEnvelope(value) && isValidEnvelope(value as Record<string, unknown>)) {
-    return { tier: Tier.Envelope, message: value as Message };
+    const message = value as Message;
+    const payload = payloadOf(message);
+    if (typeof payload?.level === 'string') payload.level = payload.level.toLowerCase();
+    return { tier: Tier.Envelope, message };
   }
   return { tier: Tier.Json, value };
 }
@@ -129,22 +132,24 @@ export function isNewerVersion(message: Message): boolean {
   return typeof message.v === 'number' && message.v > ENVELOPE_VERSION;
 }
 
-/** The name to show for a sender: its name, then its app, then its id. */
+/** The name to show for a sender: its name, then its id. The app is not a sender label. */
 export function senderLabel(sender: Sender | null): string {
   if (!sender) {
     return '';
   }
-  return sender.name || sender.app || sender.id || '';
+  return sender.name || sender.id || '';
 }
 
 /** The level a reader displays. A level this build does not know displays as `info`. */
 export function displayedLevel(level: string | null | undefined): Level {
-  switch (level) {
+  const normalized = level?.toLowerCase();
+  switch (normalized) {
     case Level.Debug:
     case Level.Info:
+    case Level.Success:
     case Level.Warn:
     case Level.Error:
-      return level;
+      return normalized;
     default:
       return Level.Info;
   }
@@ -152,7 +157,22 @@ export function displayedLevel(level: string | null | undefined): Level {
 
 /** Whether this build knows what a level means. */
 export function isKnownLevel(level: string | null | undefined): boolean {
-  return level === Level.Debug || level === Level.Info || level === Level.Warn || level === Level.Error;
+  const normalized = level?.toLowerCase();
+  return normalized === Level.Debug || normalized === Level.Info || normalized === Level.Success || normalized === Level.Warn || normalized === Level.Error;
+}
+
+/** The MUI palette used for message bubbles, badges, and level selections. */
+export function levelColor(level: Level): 'default' | 'success' | 'warning' | 'error' {
+  switch (level) {
+    case Level.Success:
+      return 'success';
+    case Level.Warn:
+      return 'warning';
+    case Level.Error:
+      return 'error';
+    default:
+      return 'default';
+  }
 }
 
 /** The one line preview a list or a notification shows for a payload. */

@@ -61,7 +61,7 @@ export type HiveMeMessage = {
   v: number;
 } & (Plaintext | Encrypted);
 /**
- * Message severity. An open enum: a value outside the examples is kept verbatim and displayed as `info`.
+ * Message severity, normalized to lowercase. An open enum: a value outside the examples is preserved in lowercase and displayed as `info`.
  */
 export type Level = string;
 

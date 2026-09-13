@@ -78,6 +78,27 @@ describe('the parse tiers', () => {
     expect(isNewerVersion(parsed.message)).toBe(false);
   });
 
+  it('recognizes success as its own level', () => {
+    const parsed = parseText(fixture('success.json'));
+    expect(parsed.tier).toBe(Tier.Envelope);
+    if (parsed.tier !== Tier.Envelope) return;
+    const level = payloadOf(parsed.message)?.level;
+    expect(level).toBe('success');
+    expect(isKnownLevel(level)).toBe(true);
+    expect(displayedLevel(level)).toBe(Level.Success);
+  });
+
+  it.each(['INFO', 'Error', 'SuCcEsS', 'WARN', 'DeBuG'])('normalizes %s before choosing its display label and color', (level) => {
+    const message = JSON.parse(fixture('success.json'));
+    message.payload.level = level;
+    const parsed = parseText(JSON.stringify(message));
+    expect(parsed.tier).toBe(Tier.Envelope);
+    if (parsed.tier !== Tier.Envelope) return;
+    expect(payloadOf(parsed.message)?.level).toBe(level.toLowerCase());
+    expect(displayedLevel(level)).toBe(level.toLowerCase());
+    expect(isKnownLevel(level)).toBe(true);
+  });
+
   it('displays a level it does not know as info while keeping the raw value', () => {
     const parsed = parseText(fixture('unknown_level.json'));
     expect(parsed.tier).toBe(Tier.Envelope);

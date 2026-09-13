@@ -25,11 +25,12 @@ use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 
 use clap::Parser;
+use clap::builder::{PossibleValuesParser, TypedValueParser};
 
 use crate::failure::{Failure, Result};
 
 /// The levels `--level` accepts, which are the ones `hiveme_core::Level` knows.
-const LEVELS: [&str; 4] = ["debug", "info", "warn", "error"];
+const LEVELS: [&str; 5] = ["debug", "info", "success", "warn", "error"];
 
 /// Send a message to the MQTT broker.
 #[derive(Debug, Parser)]
@@ -39,16 +40,12 @@ pub struct Cli {
   pub message: Option<String>,
 
   /// Initialize the shared config from a setup string, then exit
-  #[arg(long, value_name = "JSON", conflicts_with_all = ["message", "topic", "absolute_topic", "json", "title", "level", "qos", "retain"])]
+  #[arg(long, value_name = "JSON", conflicts_with_all = ["message", "topic", "json", "title", "level", "qos", "retain"])]
   pub init: Option<String>,
 
-  /// Topic relative to topics.prefix [default: the prefix itself]
+  /// Topic relative to hiveme; leading slashes are ignored [default: hiveme]
   #[arg(short = 't', long, value_name = "TOPIC")]
   pub topic: Option<String>,
-
-  /// Treat --topic as an absolute topic
-  #[arg(short = 'T', long, requires = "topic")]
-  pub absolute_topic: bool,
 
   /// Publish MESSAGE (or stdin) as a raw JSON payload without the envelope
   #[arg(long, conflicts_with_all = ["title", "level"])]
@@ -58,8 +55,8 @@ pub struct Cli {
   #[arg(long, value_name = "TITLE")]
   pub title: Option<String>,
 
-  /// debug | info | warn | error [default: info; independent of topic]
-  #[arg(short = 'l', long, value_name = "LEVEL", value_parser = LEVELS, hide_possible_values = true)]
+  /// debug | info | success | warn | error [default: info; independent of topic]
+  #[arg(short = 'l', long, value_name = "LEVEL", value_parser = PossibleValuesParser::new(LEVELS).map(|level| level.to_ascii_lowercase()), ignore_case = true, hide_possible_values = true)]
   pub level: Option<String>,
 
   /// 0 | 1 | 2 [default: publish.qos]
@@ -173,7 +170,6 @@ mod tests {
     let help = rendered_help();
     for flag in [
       "--topic",
-      "--absolute-topic",
       "--json",
       "--title",
       "--level",
@@ -221,9 +217,11 @@ mod tests {
   }
 
   #[test]
-  fn an_absolute_topic_needs_a_topic_to_apply_to() {
-    let error = Cli::try_parse_from(["hmc", "-T", "hello"]).unwrap_err();
-    assert_eq!(error.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+  fn publishing_has_no_absolute_topic_mode() {
+    for flag in ["-T", "--absolute-topic"] {
+      let error = Cli::try_parse_from(["hmc", flag, "-t", "/ci", "hello"]).unwrap_err();
+      assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
+    }
   }
 
   #[test]
@@ -246,7 +244,14 @@ mod tests {
     let error = Cli::try_parse_from(["hmc", "-l", "critical", "boom"]).unwrap_err();
     assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
     for level in LEVELS {
-      assert!(Cli::try_parse_from(["hmc", "-l", level, "boom"]).is_ok(), "{level}");
+      for input in [
+        level.to_owned(),
+        level.to_uppercase(),
+        format!("{}{}", level[..1].to_uppercase(), &level[1..]),
+      ] {
+        let cli = Cli::try_parse_from(["hmc", "-l", &input, "boom"]).unwrap();
+        assert_eq!(cli.level.as_deref(), Some(level), "{input}");
+      }
     }
   }
 

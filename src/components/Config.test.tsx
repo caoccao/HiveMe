@@ -45,7 +45,7 @@ const CONFIG: ConfigType = {
     connectTimeoutSecs: 10,
     reconnect: { initialDelayMs: 1000, maxDelayMs: 30000 },
   },
-  topics: { prefix: 'hiveme', subscriptions: ['#'] },
+  topics: { subscriptions: ['#'] },
   publish: { qos: 1, retain: false, timeoutSecs: 10 },
   notifications: {
     enabled: true,
@@ -253,7 +253,7 @@ describe('the settings tab', () => {
   });
 
   it('flushes current edits before copying the complete CLI setup command', async () => {
-    const setup = JSON.stringify({ v: 1, url: CONFIG.broker?.url, username: 'hiveme-sam', password: 's3cret-edited', prefix: 'hiveme' });
+    const setup = JSON.stringify({ v: 1, url: CONFIG.broker?.url, username: 'hiveme-sam', password: 's3cret-edited' });
     vi.mocked(Service.getBrokerInit).mockResolvedValueOnce(setup);
     await renderBroker();
     await userEvent.type(screen.getByLabelText('Password'), '-edited');
@@ -268,7 +268,7 @@ describe('the settings tab', () => {
   });
 
   it('keeps quotes and shell characters in credentials inside the JSON argument', async () => {
-    const setup = { v: 1, url: CONFIG.broker?.url, username: "O'Brien’s account", password: "'‘’‚‛\"$HOME`echo`; & | \\ password", prefix: 'hiveme' };
+    const setup = { v: 1, url: CONFIG.broker?.url, username: "O'Brien’s account", password: "'‘’‚‛\"$HOME`echo`; & | \\ password" };
     vi.mocked(Service.getBrokerInit).mockResolvedValueOnce(JSON.stringify(setup));
     await renderBroker();
     await userEvent.click(screen.getByRole('button', { name: 'Copy CLI setup' }));
@@ -285,6 +285,8 @@ describe('the settings tab', () => {
     expect(screen.getByLabelText('Subscription filter 1')).toHaveValue('');
     await userEvent.type(screen.getByLabelText('Subscription filter 1'), 'build/#');
     expect(useAppStore.getState().config?.topics?.subscriptions).toEqual(['build/#']);
+    expect(screen.queryByLabelText('Prefix')).not.toBeInTheDocument();
+    expect(useAppStore.getState().config?.topics).not.toHaveProperty('prefix');
   });
 
   it('does not copy stale credentials when their automatic save fails', async () => {
@@ -306,6 +308,9 @@ describe('the settings tab', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Notifications' }));
     await userEvent.click(screen.getByLabelText('Raise OS notifications'));
     expect(useAppStore.getState().config?.notifications?.enabled).toBe(false);
+    await userEvent.click(screen.getByRole('combobox', { name: 'Level' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Success' }));
+    expect(useAppStore.getState().config?.notifications?.rules?.[0].level).toBe('success');
   });
 
   it('keeps the sections that are designed but not implemented visibly so', async () => {

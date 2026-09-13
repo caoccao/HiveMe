@@ -27,6 +27,8 @@
 //!
 //! The frontend's Language enum lists its bundled translations. `gui.language`
 //! remains a BCP 47 string in the shared config; no IPC enum or conversion is needed.
+//! Its Level enum mirrors hiveme_core::message::Level (debug, info, success, warn,
+//! error); level fields cross IPC as strings so unknown levels remain readable.
 
 use std::sync::{Arc, Mutex};
 
@@ -220,9 +222,12 @@ fn hex(bytes: &[u8]) -> String {
   out
 }
 
-/// The per-message overrides the composer's send menu offers.
+/// The publish overrides controlled by the composer's collapsible options panel.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct PublishOptions {
+  /// Relative to the selected topic; leading slashes are ignored.
+  #[serde(default)]
+  pub topic: Option<String>,
   /// Publish the body as a raw JSON payload, with no HiveMe envelope, as `hmc --json`
   /// does.
   #[serde(default)]

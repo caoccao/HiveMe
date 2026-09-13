@@ -132,7 +132,7 @@ export default function TopicTree() {
   );
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, gap: 1, pr: 1 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, gap: '4px', p: '4px' }}>
       <TextField
         placeholder={t('topics.filter')}
         value={filter}

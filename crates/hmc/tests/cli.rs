@@ -102,12 +102,14 @@ fn an_empty_stdin_is_a_usage_error() {
 }
 
 #[test]
-fn an_absolute_topic_without_a_topic_is_a_usage_error() {
-  hmc()
-    .args(["-T", "hello"])
-    .assert()
-    .code(2)
-    .stderr(predicate::str::contains("--topic"));
+fn publishing_cannot_bypass_the_prefix_with_an_absolute_topic_flag() {
+  for flag in ["-T", "--absolute-topic"] {
+    hmc()
+      .args([flag, "-t", "/ci", "hello"])
+      .assert()
+      .code(2)
+      .stderr(predicate::str::contains("unexpected argument"));
+  }
 }
 
 #[test]
@@ -235,7 +237,6 @@ fn setup_string() -> String {
   config.broker.url = "mqtts://abc123.s1.eu.hivemq.cloud:8883".to_owned();
   config.broker.username = "hiveme-sam".to_owned();
   config.broker.password = "s3cret".to_owned();
-  config.topics.prefix = "team".to_owned();
   BrokerInit::from_config(&config).to_json()
 }
 
@@ -256,7 +257,8 @@ fn init_writes_a_config_from_the_setup_string() {
   assert_eq!(written.broker.url, "mqtts://abc123.s1.eu.hivemq.cloud:8883");
   assert_eq!(written.broker.username, "hiveme-sam");
   assert_eq!(written.broker.password, "s3cret");
-  assert_eq!(written.topics.prefix, "team");
+  assert!(serde_json::to_value(&written.topics).unwrap().get("prefix").is_none());
+  assert_eq!(written.default_topic(), "hiveme");
   assert!(
     !written.device.id.trim().is_empty(),
     "the config still needs an identity"

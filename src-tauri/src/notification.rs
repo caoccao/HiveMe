@@ -224,7 +224,6 @@ mod tests {
     let notifier = Notifier::new(&Config::default());
     let mut config = Config::default();
     config.notifications.rules.clear();
-    config.topics.prefix = "other".to_owned();
 
     notifier.reload(&config);
 

@@ -27,13 +27,6 @@ export interface HiveMeBrokerSetupString {
    */
   password?: string;
   /**
-   * The topic namespace, carried so that `hmc` publishes where `hmg` is listening.
-   *
-   * Absent means the receiving config keeps the prefix it already has, which is what
-   * a string written by a build that predates this field looks like.
-   */
-  prefix?: string | null;
-  /**
    * `<cluster>.s1.eu.hivemq.cloud:8883` for a HiveMQ Cloud cluster, as the console
    * shows it. A URL that names no scheme is read as TLS MQTT.
    */

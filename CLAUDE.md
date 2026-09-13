@@ -55,6 +55,19 @@ deno task -c scripts/ts/deno.json version
 
 `RUST_LOG=debug` turns on backend logging.
 
+## Required final verification
+
+Always finish changes by successfully building release versions of **both `hmc`
+and `hmg`**. Rebuild the frontend with `pnpm build`, build `hmc` with
+`cargo build --release -p hmc`, then build `hmg` with
+`cargo build --release -p hmg --features tauri/custom-protocol` so it embeds the
+latest frontend. Debug builds, tests, and type checks do not replace this step.
+If a release build fails, fix it and rebuild before reporting completion.
+
+Build both applications into the repository's `target/release` directory. Do not
+use a separate target directory for final verification. Build verification must
+not modify runtime config or data files.
+
 ## Architecture
 
 ### Workspace
