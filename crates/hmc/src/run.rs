@@ -24,7 +24,6 @@
 use hiveme_core::config::{BrokerInit, Config, ConfigFile, InitOutcome, config_path};
 use hiveme_core::message::{CONTENT_TYPE, Level, Message, MessageProperties, Sender};
 use hiveme_core::mqtt::{MqttClient, Qos, Role};
-use hiveme_core::rules::RuleEngine;
 
 use crate::cli::Cli;
 use crate::failure::{Failure, Result};
@@ -61,11 +60,14 @@ pub async fn run(cli: Cli) -> Result<()> {
   // Everything the user could have got wrong is settled before the network is touched,
   // so that a mistake such as `--json` with input that is not JSON is reported at once
   // rather than after a connection attempt that was never going to help.
-  let publication = Publication::build(&cli, &config, &topic, &body.text)?;
+  let publication = Publication::build(&cli, &config, &body.text)?;
 
   let client = MqttClient::connect(&config, Role::Cli).await?;
   log::debug!("publishing to {topic} at qos {qos}, retain {retain}");
   let published = publication.send(&client, &topic, qos, retain).await;
+  if published.is_ok() {
+    println!("Message sent to {topic}.");
+  }
 
   // The broker is told we are leaving whether or not the publish worked, so that it
   // releases the session at once rather than holding one of the connections a
@@ -86,11 +88,11 @@ enum Publication {
 }
 
 impl Publication {
-  fn build(cli: &Cli, config: &Config, topic: &str, body: &str) -> Result<Self> {
+  fn build(cli: &Cli, config: &Config, body: &str) -> Result<Self> {
     if cli.json {
       Ok(Self::RawJson(json_payload(body)?))
     } else {
-      Ok(Self::Envelope(Box::new(build_message(cli, config, topic, body))))
+      Ok(Self::Envelope(Box::new(build_message(cli, config, body))))
     }
   }
 
@@ -144,27 +146,22 @@ fn load_config(cli: &Cli) -> Result<Config> {
 
 /// The absolute topic this run publishes to.
 ///
-/// A bad `--topic` is the user's mistake and a bad `topics.default` is the config's, so
+/// A bad `--topic` is the user's mistake and a bad `topics.prefix` is the config's, so
 /// the two are reported as different categories even though the check is the same.
 fn resolve_topic(cli: &Cli, config: &Config) -> Result<String> {
-  let requested = cli.topic.as_deref().unwrap_or(&config.topics.default);
+  let requested = cli.topic.as_deref().unwrap_or("");
   let topic = config.resolve_topic(requested, cli.absolute_topic);
   hiveme_core::topic::validate_topic(&topic).map_err(|reason| match cli.topic.as_deref() {
     Some(_) => Failure::Usage(format!("--topic: {reason}")),
-    None => Failure::Config(format!("topics.default: {reason}")),
+    None => Failure::Config(format!("topics.prefix: {reason}")),
   })?;
   Ok(topic)
 }
 
 /// The envelope of `docs/specs/message.md`, filled in from the command line.
-fn build_message(cli: &Cli, config: &Config, topic: &str, body: &str) -> Message {
+fn build_message(cli: &Cli, config: &Config, body: &str) -> Message {
   let sender = Sender::from_device(&config.device, APP);
-  let level = match cli.level.as_deref() {
-    Some(level) => Level::parse(level),
-    // A rule is consulted whether or not it is enabled, because `enabled` governs
-    // notifications rather than what a topic means.
-    None => RuleEngine::from_config(config).level_for_topic(topic),
-  };
+  let level = cli.level.as_deref().map(Level::parse).unwrap_or_default();
   let mut message = Message::new_text(sender, body).with_level(level);
   if let Some(title) = cli.title.as_deref() {
     message = message.with_title(title);
@@ -211,9 +208,9 @@ mod tests {
   }
 
   #[test]
-  fn no_topic_means_the_configured_default() {
+  fn no_topic_means_the_prefix_itself() {
     let config = config();
-    assert_eq!(resolve_topic(&cli(&["hello"]), &config).unwrap(), "hiveme/info");
+    assert_eq!(resolve_topic(&cli(&["hello"]), &config).unwrap(), "hiveme");
   }
 
   #[test]
@@ -250,56 +247,55 @@ mod tests {
   }
 
   #[test]
-  fn a_wildcard_in_the_default_topic_is_the_configs_mistake() {
+  fn an_empty_prefix_requires_an_explicit_topic() {
     let mut config = config();
-    config.topics.default = "+".to_owned();
+    config.topics.prefix.clear();
     let failure = resolve_topic(&cli(&["hello"]), &config).unwrap_err();
     assert_eq!(failure.code(), 3);
-    assert!(failure.to_string().contains("topics.default"), "{failure}");
+    assert!(failure.to_string().contains("topics.prefix"), "{failure}");
   }
 
   #[test]
-  fn the_level_is_inferred_from_the_rule_that_matches_the_topic() {
+  fn the_topic_never_determines_the_payload_level() {
     let config = config();
-    for (topic, expected) in [("info", Level::Info), ("warn", Level::Warn), ("error", Level::Error)] {
+    for topic in ["info", "warn", "error", "build/nightly"] {
       let cli = cli(&["-t", topic, "hello"]);
-      let resolved = resolve_topic(&cli, &config).unwrap();
-      let message = build_message(&cli, &config, &resolved, "hello");
-      assert_eq!(message.level(), expected, "{topic}");
+      let message = build_message(&cli, &config, "hello");
+      assert_eq!(message.level(), Level::Info, "{topic}");
     }
   }
 
   #[test]
-  fn a_topic_no_rule_matches_falls_back_to_info() {
+  fn every_level_uses_the_same_default_or_custom_topic() {
     let config = config();
-    let cli = cli(&["-t", "build/nightly", "hello"]);
-    let resolved = resolve_topic(&cli, &config).unwrap();
-    assert_eq!(build_message(&cli, &config, &resolved, "hello").level(), Level::Info);
+    for level in ["debug", "info", "warn", "error"] {
+      for (arguments, expected) in [
+        (vec!["--level", level, "hello"], "hiveme"),
+        (
+          vec!["--level", level, "-t", "build/nightly", "hello"],
+          "hiveme/build/nightly",
+        ),
+      ] {
+        let cli = cli(&arguments);
+        assert_eq!(resolve_topic(&cli, &config).unwrap(), expected);
+        assert_eq!(build_message(&cli, &config, "hello").level(), Level::parse(level));
+      }
+    }
   }
 
   #[test]
-  fn an_explicit_level_beats_the_rule() {
-    let config = config();
-    let cli = cli(&["-t", "error", "-l", "debug", "hello"]);
-    let resolved = resolve_topic(&cli, &config).unwrap();
-    assert_eq!(build_message(&cli, &config, &resolved, "hello").level(), Level::Debug);
-  }
-
-  #[test]
-  fn the_level_of_a_disabled_rule_is_still_what_its_topic_means() {
+  fn notification_rules_never_override_the_payload_level() {
     let mut config = config();
     config.notifications.rules[2].enabled = false;
     let cli = cli(&["-t", "error", "hello"]);
-    let resolved = resolve_topic(&cli, &config).unwrap();
-    assert_eq!(build_message(&cli, &config, &resolved, "hello").level(), Level::Error);
+    assert_eq!(build_message(&cli, &config, "hello").level(), Level::Info);
   }
 
   #[test]
   fn the_envelope_carries_this_installation_as_its_sender() {
     let config = config();
     let cli = cli(&["--title", "CI", "the build finished"]);
-    let resolved = resolve_topic(&cli, &config).unwrap();
-    let message = build_message(&cli, &config, &resolved, "the build finished");
+    let message = build_message(&cli, &config, "the build finished");
 
     assert_eq!(message.v, hiveme_core::message::ENVELOPE_VERSION);
     assert_eq!(message.kind, hiveme_core::message::DEFAULT_KIND);
@@ -323,8 +319,7 @@ mod tests {
   fn a_message_without_a_title_has_none() {
     let config = config();
     let cli = cli(&["hello"]);
-    let resolved = resolve_topic(&cli, &config).unwrap();
-    let message = build_message(&cli, &config, &resolved, "hello");
+    let message = build_message(&cli, &config, "hello");
     assert!(message.payload.as_ref().unwrap().title.is_none());
   }
 
@@ -332,8 +327,7 @@ mod tests {
   fn every_built_message_is_a_valid_envelope() {
     let config = config();
     let cli = cli(&["hello"]);
-    let resolved = resolve_topic(&cli, &config).unwrap();
-    let message = build_message(&cli, &config, &resolved, "hello");
+    let message = build_message(&cli, &config, "hello");
     assert!(message.validate().is_ok());
 
     let bytes = message.to_bytes().unwrap();
@@ -353,16 +347,16 @@ mod tests {
   fn the_publication_is_settled_before_anything_connects() {
     let config = config();
     assert!(matches!(
-      Publication::build(&cli(&["hello"]), &config, "hiveme/info", "hello").unwrap(),
+      Publication::build(&cli(&["hello"]), &config, "hello").unwrap(),
       Publication::Envelope(_)
     ));
     assert_eq!(
-      Publication::build(&cli(&["--json", "{}"]), &config, "hiveme/info", "{}").unwrap(),
+      Publication::build(&cli(&["--json", "{}"]), &config, "{}").unwrap(),
       Publication::RawJson(b"{}".to_vec())
     );
     // The whole point of building first: this never reaches the broker.
     assert_eq!(
-      Publication::build(&cli(&["--json", "not json"]), &config, "hiveme/info", "not json")
+      Publication::build(&cli(&["--json", "not json"]), &config, "not json")
         .unwrap_err()
         .code(),
       2

@@ -27,7 +27,7 @@ use std::sync::{Mutex, RwLock};
 use std::time::Instant;
 
 use hiveme_core::config::Config;
-use hiveme_core::message::{Level, Parsed};
+use hiveme_core::message::Parsed;
 use hiveme_core::rules::{Admission, NotificationLimiter, RuleEngine};
 use tauri::{AppHandle, Emitter};
 #[cfg(not(target_os = "windows"))]
@@ -84,11 +84,6 @@ impl Notifier {
     if !paused {
       self.limiter.lock().unwrap().reset();
     }
-  }
-
-  /// The level a message published to `topic` takes when the user did not choose one.
-  pub fn level_for_topic(&self, topic: &str) -> Level {
-    self.engine.read().unwrap().level_for_topic(topic)
   }
 
   /// Raises a notification for a message, when the rules and the limiter allow it.
@@ -201,6 +196,7 @@ impl std::fmt::Debug for Notifier {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use hiveme_core::message::Level;
 
   #[test]
   fn pausing_is_the_first_thing_checked() {
@@ -215,16 +211,12 @@ mod tests {
   }
 
   #[test]
-  fn the_level_of_a_topic_comes_from_the_rules() {
+  fn rules_match_the_payload_level_on_the_same_topic() {
     let notifier = Notifier::new(&Config::default());
-
-    assert_eq!(notifier.level_for_topic("hiveme/error"), Level::Error);
-    assert_eq!(notifier.level_for_topic("hiveme/warn"), Level::Warn);
-    assert_eq!(
-      notifier.level_for_topic("hiveme/anything-else"),
-      Level::Info,
-      "a topic no rule matches still has a level"
-    );
+    for level in [Level::Info, Level::Warn, Level::Error] {
+      let engine = notifier.engine.read().unwrap();
+      assert_eq!(engine.matching_enabled("hiveme", &level).unwrap().level, level);
+    }
   }
 
   #[test]
@@ -236,10 +228,13 @@ mod tests {
 
     notifier.reload(&config);
 
-    assert_eq!(
-      notifier.level_for_topic("hiveme/error"),
-      Level::Info,
-      "the old rules are gone"
+    assert!(
+      notifier
+        .engine
+        .read()
+        .unwrap()
+        .matching_enabled("hiveme", &Level::Error)
+        .is_none()
     );
   }
 }

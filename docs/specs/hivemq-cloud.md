@@ -74,7 +74,7 @@ The only difference between the two applications is the role they connect as.
 |---------|---------------------|---------------------|
 | Client id | `<prefix>-hmc-<8 of device.id>-<8 random>` | `<prefix>-hmg-<8 of device.id>` |
 | Clean start | yes | no |
-| Session expiry | 0 | `broker.sessionExpirySecs` |
+| Session expiry | 0 | `broker.sessionExpirySecs` during network interruptions; discarded on explicit disconnect or quit |
 | Reconnect | none; the first drop ends the connection | exponential backoff with jitter |
 | Subscriptions | none | `topics.subscriptions` |
 
@@ -165,6 +165,25 @@ the client handle being dropped.
 When a reconnect comes back with no session, which is what the broker reports when the
 session expired or the cluster was replaced, the remembered subscriptions are sent
 again. A caller therefore subscribes once rather than on every reconnect.
+
+### Disconnect and quit
+
+`disconnect` sends MQTT DISCONNECT and waits for the event loop to stop, for at most
+five seconds or `broker.connectTimeoutSecs`, whichever is shorter. A timeout stops
+reconnection and fails pending requests instead of leaving background work running.
+The CLI uses a zero-expiry session, so this also releases its session.
+
+The GUI uses `end_session` on quit, explicit disconnect, and connection replacement.
+It closes the live connection and discards the broker's subscriptions and queued
+session messages. Retained topic messages and local history are unaffected. The
+configured session expiry still applies to unexpected network interruptions.
+
+The pinned rumqttc 0.25 client cannot attach session-expiry properties to DISCONNECT.
+The shared core therefore follows the disconnect with a brief clean-start connection
+using the same client identity and zero session expiry, then sends DISCONNECT on that
+connection. It makes no subscriptions or publishes. The entire cleanup is bounded
+by five seconds. If the broker cannot be reached, cleanup reports an error and stops
+local work; broker-side state then expires according to its configured interval.
 
 ### Publishing and subscribing
 

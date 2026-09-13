@@ -7,7 +7,7 @@
     "password": "",
     "reconnect": { "initialDelayMs": 60000, "maxDelayMs": 1000 }
   },
-  "topics": { "prefix": "/hiveme/", "default": "info/#", "subscriptions": ["bad/#/filter"] },
+  "topics": { "prefix": "/hiveme/", "subscriptions": ["bad/#/filter"] },
   "publish": { "qos": 7 },
   "notifications": {
     "rules": [

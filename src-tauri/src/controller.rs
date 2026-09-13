@@ -174,17 +174,11 @@ pub async fn publish(app: &AppHandle, topic: &str, body: &str, options: PublishO
     .unwrap_or_else(|| Qos::from_config(&config));
   let retain = options.retain.unwrap_or(config.publish.retain);
 
-  let (mqtt, store, level) = {
+  let (mqtt, store) = {
     let state = app
       .try_state::<AppState>()
       .ok_or_else(|| anyhow!("the application is still starting"))?;
-    // A rule is consulted whether or not it is enabled, because `enabled` governs
-    // notifications rather than what a topic means.
-    let level = match options.level.as_deref() {
-      Some(level) => Level::parse(level),
-      None => state.notifier.level_for_topic(topic),
-    };
-    (state.mqtt.clone(), state.store.clone(), level)
+    (state.mqtt.clone(), state.store.clone())
   };
 
   let payload = if options.json {
@@ -196,7 +190,7 @@ pub async fn publish(app: &AppHandle, topic: &str, body: &str, options: PublishO
       .await?;
     payload
   } else {
-    let message = build_message(&config, body, &options, level);
+    let message = build_message(&config, body, &options);
     let payload = message
       .to_bytes()
       .map_err(|source| anyhow!("the message cannot be encoded: {source}"))?;
@@ -286,8 +280,9 @@ pub async fn prune_forever(app: AppHandle) {
 }
 
 /// The envelope of `docs/specs/message.md`, filled in from the composer.
-fn build_message(config: &Config, body: &str, options: &PublishOptions, level: Level) -> Message {
+fn build_message(config: &Config, body: &str, options: &PublishOptions) -> Message {
   let sender = Sender::from_device(&config.device, APP_ID);
+  let level = options.level.as_deref().map(Level::parse).unwrap_or_default();
   let mut message = Message::new_text(sender, body).with_level(level);
   if let Some(title) = options
     .title
@@ -315,8 +310,8 @@ fn raw_json_properties() -> MessageProperties {
 /// Builds the topic tree by splitting every stored topic on `/`.
 ///
 /// A node exists for every segment, so `hiveme/build/ci` puts `build` in the tree even
-/// though nothing was ever published to it; such a node has no `topic` and cannot be
-/// selected. Counts are rolled up, which is what makes a collapsed branch show that
+/// though nothing was ever published to it. Every nonempty path can be selected to
+/// show its descendants. Counts are rolled up, so a collapsed branch shows that
 /// something below it is unread.
 fn build_tree(topics: &[TopicRow]) -> Vec<TopicNode> {
   #[derive(Default)]
@@ -324,15 +319,13 @@ fn build_tree(topics: &[TopicRow]) -> Vec<TopicNode> {
     children: BTreeMap<String, Node>,
     unread: u32,
     messages: u32,
-    is_topic: bool,
   }
 
   fn insert(node: &mut Node, segments: &[&str], row: &TopicRow) {
     node.unread = node.unread.saturating_add(row.unread);
     node.messages = node.messages.saturating_add(row.messages);
-    match segments.split_first() {
-      None => node.is_topic = true,
-      Some((head, rest)) => insert(node.children.entry((*head).to_owned()).or_default(), rest, row),
+    if let Some((head, rest)) = segments.split_first() {
+      insert(node.children.entry((*head).to_owned()).or_default(), rest, row);
     }
   }
 
@@ -340,7 +333,7 @@ fn build_tree(topics: &[TopicRow]) -> Vec<TopicNode> {
     TopicNode {
       id: path.to_owned(),
       label: label.to_owned(),
-      topic: node.is_topic.then(|| path.to_owned()),
+      topic: (!path.is_empty()).then(|| path.to_owned()),
       unread: node.unread,
       messages: node.messages,
       children: node
@@ -385,7 +378,11 @@ mod tests {
     let root = &tree[0];
     assert_eq!(root.id, "hiveme");
     assert_eq!(root.label, "hiveme");
-    assert_eq!(root.topic, None, "nothing was published to the prefix itself");
+    assert_eq!(
+      root.topic.as_deref(),
+      Some("hiveme"),
+      "a parent without direct messages is selectable"
+    );
     assert_eq!(root.unread, 3, "unread rolls up into the parent");
     assert_eq!(root.messages, 8);
 
@@ -394,7 +391,11 @@ mod tests {
 
     let build = &root.children[0];
     assert_eq!(build.id, "hiveme/build");
-    assert_eq!(build.topic, None, "an intermediate segment is not selectable");
+    assert_eq!(
+      build.topic.as_deref(),
+      Some("hiveme/build"),
+      "an intermediate topic selects its subtree"
+    );
     assert_eq!(build.children[0].id, "hiveme/build/ci");
     assert_eq!(build.children[0].topic.as_deref(), Some("hiveme/build/ci"));
   }
@@ -426,7 +427,14 @@ mod tests {
   fn a_composed_message_says_it_came_from_the_gui_and_carries_the_level_it_was_given() {
     let config = Config::default();
 
-    let message = build_message(&config, "Disk full", &PublishOptions::default(), Level::Error);
+    let message = build_message(
+      &config,
+      "Disk full",
+      &PublishOptions {
+        level: Some("error".to_owned()),
+        ..PublishOptions::default()
+      },
+    );
 
     assert_eq!(message.level(), Level::Error);
     assert_eq!(
@@ -446,9 +454,9 @@ mod tests {
         title: Some("   ".to_owned()),
         ..PublishOptions::default()
       },
-      Level::Info,
     );
 
+    assert_eq!(message.level(), Level::Info);
     assert_eq!(message.payload.and_then(|payload| payload.title), None);
   }
 

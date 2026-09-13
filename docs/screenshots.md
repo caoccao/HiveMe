@@ -27,7 +27,7 @@ Point a throwaway config at it, so the screenshots do not carry real credentials
   "version": 1,
   "device": { "id": "0f7a1c2e-5d4b-4a6e-9c1d-2b3e4f5a6b7c", "name": "sams-desktop" },
   "broker": { "url": "mqtt://127.0.0.1:21883", "username": "demo", "password": "demo" },
-  "topics": { "prefix": "hiveme", "default": "info", "subscriptions": ["#"] },
+  "topics": { "prefix": "hiveme", "default": "", "subscriptions": ["#"] },
   "gui": { "displayMode": "Light", "theme": "Amber" }
 }
 ```
@@ -39,11 +39,11 @@ HIVEME_CONFIG=/tmp/HiveMe.json pnpm tauri dev
 Then fill the tree from another terminal, with a config pointing at the same broker:
 
 ```sh
-hmc -c /tmp/hmc.json -t info  --title CI     "Nightly build 482 finished in 6m 12s"
-hmc -c /tmp/hmc.json -t info  --title Deploy "Deployed hiveme 0.1.0 to staging"
-hmc -c /tmp/hmc.json -t warn  --title Disk   "Disk usage on build-02 is at 87%"
-hmc -c /tmp/hmc.json -t error --title CI     "Nightly build 483 failed: 2 tests red"
+hmc -c /tmp/hmc.json --level info  --title CI     "Nightly build 482 finished in 6m 12s"
+hmc -c /tmp/hmc.json --level info  --title Deploy "Deployed hiveme 0.1.0 to staging"
+hmc -c /tmp/hmc.json --level warn  --title Disk   "Disk usage on build-02 is at 87%"
+hmc -c /tmp/hmc.json --level error --title CI     "Nightly build 483 failed: 2 tests red"
 hmc -c /tmp/hmc.json -t build/ci --json '{"build":483,"branch":"main","failed":["config::migrate"]}'
 ```
 
-Select `error` in the tree for the main shot, and `docker stop hiveme-shots` afterward.
+Use the already selected `hiveme` topic for the main shot, and `docker stop hiveme-shots` afterward.

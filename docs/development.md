@@ -8,7 +8,7 @@
 | Node.js | 24 | |
 | pnpm | 11 | |
 | Deno | 2.x | Runs every repository script under `scripts/ts/` |
-| Docker | any recent | Only for the MQTT integration tests |
+| Docker | any recent | For MQTT integration tests and native end-to-end tests |
 
 Unlike the reference project, HiveMe has no native library to build first. Clone and
 build.
@@ -45,6 +45,7 @@ deno task -c scripts/ts/deno.json check-spec-sync [base-ref]
 pnpm install
 pnpm typecheck
 pnpm test
+pnpm test:e2e                                  # native apps + local broker; setup below
 pnpm gen:types
 pnpm dev                                        # vite on http://localhost:1420
 pnpm tauri dev                                  # the GUI with hot reload
@@ -80,9 +81,9 @@ checked, and the Rust tests need nothing else. It is simply not how the GUI is b
 
 The window is a WebView2 (Windows), WebKitGTK (Linux), or WKWebView (macOS) surface,
 so a frontend failure looks like an empty window rather than a crash, and the backend
-log still reads perfectly normally. `src/App.test.tsx` mounts the whole application in
-jsdom against a mocked backend for exactly that reason: it is the only check that says
-whether anything was rendered at all.
+log still reads perfectly normally. `src/App.test.tsx` covers initial rendering in
+jsdom with mocked IPC. The native [end-to-end test](#native-end-to-end-test) checks
+the built frontend together with real IPC, MQTT delivery, and SQLite history.
 
 ## Running `hmc`
 
@@ -218,6 +219,59 @@ The config file `HiveMe.json` is resolved at runtime, in this order: `--config`,
 The SQLite history database `HiveMe.db` sits in the same directory. Full reference in
 [specs/config.md](specs/config.md).
 
+## Native end-to-end test
+
+`pnpm test:e2e` runs `scripts/ts/test-e2e.ts` against the built hmc and hmg binaries.
+It creates an isolated HiveMQ CE Docker container, config, and SQLite database.
+No IPC, application state, MQTT traffic, or database calls are mocked. Missing
+Docker or WebDriver prerequisites fail the command; the test never silently skips.
+
+Build and install the driver once:
+
+```sh
+cargo build -p hmc
+pnpm tauri build --debug --no-bundle
+cargo install tauri-driver --version 2.0.6 --locked
+```
+
+On Linux, install `webkit2gtk-driver` and `xvfb`, then run:
+
+```sh
+xvfb-run -a pnpm test:e2e
+```
+
+On Windows, install Microsoft Edge WebDriver matching the installed WebView2 Runtime.
+Put `msedgedriver.exe` on PATH, or set `HIVEME_E2E_NATIVE_DRIVER` to its absolute path,
+then run `pnpm test:e2e` from a **non-administrator terminal**. Elevated WebView2
+processes ignore the environment flags WebDriver uses to attach. See
+[Microsoft's WebView2 automation setup](https://learn.microsoft.com/en-us/microsoft-edge/webview2/how-to/webdriver)
+and [privilege requirements](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security#for-an-elevated-host-app-use-appropriate-override-flags).
+Native Tauri WebDriver testing is supported on Windows and Linux, not macOS.
+
+Use `pnpm test:e2e --release` after `pnpm tauri build --no-bundle` to test the release
+GUI. Both programs come from `target/debug` by default or `target/release` with
+`--release`. To use a separate build directory, set `HIVEME_E2E_BIN_DIR` to the
+absolute directory containing both binaries. The runner only reads those binaries;
+all config and database writes are confined to its test directory. The Linux
+workflow builds the applications and runs the release end-to-end test under Xvfb.
+
+The scenario verifies:
+
+- An empty database starts with `hiveme` visible, selected, and highlighted.
+- Appearance opens first, settings save automatically, and no default-topic setting exists.
+- `hmc haha` prints `Message sent to hiveme.`; all log levels stay in the payload,
+  arrive on the root MQTT topic, and appear in the GUI without synthetic level topics.
+- The GUI composer sends directly to the selected root and reconciles the broker echo.
+- Selecting an intermediate topic loads its recursive children from SQLite.
+  Topic labels preserve expansion; only the left icon expands or collapses children.
+- Restart restores stored history while selecting `hiveme`. An unknown JSON field
+  cannot redirect messages to a level suffix.
+
+Each run keeps its test-only config, database, logs, and screenshot under
+`target/e2e/<run-id>/`; failures also capture the DOM when a session is available.
+The runner stops its own WebDriver session and removes its broker container.
+CI uploads diagnostics on failure. No real broker credentials are needed.
+
 ## Testing against a broker
 
 `crates/hiveme-core/tests/mqtt.rs` starts a `hivemq/hivemq-ce` container per test
@@ -226,7 +280,7 @@ runs in well under a minute.
 
 ```sh
 cargo test -p hiveme-core --test mqtt           # the client
-cargo test -p hmc --test publish                # hmc end to end
+cargo test -p hmc --test publish                # CLI broker integration
 ```
 
 Each test says why it did nothing and passes when Docker is unavailable, or when

@@ -33,6 +33,8 @@ use std::time::Duration;
 use hiveme_core::config::{BrokerInit, Config};
 use hiveme_core::message::{Level, Message, Parsed, Sender};
 use hiveme_core::mqtt::{IncomingMessage, MqttClient, Qos, Role, State};
+use rumqttc::v5::mqttbytes::v5::Packet;
+use rumqttc::v5::{AsyncClient, Event, MqttOptions};
 use testcontainers::core::{IntoContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
@@ -199,6 +201,97 @@ async fn connect(config: &Config, role: Role) -> MqttClient {
   MqttClient::connect_unvalidated(config, role)
     .await
     .unwrap_or_else(|error| panic!("cannot connect as {role}: {error}"))
+}
+
+/// Asks the broker whether the stable GUI identity still has a session.
+async fn session_present(broker: &Broker, config: &Config) -> bool {
+  let mut options = MqttOptions::new(
+    hiveme_core::mqtt::client_id(config, Role::Gui),
+    &broker.host,
+    broker.port,
+  );
+  options.set_clean_start(false);
+  options.set_session_expiry_interval(Some(config.broker.session_expiry_secs));
+  let (client, mut eventloop) = AsyncClient::new(options, 1);
+  tokio::time::timeout(RECEIVE_TIMEOUT, async {
+    let mut present = None;
+    loop {
+      match eventloop.poll().await.expect("the session probe connects") {
+        Event::Incoming(Packet::ConnAck(ack)) => {
+          present = Some(ack.session_present);
+          client.disconnect().await.expect("the probe says goodbye");
+        }
+        Event::Outgoing(rumqttc::Outgoing::Disconnect) => return present.expect("the CONNACK arrived"),
+        _ => {}
+      }
+    }
+  })
+  .await
+  .expect("the session probe finishes")
+}
+
+#[test]
+fn ending_a_gui_session_discards_it_at_the_broker() {
+  with_broker("ending_a_gui_session_discards_it_at_the_broker", |broker| async move {
+    let config = broker.config("session-cleanup");
+    let client = connect(&config, Role::Gui).await;
+    client
+      .subscribe(config.subscription_filters(), Qos::AtLeastOnce)
+      .await
+      .unwrap();
+    client.disconnect().await.unwrap();
+    assert!(
+      session_present(&broker, &config).await,
+      "ordinary disconnect preserves the configured session"
+    );
+
+    let client = connect(&config, Role::Gui).await;
+    client.end_session().await.expect("the GUI ends its session");
+    assert_eq!(client.status_now().state, State::Disconnected);
+    assert!(
+      !session_present(&broker, &config).await,
+      "quit must discard the broker session"
+    );
+  });
+}
+
+#[test]
+fn quitting_while_the_first_connection_is_starting_leaves_no_session() {
+  with_broker(
+    "quitting_while_the_first_connection_is_starting_leaves_no_session",
+    |broker| async move {
+      let mut config = broker.config("starting-cleanup");
+      config.broker.username = "test".to_owned();
+      config.broker.password = "test".to_owned();
+      let client = MqttClient::start(&config, Role::Gui).expect("the connection starts");
+      // The GUI can quit before its wait for the first CONNACK finishes.
+      client.end_session().await.expect("the starting session ends");
+      assert_eq!(client.status_now().state, State::Disconnected);
+      assert!(!session_present(&broker, &config).await);
+    },
+  );
+}
+
+#[test]
+fn session_cleanup_stops_reconnecting_when_the_broker_is_unreachable() {
+  with_broker(
+    "session_cleanup_stops_reconnecting_when_the_broker_is_unreachable",
+    |mut broker| async move {
+      let config = broker.config("offline-cleanup");
+      let client = connect(&config, Role::Gui).await;
+      broker.container.take().unwrap().rm().await.expect("the broker stops");
+      await_state(&client, RECEIVE_TIMEOUT, |state| state == State::Reconnecting).await;
+      let result = tokio::time::timeout(Duration::from_secs(6), client.end_session()).await;
+      assert!(result.expect("shutdown stays bounded").is_err());
+      assert_eq!(client.status_now().state, State::Disconnected);
+      tokio::time::sleep(Duration::from_millis(300)).await;
+      assert_eq!(
+        client.status_now().state,
+        State::Disconnected,
+        "shutdown must stop reconnecting"
+      );
+    },
+  );
 }
 
 /// Waits for the next message, failing the test rather than hanging the suite.

@@ -28,7 +28,7 @@ function node(id: string, label: string, topic: string | null, unread = 0, child
 
 const TREE: TopicNode[] = [
   node('hiveme', 'hiveme', null, 3, [
-    node('hiveme/build', 'build', null, 1, [node('hiveme/build/ci', 'ci', 'hiveme/build/ci', 1)]),
+    node('hiveme/build', 'build', 'hiveme/build', 1, [node('hiveme/build/ci', 'ci', 'hiveme/build/ci', 1)]),
     node('hiveme/error', 'error', 'hiveme/error', 2),
     node('hiveme/info', 'info', 'hiveme/info', 0),
   ]),
@@ -88,16 +88,29 @@ describe('the topic tree', () => {
     expect(screen.getByText('2')).toBeInTheDocument();
   });
 
-  it('says so when there is nothing to show', () => {
-    useAppStore.setState({ topics: [] });
+  it('keeps hiveme visible and highlights it even without history', () => {
+    useAppStore.setState({ topics: [], selectedTopic: 'hiveme' });
     render(<TopicTree />);
-    expect(screen.getByText(/No messages yet/)).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: 'hiveme' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('hiveme').closest('.MuiTreeItem-content')).toHaveAttribute('data-selected');
+    expect(screen.queryByText(/No messages yet/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the startup topic selectable beside its original historical paths', async () => {
+    const selectTopic = vi.fn();
+    useAppStore.setState({ selectTopic });
+    render(<TopicTree />);
+    expect(screen.getAllByText('hiveme')).toHaveLength(1);
+    await userEvent.click(screen.getByText('hiveme'));
+    expect(selectTopic).toHaveBeenCalledWith('hiveme');
+    expect(screen.getByText('info')).toBeInTheDocument();
   });
 
   it('says when a filter matched nothing', () => {
     useAppStore.setState({ topicFilter: 'nowhere' });
     render(<TopicTree />);
     expect(screen.getByText(/No topic matches/)).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: /^hiveme/ })).toBeInTheDocument();
   });
 
   it('selects a node that is a real topic', async () => {
@@ -110,13 +123,35 @@ describe('the topic tree', () => {
     expect(selectTopic).toHaveBeenCalledWith('hiveme/error');
   });
 
-  it('does not select an intermediate segment, which has no history of its own', async () => {
+  it('selects an intermediate topic to show all of its descendants', async () => {
     const selectTopic = vi.fn();
     useAppStore.setState({ selectTopic });
     render(<TopicTree />);
 
     await userEvent.click(screen.getByText('build'));
 
-    expect(selectTopic).not.toHaveBeenCalled();
+    expect(selectTopic).toHaveBeenCalledWith('hiveme/build');
+    expect(screen.getByText('build').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('toggles children only from the expansion icon and preserves expansion when selecting a parent', async () => {
+    const selectTopic = vi.fn();
+    useAppStore.setState({ selectTopic });
+    render(<TopicTree />);
+    const parent = screen.getByText('build').closest('[role="treeitem"]')!;
+    const icon = parent.querySelector(':scope > .MuiTreeItem-content > .MuiTreeItem-iconContainer')!;
+    expect(parent).toHaveAttribute('aria-expanded', 'true');
+
+    await userEvent.click(icon);
+    expect(parent).toHaveAttribute('aria-expanded', 'false');
+
+    await userEvent.click(screen.getByText('build'));
+    expect(selectTopic).toHaveBeenCalledWith('hiveme/build');
+    expect(parent).toHaveAttribute('aria-expanded', 'false');
+
+    await userEvent.click(icon);
+    expect(parent).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.click(screen.getByText('build'));
+    expect(parent).toHaveAttribute('aria-expanded', 'true');
   });
 });

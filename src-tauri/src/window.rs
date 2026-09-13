@@ -15,9 +15,10 @@
 * limitations under the License.
 */
 
-//! The main window: its title, its remembered geometry, and what happens at startup.
+//! The main window: its title, remembered geometry, startup, and graceful shutdown.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use tauri::Manager;
 
@@ -28,6 +29,10 @@ use crate::{config, controller, update};
 /// Set once the restored geometry has been applied, so that the moves and resizes the
 /// restore itself causes are not written back as if the user had made them.
 pub static WINDOW_READY: AtomicBool = AtomicBool::new(false);
+
+static EXIT_REQUESTED: AtomicBool = AtomicBool::new(false);
+static MQTT_STOPPED: AtomicBool = AtomicBool::new(false);
+const EXIT_TIMEOUT: Duration = Duration::from_secs(10);
 
 const MIN_WINDOW_WIDTH: u32 = 600;
 const MIN_WINDOW_HEIGHT: u32 = 450;
@@ -46,6 +51,11 @@ pub fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
     return;
   }
   match event {
+    tauri::WindowEvent::CloseRequested { api, .. } => {
+      // Keep the event loop alive until the MQTT shutdown below has finished.
+      api.prevent_close();
+      window.app_handle().exit(0);
+    }
     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
       if !WINDOW_READY.load(Ordering::SeqCst) {
         return;
@@ -80,6 +90,32 @@ pub fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
     }
     _ => {}
   }
+}
+
+/// All quit paths pass here, including the window close button and the system menu.
+pub fn on_run_event(app: &tauri::AppHandle, event: tauri::RunEvent) {
+  let tauri::RunEvent::ExitRequested { api, code, .. } = event else {
+    return;
+  };
+  if MQTT_STOPPED.load(Ordering::SeqCst) {
+    return;
+  }
+  api.prevent_exit();
+  if EXIT_REQUESTED.swap(true, Ordering::SeqCst) {
+    return;
+  }
+  let mqtt = app.state::<AppState>().mqtt.clone();
+  mqtt.begin_shutdown();
+  let app = app.clone();
+  tauri::async_runtime::spawn(async move {
+    match tokio::time::timeout(EXIT_TIMEOUT, mqtt.shutdown()).await {
+      Ok(Ok(())) => log::info!("the MQTT connection and session have ended"),
+      Ok(Err(error)) => log::warn!("the MQTT session could not be ended cleanly: {error}"),
+      Err(_) => log::warn!("MQTT shutdown timed out; exiting the application"),
+    }
+    MQTT_STOPPED.store(true, Ordering::SeqCst);
+    app.exit(code.unwrap_or(0));
+  });
 }
 
 /// Titles and shows the window, opens the history, connects, and checks for updates.

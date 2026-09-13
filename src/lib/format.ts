@@ -31,7 +31,7 @@ export function formatTime(timestamp: string): string {
   if (Number.isNaN(date.getTime())) {
     return timestamp;
   }
-  return date.toLocaleTimeString(i18n.resolvedLanguage, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return date.toLocaleTimeString(i18n.resolvedLanguage, { hour: 'numeric', minute: '2-digit' });
 }
 
 /** The date and time of an RFC 3339 timestamp, for a tooltip. */

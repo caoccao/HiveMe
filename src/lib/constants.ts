@@ -36,3 +36,6 @@ export const SPLIT_MAX_PERCENT = 60;
 
 /** Where the divider sits before the user has moved it. */
 export const SPLIT_DEFAULT_PERCENT = 28;
+
+/** The topic hmg always opens so a new installation is ready to compose. */
+export const STARTUP_TOPIC = 'hiveme';

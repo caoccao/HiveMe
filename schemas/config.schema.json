@@ -314,7 +314,7 @@
               "id": "info",
               "level": "info",
               "title": "{title|topic}",
-              "topic": "info"
+              "topic": "#"
             },
             {
               "body": "{body}",
@@ -322,7 +322,7 @@
               "id": "warn",
               "level": "warn",
               "title": "{title|topic}",
-              "topic": "warn"
+              "topic": "#"
             },
             {
               "body": "{body}",
@@ -330,7 +330,7 @@
               "id": "error",
               "level": "error",
               "title": "{title|topic}",
-              "topic": "error"
+              "topic": "#"
             }
           ],
           "description": "Absent means the three built-in rules. Present, even empty, replaces them.",
@@ -406,7 +406,7 @@
         "level": {
           "$ref": "#/$defs/Level",
           "default": "info",
-          "description": "The notification level, and the level `hmc` infers for a matching topic."
+          "description": "The payload level this notification rule matches. It never determines the MQTT topic."
         },
         "match": {
           "additionalProperties": true,
@@ -547,11 +547,6 @@
     "Topics": {
       "description": "The topic namespace.",
       "properties": {
-        "default": {
-          "default": "info",
-          "description": "Where `hmc` publishes when no topic is given, relative to the prefix.",
-          "type": "string"
-        },
         "prefix": {
           "default": "hiveme",
           "description": "Prepended to every relative topic. May be empty, which puts topics at the root.",
@@ -745,7 +740,7 @@
             "id": "info",
             "level": "info",
             "title": "{title|topic}",
-            "topic": "info"
+            "topic": "#"
           },
           {
             "body": "{body}",
@@ -753,7 +748,7 @@
             "id": "warn",
             "level": "warn",
             "title": "{title|topic}",
-            "topic": "warn"
+            "topic": "#"
           },
           {
             "body": "{body}",
@@ -761,7 +756,7 @@
             "id": "error",
             "level": "error",
             "title": "{title|topic}",
-            "topic": "error"
+            "topic": "#"
           }
         ]
       }
@@ -777,7 +772,6 @@
     "topics": {
       "$ref": "#/$defs/Topics",
       "default": {
-        "default": "info",
         "prefix": "hiveme",
         "subscriptions": [
           "#"

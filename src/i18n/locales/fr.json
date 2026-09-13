@@ -116,7 +116,6 @@
     "copyCliSetupHint": "Copie la commande complète hmc --init. Elle contient le mot de passe du courtier en clair.",
     "cliSetupCopied": "Commande de configuration CLI copiée. Collez-la dans votre terminal et exécutez-la.",
     "prefix": "Préfixe",
-    "defaultTopic": "Sujet par défaut",
     "subscriptions": "Abonnements",
     "subscriptionFilter": "Filtre d’abonnement {{index}}",
     "absolute": "Absolu",

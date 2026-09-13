@@ -99,7 +99,7 @@ describe('language resolution and formatting', () => {
     for (const language of LANGUAGES) {
       await changeLanguage(language);
       expect(formatTime(timestamp)).toBe(date.toLocaleTimeString(language, {
-        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour: 'numeric', minute: '2-digit',
       }));
       expect(formatDateTime(timestamp)).toBe(date.toLocaleString(language));
       expect(formatDay(timestamp)).toBe(date.toLocaleDateString(language, {

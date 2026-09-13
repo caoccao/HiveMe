@@ -288,7 +288,7 @@ export interface Rule {
    */
   id: string;
   /**
-   * The notification level, and the level `hmc` infers for a matching topic.
+   * The payload level this notification rule matches. It never determines the MQTT topic.
    */
   level?: string;
   /**
@@ -321,10 +321,6 @@ export interface Publish {
  * The topic namespace.
  */
 export interface Topics {
-  /**
-   * Where `hmc` publishes when no topic is given, relative to the prefix.
-   */
-  default?: string;
   /**
    * Prepended to every relative topic. May be empty, which puts topics at the root.
    */

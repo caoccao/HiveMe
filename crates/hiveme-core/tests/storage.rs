@@ -18,7 +18,7 @@
 //! The message history of `hmg`, specified in `docs/specs/gui.md`.
 
 use hiveme_core::config::History;
-use hiveme_core::message::{Message, Sender};
+use hiveme_core::message::{Level, Message, Sender};
 use hiveme_core::storage::{NewMessage, Store};
 
 /// An envelope from `device`, as `hmg` or `hmc` would publish it.
@@ -36,6 +36,27 @@ fn envelope(device: &str, body: &str) -> Message {
 
 fn incoming(topic: &str, message: &Message) -> NewMessage {
   NewMessage::from_payload(topic, message.to_bytes().unwrap(), 1, false, false)
+}
+
+#[test]
+fn payload_levels_share_one_topic_and_keep_original_history_paths() {
+  let store = Store::in_memory().unwrap();
+  for level in [Level::Info, Level::Warn, Level::Error] {
+    let message = envelope("device-1", "hello").with_level(level.clone());
+    let insertion = store.insert(&incoming("hiveme", &message)).unwrap();
+    assert_eq!(insertion.message.level.as_deref(), Some(level.as_str()));
+  }
+  let topics = store.topics().unwrap();
+  assert_eq!(topics.len(), 1);
+  assert_eq!(topics[0].topic, "hiveme");
+  assert_eq!(store.messages("hiveme", None, 10).unwrap().len(), 3);
+
+  for topic in ["hiveme/info", "hiveme/warn", "hiveme/error", "build/ci"] {
+    let message = envelope("device-1", "original path");
+    store.insert(&incoming(topic, &message)).unwrap();
+    assert_eq!(store.messages(topic, None, 10).unwrap()[0].topic, topic);
+  }
+  assert_eq!(store.topics().unwrap().len(), 5);
 }
 
 #[test]
@@ -197,6 +218,105 @@ fn history_is_paged_from_the_newest_end_and_handed_back_in_reading_order() {
   assert_eq!(bodies, ["message 2", "message 3", "message 4", "message 5"]);
 
   assert!(store.messages("never/seen", None, 4).unwrap().is_empty());
+}
+
+#[test]
+fn selecting_a_topic_includes_recursive_children_and_marks_the_same_subtree_read() {
+  let store = Store::in_memory().unwrap();
+  let topics = [
+    "hiveme",
+    "hiveme/build",
+    "hiveme/build/ci",
+    "hiveme/",
+    "hiveme//nested",
+    "hiveme2",
+    "hiveme0",
+    "HiveMe/build",
+    "elsewhere/hiveme",
+    "hiveme-build",
+  ];
+  for topic in topics {
+    store.insert(&incoming(topic, &envelope("device-1", topic))).unwrap();
+  }
+  let rows = store.messages("hiveme", None, 100).unwrap();
+  assert_eq!(
+    rows.iter().map(|row| row.topic.as_str()).collect::<Vec<_>>(),
+    topics[..5]
+  );
+  store.mark_read("hiveme").unwrap();
+  for row in store.topics().unwrap() {
+    assert_eq!(
+      row.unread,
+      if topics[..5].contains(&row.topic.as_str()) {
+        0
+      } else {
+        1
+      },
+      "{}",
+      row.topic
+    );
+  }
+}
+
+#[test]
+fn subtree_queries_treat_wildcards_and_punctuation_as_literal_topic_names() {
+  let store = Store::in_memory().unwrap();
+  for root in ["fleet_%", "fleet-A", "fleet_[*?]", "fleet-'quote", "设备", "fleet/"] {
+    let child = format!("{root}/child");
+    for topic in [root, &child, &format!("{root}other/child")] {
+      store.insert(&incoming(topic, &envelope("device-1", topic))).unwrap();
+    }
+    let rows = store.messages(root, None, 100).unwrap();
+    assert_eq!(
+      rows.iter().map(|row| row.topic.as_str()).collect::<Vec<_>>(),
+      [root, child.as_str()]
+    );
+  }
+  assert_eq!(store.messages("fleet_%/child", None, 100).unwrap().len(), 1);
+}
+
+#[test]
+fn a_parent_without_direct_messages_pages_across_its_children() {
+  let store = Store::in_memory().unwrap();
+  let message = envelope("device-1", "one envelope on several topics");
+  let mut expected = Vec::new();
+  for topic in [
+    "hiveme/build/one",
+    "other",
+    "hiveme/build/two",
+    "hiveme/build/deep/three",
+    "hiveme/building",
+  ] {
+    let row = store.insert(&incoming(topic, &message)).unwrap().message;
+    if topic.starts_with("hiveme/build/") {
+      expected.push(row.row_id);
+    }
+  }
+  let newest = store.messages("hiveme/build", None, 2).unwrap();
+  assert_eq!(newest.iter().map(|row| row.row_id).collect::<Vec<_>>(), expected[1..]);
+  let older = store.messages("hiveme/build", Some(newest[0].row_id), 2).unwrap();
+  assert_eq!(older.iter().map(|row| row.row_id).collect::<Vec<_>>(), expected[..1]);
+  assert!(
+    store
+      .messages("hiveme/build", Some(older[0].row_id), 2)
+      .unwrap()
+      .is_empty()
+  );
+  assert!(!store.topics().unwrap().iter().any(|row| row.topic == "hiveme/build"));
+}
+
+#[test]
+fn clearing_an_exact_topic_preserves_children_in_its_recursive_view() {
+  let store = Store::in_memory().unwrap();
+  for topic in ["hiveme", "hiveme/child", "hiveme/child/deep"] {
+    store.insert(&incoming(topic, &envelope("device-1", topic))).unwrap();
+  }
+  assert_eq!(store.clear_topic("hiveme").unwrap(), 1);
+  let rows = store.messages("hiveme", None, 100).unwrap();
+  assert_eq!(
+    rows.iter().map(|row| row.topic.as_str()).collect::<Vec<_>>(),
+    ["hiveme/child", "hiveme/child/deep"]
+  );
 }
 
 #[test]

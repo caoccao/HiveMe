@@ -44,9 +44,9 @@ Its layout and architecture deliberately mirror the sibling project
 | | filter               | MessageView                         ||
 | | TopicTree            |   incoming bubble (left)            ||
 | |   hiveme             |            outgoing bubble (right)  ||
-| |     info      (2)    |                                     ||
-| |     warn             +-------------------------------------+|
-| |     error     (1)    | Composer  [ text ......... ] [send] ||
+| |     build     (2)    |                                     ||
+| |       ci             +-------------------------------------+|
+| |     deploy    (1)    | Composer  [ text ......... ] [send] ||
 | +----------------------+-------------------------------------+|
 +--------------------------------------------------------------+
 | Footer: connected | host | 3 subs | 128 msgs | db 1.2 MB      |
@@ -77,18 +77,29 @@ Shortcuts: `Ctrl+1` to `Ctrl+9` select a tab, `Ctrl+W` closes the current tab,
 ### Topic tree
 
 `TopicTree.tsx` renders `@mui/x-tree-view` with the topic hierarchy split on `/`. The
-root node is `topics.prefix`, and a topic outside it, such as one under `$SYS`, is a
-root of its own. A node appears when the first message on that topic arrives or when a
-message is sent to it, and it persists in SQLite so the tree survives a restart. Each
-node carries an unread badge, rolled up from everything below it, so a collapsed
-branch still shows that something in it is unread.
+`hiveme` topic is always visible and selectable, even with no database rows, after
+clearing history, while disconnected, or when the topic prefix is customized.
+Every startup selects `hiveme`, highlights it, and loads its entire subtree, so the composer
+is ready as soon as the connection is available. The selected topic has a highlighted
+background and a bold label in the theme color. Clicking a topic label selects it
+without changing expansion. Only the icon to its left expands or collapses its
+children; the standard keyboard arrow controls remain available.
 
-A node that stands only for a segment of a path, such as `hiveme/build` when the
-messages are on `hiveme/build/ci`, is shown in italics and cannot be selected: there
-is no history under it to show.
+Other nodes follow actual stored MQTT paths split on `/`. A node appears when a
+message arrives or is sent to it, and persists in SQLite. Each node carries an unread
+badge rolled up from its descendants. Log levels are never added as synthetic topic
+nodes. Historical entries under paths such as `hiveme/info`, `hiveme/warn`, and
+`hiveme/error` stay on their original paths. No database migration is added.
+
+Every nonempty topic path is selectable, including a parent such as `hiveme/build`
+when messages exist only on `hiveme/build/ci`. Selecting it displays its direct
+messages and all recursive descendants and marks that subtree read. Matching is
+case sensitive and requires a `/` boundary: `hiveme/building` is not a child of
+`hiveme/build`. The empty leading segment of an absolute path is only a group.
 
 The filter field above the tree matches on the whole path, keeps a parent whose child
-matches, and expands what it found.
+matches, and expands what it found. `hiveme` stays visible even when the filter does
+not match it.
 
 The component is `SimpleTreeView` with hand-written `TreeItem` children rather than
 `RichTreeView`, which the plan left open. `TreeItem` takes a `label` of arbitrary
@@ -98,21 +109,41 @@ can hold thousands of rows, is virtualized instead.
 
 ### Message view
 
-`MessageView.tsx` is a chat view for the selected topic, virtualized, newest at the
-bottom, auto-scrolling unless the user has scrolled up.
+`MessageView.tsx` is a chat view for the selected topic and all recursive descendants,
+virtualized, newest at the bottom, auto-scrolling unless the user has scrolled up.
+The database filters each page by the stored topic field. Rows retain their actual
+MQTT topic; the frontend caches each selected subtree and merges live descendant
+messages into every matching cached view, including a view whose first page is still
+loading. Database row ids preserve order and prevent duplicate bubbles across pages
+and events, while the same envelope on two topics remains two rows.
 
 | Message | Rendering |
 |---------|-----------|
-| Sent by this device (`sender.id == device.id`) | Bubble aligned right |
-| Sent by anyone else | Bubble aligned left with the sender name and app |
-| Envelope tier | `title` in bold, `body`, a collapsed `data` JSON tree, a `level` chip, the time |
+| Sent by this device (`sender.id == device.id`) | Rounded bubble aligned right; regular messages use a dark fill with white text |
+| Sent by anyone else | Rounded bubble aligned left with the sender name and app above it |
+| Envelope tier | `title` in bold, `body`, and a collapsed `data` JSON tree; metadata is in the options menu |
 | Raw JSON tier | Monospace bubble with a collapsible JSON tree |
 | Raw text tier | Monospace bubble |
 | Raw bytes | Hex preview with a size label |
-| Encrypted | Lock icon and "encrypted (key `<kid>`)" plus sender and time |
-| `v` newer than supported | Normal rendering plus a "newer version" chip |
+| Encrypted | Lock icon and "encrypted (key `<kid>`)" plus sender |
+| `v` newer than supported | Normal rendering with a "newer version" chip in the options menu |
 
-A hover or context menu offers copy body and copy JSON, through the clipboard plugin.
+Bubble colors follow `payload.level`, independently of the topic or direction:
+`info` and `debug` use the regular background, `warn` uses a warning-colored border
+and tinted background, and `error` uses an error-colored border and tinted background.
+Colors come from the active theme and work in both light and dark modes. Unknown
+levels display as `info` while preserving the raw level label.
+
+Bubbles use generous padding, 24 px corners, and readable message text. A separate
+row below each bubble contains its timestamp, a direct copy-body button, and an
+options button. This row is hidden until the pointer is over the message or its
+controls, and it remains visible while its menu is open. Keyboard focus also reveals
+the controls. Its space is reserved so hovering does not move adjacent messages.
+
+The timestamp shows hours and minutes in the selected language, with the full date
+and time in its tooltip. The options menu offers copy JSON and shows the payload
+level, QoS, retained status, and newer-version marker. Both copy actions use the
+clipboard plugin and report success or failure through the snackbar.
 
 ### Composer
 
@@ -192,18 +223,18 @@ written and no component has to say so itself. Components use theme values throu
 
 ## Notifications
 
-A rule maps a topic filter to an OS notification.
+A rule matches an MQTT topic filter and a payload log level to an OS notification.
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
 | `id` | string | required | Unique within the config. The built-ins are `info`, `warn`, `error`. |
 | `topic` | string | required | MQTT topic filter, relative to `topics.prefix` unless `absolute` is true. `+` and `#` are allowed. |
 | `absolute` | boolean | false | |
-| `level` | string | `info` | The notification level, and the default `payload.level` when publishing to a matching topic. Level inference uses the first matching rule whether or not it is `enabled`, because `enabled` governs notifications rather than what a topic means. |
+| `level` | string | `info` | The `payload.level` to match. The topic never determines a message's level; publishing defaults to `info`. |
 | `enabled` | boolean | true | |
 | `title` | string | `{title|topic}` | Template. |
 | `body` | string | `{body}` | Template. |
-| `match` | object or null | null | Reserved for payload matching, such as `{ "level": "error" }`. Not implemented. |
+| `match` | object or null | null | Reserved for additional payload conditions. Not implemented. |
 
 ### Templates
 
@@ -217,8 +248,9 @@ empty string. There are no expressions.
    paused.
 2. Skip messages whose `sender.id` equals `device.id`, unless
    `notifications.notifyOwnMessages` is true.
-3. Check rules in config order and fire the first enabled rule whose filter matches
-   the topic.
+3. Read the payload level, defaulting to `info` for missing or unknown levels and raw
+   payloads. Check rules in config order and fire the first enabled rule matching both
+   the MQTT topic filter and payload level.
 4. Rate limit to one notification per rule per second. The next notification that rule
    raises carries the count that was held back, as "and N more messages".
 
@@ -234,9 +266,12 @@ When `notifications.rules` is absent, the three built-in rules apply:
 
 | id | topic | level |
 |----|-------|-------|
-| `info` | `info` | `info` |
-| `warn` | `warn` | `warn` |
-| `error` | `error` | `error` |
+| `info` | `#` | `info` |
+| `warn` | `#` | `warn` |
+| `error` | `#` | `error` |
+
+The default filters resolve to `hiveme/#`, which includes `hiveme` itself and its
+custom subtopics. `info`, `warn`, and `error` are rule IDs and payload levels.
 
 When the key is present, even as an empty array, only the listed rules apply. A user
 overrides a built-in by reusing its `id`.
@@ -258,9 +293,11 @@ still stored and shown.
 
 The manual checklist per OS:
 
-1. Publish to `<prefix>/info`, `<prefix>/warn`, and `<prefix>/error` with `hmc` from
-   another terminal, and see three notifications.
-2. Publish ten messages to one of them in a second, and see one notification that ends
+1. Publish to `hiveme` with `hmc --level info`, `hmc --level warn`, and
+   `hmc --level error` from another terminal, and see three notifications and three
+   message-box colors on the same topic. Confirm a fresh database opens with
+   `hiveme` selected and the composer ready when connected.
+2. Publish ten messages with the same level in a second, and see one notification that ends
    with "and N more messages".
 3. Turn the toolbar toggle on, publish again, and see nothing.
 4. Turn `notifications.enabled` off in Settings, wait for the automatic save, publish
@@ -310,11 +347,17 @@ links SQLite. The database runs in WAL mode.
   installation published has been seen by definition.
 - `raw` is the payload exactly as it arrived, which is what lets the view render every
   tier from the stored row without asking the broker again.
-- History is read a page at a time from the newest end and handed back oldest first.
-  The cursor is the row id, so paging upwards asks for what is `before` the oldest row
-  on screen.
-- Clearing a topic deletes its messages and keeps the node, because the user is still
-  subscribed to it and asked to forget the messages, not the topic.
+- History is filtered in SQL using `topics.topic`, joined to each message through
+  `messages.topic_id`. A selection includes the exact topic and all names starting
+  with that topic followed by `/`. The indexed BINARY range from `<topic>/`
+  (inclusive) to `<topic>0` (exclusive) implements the descendant prefix without
+  treating `%` or `_` as wildcards or ignoring case. No schema change is needed.
+- History is read a page at a time across the entire selected subtree, from the newest
+  end and handed back oldest first. The cursor is the row id, so paging upwards asks
+  for what is `before` the oldest row on screen, regardless of its child topic.
+- Clearing a topic deletes only messages stored directly on that topic and keeps the
+  node and descendant messages. Cached ancestor views are invalidated and the active
+  view is reloaded; stale pending pages cannot restore deleted messages.
 - Pruning runs at startup and every ten minutes, using
   `gui.history.maxMessagesPerTopic` and `gui.history.retentionDays`. Either limit set
   to 0 means no limit.
@@ -337,19 +380,19 @@ shows.
 
 | Command | Request | Response |
 |---------|---------|----------|
-| `clear_topic` | `{ "topic": "hiveme/info" }` | how many messages were deleted |
+| `clear_topic` | `{ "topic": "hiveme" }` | how many messages were deleted |
 | `connect` | none | `Status` |
 | `disconnect` | none | none |
 | `get_about` | none | `About` |
 | `get_broker_init` | none | the setup string for `hmc --init` |
 | `get_config` | none | the config, as `schemas/config.schema.json` describes it |
-| `get_messages` | `{ "topic": "hiveme/info", "before": 42, "limit": 200 }` | `MessageRow[]`, oldest first |
+| `get_messages` | `{ "topic": "hiveme", "before": 42, "limit": 200 }` | `MessageRow[]` for the topic and all descendants, oldest first |
 | `get_status` | none | `Status` |
 | `get_update_result` | none | `{ "hasUpdate": false, "latestVersion": null }`, or nothing while the check is still running |
 | `list_topics` | none | `TopicNode[]` |
-| `mark_read` | `{ "topic": "hiveme/info" }` | none |
+| `mark_read` | `{ "topic": "hiveme" }` | none; clears unread counts throughout the selected subtree |
 | `open_config_file` | none | none |
-| `publish` | `{ "topic": "hiveme/info", "body": "Build finished", "options": PublishOptions }` | the stored `MessageRow` |
+| `publish` | `{ "topic": "hiveme", "body": "Build finished", "options": PublishOptions }` | the stored `MessageRow` |
 | `set_config` | `{ "config": Config }` | the config as it was saved |
 | `set_notifications_paused` | `{ "paused": true }` | `Status` |
 | `skip_version` | `{ "version": "0.2.0" }` | none |
@@ -392,18 +435,20 @@ PublishOptions = { json?, qos?, retain?, title?, level? }
   events. `lastError` survives a recovery, so the reason a connection dropped, or the
   filter a credential may not subscribe to, stays readable. `configError` is set when
   the config file could not be read, which is why nothing is connected.
-- `TopicNode.topic` is set only on a node a message has been stored on. An
-  intermediate segment such as `hiveme/build` exists in the tree and cannot be
-  selected. `unread` and `messages` are rolled up, so a collapsed branch still shows
-  that something below it is unread.
+- The backend sets `TopicNode.topic` on every nonempty path, including intermediate
+  parents such as `hiveme/build`, to select that subtree. Only an empty leading path
+  segment has a null topic. The frontend merges in the always-selectable `hiveme`
+  root without creating a database row or duplicating an existing root. `unread`
+  and `messages` are rolled up, so a collapsed branch still shows that something
+  below it is unread.
 - `MessageRow.raw` is the payload as text, or as hex for the `bytes` tier, because a
   payload that is not valid UTF-8 cannot travel as JSON text. `rawLength` is the byte
   count. `src/lib/message.ts` reads `raw` again to render the envelope and the JSON
   tree, which is what keeps the two readers comparable.
 - `PublishOptions.json` publishes the body as a raw JSON payload with no envelope, as
   `hmc --json` does, and refuses input that is not JSON. An absent `qos` or `retain`
-  means the configured default, and an absent `level` means the level of the first
-  rule whose filter matches the topic.
+  means the configured default, and an absent `level` means `info`, independently of
+  the MQTT topic.
 
 ### Events
 
@@ -411,8 +456,8 @@ PublishOptions = { json?, qos?, retain?, title?, level? }
 |-------|---------|
 | `status` | `Status` |
 | `message` | `MessageRow` |
-| `topic-added` | `{ "topic": "hiveme/info" }` |
-| `notification-fired` | `{ "ruleId": "error", "messageId": "018f6b1e-...", "topic": "hiveme/error" }` |
+| `topic-added` | `{ "topic": "hiveme" }` |
+| `notification-fired` | `{ "ruleId": "error", "messageId": "018f6b1e-...", "topic": "hiveme" }` |
 
 A `message` event is emitted once per stored row, whether the message arrived or the
 composer sent it. The echo of a message this installation published raises no second
@@ -519,6 +564,14 @@ credentials. A failed save prevents copying an older setup string.
 window when the stored position is negative, shows the window, and starts the update
 check when it is due. `on_window_event` persists size and position on move and
 resize, ignoring minimized windows and sizes below 600 x 450.
+
+Closing the main window or quitting through the system menu first ends the MQTT
+connection and broker session. The event loop stays alive while cleanup runs, and
+repeated quit requests share that cleanup. New connections and publishes are blocked;
+startup and subscription waits are interrupted so their clients can disconnect.
+The application allows up to ten seconds, including a connection replacement already
+in progress, then exits even if the broker is unreachable. Cleanup failures are
+logged. See [hivemq-cloud.md](hivemq-cloud.md#disconnect-and-quit).
 
 ## Build and run
 

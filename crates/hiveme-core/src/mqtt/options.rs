@@ -19,7 +19,7 @@
 //!
 //! The session settings differ between the two applications, and that difference is
 //! the whole of [`Role`]: `hmc` is one publish and a goodbye, `hmg` keeps a session so
-//! that messages sent while it was closed are waiting when it opens. The scheme of the
+//! that messages sent during a network interruption can arrive on recovery. The scheme of the
 //! client identifiers is in `docs/specs/hivemq-cloud.md`.
 
 use std::time::Duration;
@@ -37,7 +37,7 @@ use super::tls;
 pub enum Role {
   /// `hmc`: a fresh session per run, no reconnect, no subscriptions.
   Cli,
-  /// `hmg`: a session that survives restarts, reconnecting for as long as it is open.
+  /// `hmg`: a session that survives network interruptions while the app is open.
   Gui,
 }
 

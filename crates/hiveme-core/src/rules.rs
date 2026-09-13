@@ -18,7 +18,7 @@
 //! The notification rule engine.
 //!
 //! Specified in `docs/specs/gui.md`. A rule maps a topic filter to an OS
-//! notification; the first enabled rule whose filter matches the topic wins.
+//! notification; the first enabled rule matching the MQTT topic and payload level wins.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -105,28 +105,12 @@ impl RuleEngine {
     &self.rules
   }
 
-  /// The first rule whose filter matches, whether or not it is enabled.
-  ///
-  /// `enabled` governs notifications, not what a topic means, so level inference uses
-  /// this and notification dispatch uses [`RuleEngine::matching_enabled`].
-  pub fn matching(&self, topic: &str) -> Option<&CompiledRule> {
+  /// The first enabled rule matching both the topic filter and payload level.
+  pub fn matching_enabled(&self, topic: &str, level: &Level) -> Option<&CompiledRule> {
     self
       .rules
       .iter()
-      .find(|rule| crate::topic::matches(&rule.filter, topic))
-  }
-
-  /// The first enabled rule whose filter matches.
-  pub fn matching_enabled(&self, topic: &str) -> Option<&CompiledRule> {
-    self
-      .rules
-      .iter()
-      .find(|rule| rule.enabled && crate::topic::matches(&rule.filter, topic))
-  }
-
-  /// The level `hmc` publishes with when the user does not pass `--level`.
-  pub fn level_for_topic(&self, topic: &str) -> Level {
-    self.matching(topic).map(|rule| rule.level.clone()).unwrap_or_default()
+      .find(|rule| rule.enabled && &rule.level == level && crate::topic::matches(&rule.filter, topic))
   }
 
   /// The notification a message raises, if any.
@@ -137,11 +121,15 @@ impl RuleEngine {
     if !self.notify_own_messages && self.is_own(parsed) {
       return None;
     }
-    let rule = self.matching_enabled(topic)?;
-    let context = Context::new(topic, parsed, &rule.level);
+    let level = parsed
+      .envelope()
+      .map(|message| message.level().displayed())
+      .unwrap_or_default();
+    let rule = self.matching_enabled(topic, &level)?;
+    let context = Context::new(topic, parsed, &level);
     Some(Notification {
       rule_id: rule.id.clone(),
-      level: rule.level.clone(),
+      level,
       title: render(&rule.title, &context),
       body: render(&rule.body, &context),
     })
@@ -333,7 +321,7 @@ mod tests {
   fn the_built_in_rules_match_the_prefixed_topics() {
     let engine = RuleEngine::from_config(&config());
     let filters: Vec<&str> = engine.rules().iter().map(|rule| rule.filter.as_str()).collect();
-    assert_eq!(filters, ["hiveme/info", "hiveme/warn", "hiveme/error"]);
+    assert_eq!(filters, ["hiveme/#", "hiveme/#", "hiveme/#"]);
   }
 
   #[test]
@@ -345,7 +333,7 @@ mod tests {
         id: "everything".to_owned(),
         topic: "#".to_owned(),
         absolute: false,
-        level: Level::Debug,
+        level: Level::Error,
         enabled: true,
         title: "{topic}".to_owned(),
         body: "{body}".to_owned(),
@@ -353,24 +341,39 @@ mod tests {
       },
     );
     let engine = RuleEngine::from_config(&config);
-    assert_eq!(engine.matching("hiveme/error").unwrap().id, "everything");
+    assert_eq!(
+      engine.matching_enabled("hiveme", &Level::Error).unwrap().id,
+      "everything"
+    );
+    assert_eq!(engine.matching_enabled("hiveme", &Level::Info).unwrap().id, "info");
   }
 
   #[test]
-  fn a_topic_with_no_rule_infers_info() {
+  fn notification_severity_comes_from_the_payload_on_every_topic() {
     let engine = RuleEngine::from_config(&config());
-    assert_eq!(engine.level_for_topic("hiveme/build"), Level::Info);
-    assert_eq!(engine.level_for_topic("hiveme/error"), Level::Error);
-    assert_eq!(engine.level_for_topic("hiveme/warn"), Level::Warn);
+    for topic in ["hiveme", "hiveme/build", "hiveme/info", "hiveme/warn", "hiveme/error"] {
+      for level in [Level::Info, Level::Warn, Level::Error] {
+        let parsed = Parsed::Envelope(Box::new(
+          Message::new_text(Sender::default(), "hello").with_level(level.clone()),
+        ));
+        let notification = engine.evaluate(topic, &parsed).unwrap();
+        assert_eq!(notification.rule_id, level.as_str());
+        assert_eq!(notification.level, level);
+      }
+    }
+    assert!(engine.evaluate("outside", &envelope("hello", None)).is_none());
   }
 
   #[test]
-  fn level_inference_ignores_whether_a_rule_is_enabled() {
+  fn disabling_a_rule_suppresses_only_its_payload_level() {
     let mut config = config();
     config.notifications.rules[2].enabled = false;
     let engine = RuleEngine::from_config(&config);
-    assert_eq!(engine.level_for_topic("hiveme/error"), Level::Error);
-    assert!(engine.evaluate("hiveme/error", &envelope("boom", None)).is_none());
+    let error = Parsed::Envelope(Box::new(
+      Message::new_text(Sender::default(), "boom").with_level(Level::Error),
+    ));
+    assert!(engine.evaluate("hiveme", &error).is_none());
+    assert!(engine.evaluate("hiveme", &envelope("hello", None)).is_some());
   }
 
   #[test]

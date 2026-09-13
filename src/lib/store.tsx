@@ -21,7 +21,7 @@
 import { create } from 'zustand';
 import * as Protocol from './protocol';
 import * as Service from './service';
-import { MESSAGE_PAGE_SIZE } from './constants';
+import { MESSAGE_PAGE_SIZE, STARTUP_TOPIC } from './constants';
 import type { DialogNotification } from './types';
 import { changeLanguage } from '../i18n';
 
@@ -49,7 +49,7 @@ interface AppState {
   topics: Protocol.TopicNode[];
   topicFilter: string;
   selectedTopic: string | null;
-  /** History per topic, oldest first, as the chat view reads it. */
+  /** History per selected subtree, oldest first, as the chat view reads it. */
   messages: Map<string, Protocol.MessageRow[]>;
   /** Topics whose history has been fetched at least once. */
   loadedTopics: Set<string>;
@@ -99,7 +99,19 @@ export function errorMessage(error: unknown): string {
   return String(error);
 }
 
+/** MQTT topic hierarchy is case sensitive and delimited by '/', never a bare prefix. */
+function belongsToTopic(topic: string, root: string): boolean {
+  return topic === root || topic.startsWith(root + '/');
+}
+
+/** Merge pages and live updates by database row id, preserving arrival order. */
+function mergeMessages(...groups: Protocol.MessageRow[][]): Protocol.MessageRow[] {
+  const rows = new Map(groups.flat().map((row) => [row.rowId, row]));
+  return [...rows.values()].sort((a, b) => a.rowId - b.rowId);
+}
+
 export const useAppStore = create<AppState>((set, get) => {
+  const historyRequests = new Map<string, symbol>();
   // Keep automatic saves outside the Settings component so closing its tab cannot
   // cancel an edit. One writer drains the newest snapshot after each pending write.
   let configSaveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -114,7 +126,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
     topics: [],
     topicFilter: '',
-    selectedTopic: null,
+    selectedTopic: STARTUP_TOPIC,
     messages: new Map(),
     loadedTopics: new Set(),
     loadingOlder: false,
@@ -231,11 +243,15 @@ export const useAppStore = create<AppState>((set, get) => {
       if (topic === null) {
         return;
       }
+      let request: symbol | undefined;
       try {
         if (!get().loadedTopics.has(topic)) {
+          request = Symbol(topic);
+          historyRequests.set(topic, request);
           const page = await Service.getMessages(topic, null, MESSAGE_PAGE_SIZE);
+          if (historyRequests.get(topic) !== request) return;
           const messages = new Map(get().messages);
-          messages.set(topic, page);
+          messages.set(topic, mergeMessages(page, messages.get(topic) ?? []));
           const loadedTopics = new Set(get().loadedTopics);
           loadedTopics.add(topic);
           const hasOlder = new Map(get().hasOlder);
@@ -246,6 +262,8 @@ export const useAppStore = create<AppState>((set, get) => {
         await get().refreshTopics();
       } catch (error) {
         get().notifyError(error);
+      } finally {
+        if (request && historyRequests.get(topic) === request) historyRequests.delete(topic);
       }
     },
 
@@ -259,16 +277,20 @@ export const useAppStore = create<AppState>((set, get) => {
         return;
       }
       set({ loadingOlder: true });
+      const request = Symbol(topic);
+      historyRequests.set(topic, request);
       try {
         const page = await Service.getMessages(topic, current[0].rowId, MESSAGE_PAGE_SIZE);
+        if (historyRequests.get(topic) !== request) return;
         const messages = new Map(get().messages);
-        messages.set(topic, [...page, ...(get().messages.get(topic) ?? [])]);
+        messages.set(topic, mergeMessages(page, get().messages.get(topic) ?? []));
         const hasOlder = new Map(get().hasOlder);
         hasOlder.set(topic, page.length >= MESSAGE_PAGE_SIZE);
         set({ messages, hasOlder });
       } catch (error) {
         get().notifyError(error);
       } finally {
+        if (historyRequests.get(topic) === request) historyRequests.delete(topic);
         set({ loadingOlder: false });
       }
     },
@@ -281,11 +303,22 @@ export const useAppStore = create<AppState>((set, get) => {
       try {
         await Service.clearTopic(topic);
         const messages = new Map(get().messages);
-        messages.set(topic, []);
         const hasOlder = new Map(get().hasOlder);
-        hasOlder.set(topic, false);
-        set({ messages, hasOlder });
-        await get().refreshTopics();
+        const loadedTopics = new Set(get().loadedTopics);
+        // Exact-topic clearing also changes cached ancestor views. Reload them from
+        // the database so descendants and pagination still reflect stored history.
+        for (const root of new Set([...messages.keys(), ...historyRequests.keys(), ...loadedTopics])) {
+          if (belongsToTopic(topic, root)) {
+            historyRequests.delete(root);
+            messages.delete(root);
+            hasOlder.delete(root);
+            loadedTopics.delete(root);
+          }
+        }
+        set({ messages, hasOlder, loadedTopics });
+        const selected = get().selectedTopic;
+        if (selected && belongsToTopic(topic, selected)) await get().selectTopic(selected);
+        else await get().refreshTopics();
       } catch (error) {
         get().notifyError(error);
       }
@@ -307,15 +340,15 @@ export const useAppStore = create<AppState>((set, get) => {
     // broker echoes back of something this installation sent never doubles the bubble.
     receiveMessage: (message) => {
       const state = get();
-      if (!state.loadedTopics.has(message.topic)) {
-        return;
-      }
-      const current = state.messages.get(message.topic) ?? [];
-      const index = current.findIndex((row) => row.rowId === message.rowId);
-      const next = index >= 0 ? current.map((row, at) => (at === index ? message : row)) : [...current, message];
       const messages = new Map(state.messages);
-      messages.set(message.topic, next);
-      set({ messages });
+      let changed = false;
+      for (const root of new Set([...state.loadedTopics, ...historyRequests.keys()])) {
+        if (belongsToTopic(message.topic, root)) {
+          messages.set(root, mergeMessages(messages.get(root) ?? [], [message]));
+          changed = true;
+        }
+      }
+      if (changed) set({ messages });
     },
 
     setStatus: (status) => set({ status }),

@@ -64,9 +64,8 @@ fn runtime() -> Result<tokio::runtime::Runtime, Failure> {
 
 /// Sends the `log` output to stderr, never to stdout.
 ///
-/// Without `--verbose` only warnings are shown, so a successful run writes nothing at
-/// all, and the one warning a user is likely to meet, an unencrypted broker URL, still
-/// reaches them. `RUST_LOG` overrides both.
+/// Without `--verbose` only warnings are logged; publish confirmation goes to stdout.
+/// An unencrypted broker URL still raises a warning. `RUST_LOG` overrides verbosity.
 fn init_logging(verbose: bool) {
   let default = if verbose { "debug" } else { "warn" };
   env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default))

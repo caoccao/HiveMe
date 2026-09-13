@@ -39,7 +39,7 @@ mod tls;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use rumqttc::Outgoing;
@@ -47,7 +47,7 @@ use rumqttc::v5::mqttbytes::QoS;
 use rumqttc::v5::mqttbytes::v5::{
   ConnectReturnCode, Filter, Packet, PubAckReason, Publish, PublishProperties, SubscribeReasonCode,
 };
-use rumqttc::v5::{AsyncClient, ConnectionError, Event, EventLoop};
+use rumqttc::v5::{AsyncClient, ConnectionError, Event, EventLoop, MqttOptions};
 use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
@@ -64,6 +64,9 @@ const SELF_SIGNED_ROOT_PEM: &str = include_str!("../../tests/fixtures/mqtt/root-
 
 /// How many requests may wait for the event loop.
 const REQUEST_CAPACITY: usize = 128;
+
+/// A graceful shutdown must not wait indefinitely for an unreachable broker.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// How many received messages may wait for the consumer.
 ///
@@ -305,6 +308,8 @@ pub struct MqttClient {
   inner: Arc<Inner>,
   incoming: Option<mpsc::Receiver<IncomingMessage>>,
   task: JoinHandle<()>,
+  /// A clean connection with the same identity discards a persistent broker session.
+  session_cleanup: Option<MqttOptions>,
 }
 
 impl MqttClient {
@@ -326,6 +331,21 @@ impl MqttClient {
   /// The integration tests use it to reach an anonymous local broker, which has no
   /// username and no password.
   pub async fn connect_unvalidated(config: &Config, role: Role) -> Result<Self> {
+    let client = Self::start_unvalidated(config, role)?;
+    client.wait_until_connected().await?;
+    Ok(client)
+  }
+
+  /// Starts connecting on the current Tokio runtime without waiting for CONNACK.
+  ///
+  /// The GUI keeps this handle while waiting so quitting can gracefully disconnect
+  /// even an initial connection that is still in progress.
+  pub fn start(config: &Config, role: Role) -> Result<Self> {
+    config.validate()?;
+    Self::start_unvalidated(config, role)
+  }
+
+  fn start_unvalidated(config: &Config, role: Role) -> Result<Self> {
     let connection = options::build(config, role)?;
     let connect_timeout = connection.connect_timeout;
     log::debug!(
@@ -348,18 +368,29 @@ impl MqttClient {
       publish_timeout: Duration::from_secs(config.publish.timeout_secs.max(1)),
       connect_timeout,
       dropped: AtomicU64::new(0),
+      disconnected_cleanly: AtomicBool::new(false),
     });
 
     let backoff = Backoff::from_config(&config.broker.reconnect);
     let task = tokio::spawn(run(Arc::clone(&inner), eventloop, incoming_tx, role, backoff));
 
-    let client = Self {
+    let session_cleanup = (role.session_expiry_secs(config) > 0).then(|| {
+      let mut options = connection.options;
+      options.set_clean_start(true);
+      options.set_session_expiry_interval(Some(0));
+      options
+    });
+    Ok(Self {
+      session_cleanup,
       inner,
       incoming: Some(incoming_rx),
       task,
-    };
-    client.await_first_connection(connect_timeout).await?;
-    Ok(client)
+    })
+  }
+
+  /// Waits for a started client to receive CONNACK, fail, or reach its connection timeout.
+  pub async fn wait_until_connected(&self) -> Result<()> {
+    self.await_first_connection(self.inner.connect_timeout).await
   }
 
   /// Blocks until the first CONNACK, a terminal failure, or the timeout.
@@ -542,27 +573,86 @@ impl MqttClient {
       .collect()
   }
 
-  /// Sends DISCONNECT and waits for the event loop to stop.
+  /// Sends DISCONNECT and waits for it to leave the socket, with a bounded wait.
   ///
-  /// A broker releases the session of a client that says goodbye straight away, so
-  /// `hmc` calling this is what lets the next run reconnect without waiting.
+  /// The broker keeps a GUI session for its configured expiry. Use
+  /// [`Self::end_session`] when quitting to discard that session as well.
   pub async fn disconnect(&self) -> Result<()> {
-    if let Err(source) = self.inner.client.disconnect().await {
-      log::debug!("the disconnect request could not be queued: {source}");
-    }
     let mut status = self.inner.status.subscribe();
-    let _ = tokio::time::timeout(self.inner.connect_timeout, async {
+    if status.borrow().state == State::Disconnected {
+      return Ok(());
+    }
+    let result = tokio::time::timeout(self.inner.connect_timeout.min(SHUTDOWN_TIMEOUT), async {
+      self
+        .inner
+        .client
+        .disconnect()
+        .await
+        .map_err(|source| Error::ClientStopped(source.to_string()))?;
       loop {
-        if status.borrow_and_update().state == State::Disconnected {
-          return;
+        let snapshot = status.borrow_and_update().clone();
+        if snapshot.state == State::Disconnected {
+          return if self.inner.disconnected_cleanly.load(Ordering::SeqCst) {
+            Ok(())
+          } else {
+            Err(Error::ConnectionLost(
+              snapshot
+                .last_error
+                .unwrap_or_else(|| "the connection stopped during disconnect".to_owned()),
+            ))
+          };
         }
-        if status.changed().await.is_err() {
-          return;
-        }
+        status
+          .changed()
+          .await
+          .map_err(|_| Error::ClientStopped("the event loop stopped during disconnect".to_owned()))?;
       }
     })
-    .await;
-    Ok(())
+    .await
+    .unwrap_or_else(|_| Err(Error::ClientStopped("the MQTT disconnect timed out".to_owned())));
+    if result.is_err() {
+      self.abort();
+    }
+    result
+  }
+
+  /// Disconnects and discards the broker's subscriptions and queued session messages.
+  ///
+  /// rumqttc 0.25 cannot put a session-expiry property on DISCONNECT. After closing
+  /// the live connection, a short clean-start connection with the same identity and
+  /// zero expiry clears the session, then sends its own DISCONNECT. No subscriptions
+  /// or publishes are made on that connection. Network recovery keeps the configured
+  /// expiry; only this explicit shutdown path discards the session.
+  pub async fn end_session(&self) -> Result<()> {
+    let result = tokio::time::timeout(SHUTDOWN_TIMEOUT, async {
+      let goodbye = self.disconnect().await;
+      if let Some(options) = &self.session_cleanup {
+        let (client, mut eventloop) = AsyncClient::new(options.clone(), 1);
+        loop {
+          match eventloop
+            .poll()
+            .await
+            .map_err(|error| Error::Connect(describe(&error)))?
+          {
+            Event::Incoming(Packet::ConnAck(_)) => {
+              client
+                .disconnect()
+                .await
+                .map_err(|source| Error::ClientStopped(source.to_string()))?;
+            }
+            Event::Outgoing(Outgoing::Disconnect) => return Ok(()),
+            _ => {}
+          }
+        }
+      }
+      goodbye
+    })
+    .await
+    .unwrap_or_else(|_| Err(Error::ClientStopped("the MQTT session cleanup timed out".to_owned())));
+    if result.is_err() {
+      self.abort();
+    }
+    result
   }
 
   /// Stops the event loop at once, without saying goodbye to the broker.
@@ -571,6 +661,7 @@ impl MqttClient {
   /// given up on the connection. Dropping the client does the same thing.
   pub fn abort(&self) {
     self.task.abort();
+    self.inner.set_disconnected(Some("the client was stopped".to_owned()));
     // The task cannot run its own cleanup once it is aborted, so anyone waiting for an
     // acknowledgement is told now rather than left until their timeout.
     self
@@ -617,6 +708,7 @@ struct Inner {
   publish_timeout: Duration,
   connect_timeout: Duration,
   dropped: AtomicU64,
+  disconnected_cleanly: AtomicBool,
 }
 
 impl Inner {
@@ -889,7 +981,10 @@ fn handle(inner: &Arc<Inner>, incoming: &mpsc::Sender<IncomingMessage>, event: E
         pending.subscribe_acks.insert(pkid, waiter);
       }
     }
-    Event::Outgoing(Outgoing::Disconnect) => return true,
+    Event::Outgoing(Outgoing::Disconnect) => {
+      inner.disconnected_cleanly.store(true, Ordering::SeqCst);
+      return true;
+    }
     _ => {}
   }
   false

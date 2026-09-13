@@ -116,7 +116,7 @@ fn the_documented_defaults_are_the_real_defaults() {
   assert_eq!(config.broker.reconnect.initial_delay_ms, 1_000);
   assert_eq!(config.broker.reconnect.max_delay_ms, 30_000);
   assert_eq!(config.topics.prefix, "hiveme");
-  assert_eq!(config.topics.default, "info");
+  assert!(serde_json::to_value(&config.topics).unwrap().get("default").is_none());
   assert_eq!(
     config.topics.subscriptions,
     vec![Subscription::Relative("#".to_owned())]
@@ -353,9 +353,9 @@ fn every_validation_rule_rejects_its_own_mistake() {
       "topics.prefix",
     ),
     case(
-      "a wildcard in the default topic",
-      |c: &mut Config| c.topics.default = "info/#".to_owned(),
-      "topics.default",
+      "a wildcard in the prefix",
+      |c: &mut Config| c.topics.prefix = "hiveme/#".to_owned(),
+      "topics.prefix",
     ),
     case(
       "no subscriptions",
@@ -434,9 +434,11 @@ fn every_validation_rule_rejects_its_own_mistake() {
   {
     let mut config = valid();
     break_it(&mut config);
-    let error = config.validate().unwrap_err();
-    let text = error.to_string();
-    assert!(text.contains(expected), "{what}: '{text}' should mention '{expected}'");
+    temporarily_set(PASSWORD_VARIABLE, None, || {
+      let error = config.validate().expect_err(what);
+      let text = error.to_string();
+      assert!(text.contains(expected), "{what}: '{text}' should mention '{expected}'");
+    });
   }
 }
 
@@ -551,10 +553,28 @@ fn a_redacted_config_hides_every_secret() {
 #[test]
 fn topics_resolve_against_the_prefix() {
   let config = valid();
-  assert_eq!(config.default_topic(), "hiveme/info");
+  assert_eq!(config.default_topic(), "hiveme");
   assert_eq!(config.resolve_topic("build/done", false), "hiveme/build/done");
   assert_eq!(config.resolve_topic("$SYS/uptime", true), "$SYS/uptime");
   assert_eq!(config.subscription_filters(), vec!["hiveme/#".to_owned()]);
+}
+
+#[test]
+fn an_empty_prefix_allows_explicit_topics_at_the_root() {
+  let mut config = valid();
+  config.topics.prefix.clear();
+  assert!(config.validate().is_ok());
+  assert_eq!(config.resolve_topic("custom", false), "custom");
+}
+
+#[test]
+fn unknown_topic_fields_cannot_redirect_the_default_publish_topic() {
+  let config: Config = serde_json::from_value(serde_json::json!({
+    "topics": { "prefix": "hiveme", "default": "info" }
+  }))
+  .unwrap();
+  assert_eq!(config.default_topic(), "hiveme");
+  assert!(serde_json::to_value(&config.topics).unwrap().get("default").is_none());
 }
 
 #[test]

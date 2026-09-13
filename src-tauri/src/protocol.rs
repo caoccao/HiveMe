@@ -132,15 +132,15 @@ impl Status {
 /// One node of the topic tree.
 ///
 /// The tree is built from the stored topics by splitting on `/`, so a node exists for
-/// every segment even when no message ever arrived on it. `topic` is set only on the
-/// nodes that are real topics, and only those can be selected.
+/// every segment even when no message ever arrived on it. Every nonempty path has a
+/// `topic` and selects its full subtree. An empty leading segment is only a group.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TopicNode {
   /// The full path of this node, which is what the tree view uses as its item id.
   pub id: String,
   /// The last segment, which is what the node shows.
   pub label: String,
-  /// The topic this node stands for, when a message has been stored on it.
+  /// The selected subtree root; None only for an empty leading segment.
   pub topic: Option<String>,
   /// Unread messages here and everywhere below.
   pub unread: u32,

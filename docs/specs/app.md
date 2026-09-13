@@ -1,6 +1,6 @@
 # App
 
-HiveMe, short for HiveMQ Messager, is a Rust project with two applications built on
+HiveMe is a Rust project with two applications built on
 top of MQTT, sharing one config file and one message format.
 
 1. **HiveMe CLI** (`hmc`) sends a message to the broker from a shell or a script.
@@ -40,26 +40,30 @@ Full reference in [cli.md](cli.md).
 
 `hmg` uses Tauri and React. The main window has a toolbar at the top, a status bar in
 the footer, a topic tree on the left, and a message view on the right. The message
-view is a chat: bubbles for the selected topic, with an input box and a send button at
+view is a chat: bubbles for the selected topic and its recursive children, with an input box and a send button at
 the bottom.
 
 The rule based notification system ships with three built-in rules:
 
-| Topic | Notification |
+| Payload level | Notification |
 |-------|--------------|
 | `info` | info message |
 | `warn` | warning message |
 | `error` | error message |
 
-Rules are configurable. Full reference in [gui.md](gui.md).
+Rules are configurable. On every startup, hmg shows, selects, and highlights `hiveme`,
+even with an empty database or a custom topic prefix. Message boxes use regular
+colors for `info`, warning colors for `warn`, and error colors for `error`.
+Full reference in [gui.md](gui.md).
 
 ## Topics
 
-Topics are namespaced under a configurable prefix, `hiveme` by default. The built-in
-rules therefore match `hiveme/info`, `hiveme/warn`, and `hiveme/error`, and `hmc`
-publishes to `hiveme/info` when no topic is given. Setting `topics.prefix` to an empty
-string puts the topics at the root instead. Topic arguments and rule filters are
-relative to the prefix unless explicitly marked absolute. See
+Topics are namespaced under a configurable prefix, `hiveme` by default. All log levels
+publish to `hiveme` by default; severity lives in `payload.level`, independently of
+the MQTT topic. The built-in notification rules match `hiveme/#` and filter by payload
+level. Custom topics remain supported. Topic arguments and rule filters are relative
+to the prefix unless explicitly marked absolute. Without an explicit topic, hmc
+always publishes to the prefix itself; this is not configurable. See
 [config.md](config.md#topic-resolution).
 
 ## Authentication
@@ -83,13 +87,13 @@ revises them.
 | 3 | Producers and GUI strictness | Producers are the HiveMe tools plus the user's own scripts. The GUI is lenient: it parses the envelope when valid and otherwise shows the raw payload. |
 | 4 | Encryption key model | A symmetric pre-shared key, AES-256-GCM, HKDF derived, with a key id for rotation. Designed now, implemented in phase 6. |
 | 5 | Profiles | One `broker` object. The config is versioned so a `profiles` map can be added later. |
-| 6 | Topic layout | A configurable prefix, `hiveme` by default, with a configurable default topic. |
+| 6 | Topic layout | A configurable prefix, `hiveme` by default. Publishing without an explicit topic always uses the prefix itself. |
 | 7 | Message history | Persisted in SQLite next to the config, bounded per topic and by retention days. |
 | 8 | Notification rules | Configurable, with the three built-in rules as defaults. |
 | 9 | Schema source of truth | Rust types with `serde` and `schemars` generate the JSON schemas. Tests fail when the committed schemas are stale. TypeScript types are generated from those schemas. |
 | 10 | Spec files | Split by concern, as listed above. |
 | 11 | Frontend stack | Vite, React 19, TypeScript, MUI with `@mui/x-tree-view`, Zustand, react-i18next, pnpm. |
-| 12 | Tests and CI | Integration tests against a local HiveMQ CE container, skipped without Docker. One GitHub Actions build workflow per OS. |
+| 12 | Tests and CI | Broker integration tests against HiveMQ CE. A native hmc-to-hmg end-to-end test requires Docker and WebDriver and fails if unavailable; Linux CI runs it under Xvfb. One GitHub Actions build workflow per OS. |
 | 13 | CLI scope for phase 1 | Message argument, `-t`, stdin, and `--json`. No subcommands. |
 | 14 | MQTT version | MQTT 5, through `rumqttc`. |
 | 15 | GUI publishing | Inside the message view, chat style, with an input box and a send button at the bottom. |
@@ -203,22 +207,29 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Specifications split by concern | all | `docs/specs` | 0.1 | done |
 | Workspace, conventions, toolchain | [app.md](#repository-layout) | root | 0.2 | done |
 | Build workflows | [app.md](#build-and-release) | `.github/workflows` | 0.3 | done |
-| Config load, save, migrate | [config.md](config.md) | `hiveme-core::config` | 1.1 | done |
+| Config load, save, and compatibility | [config.md](config.md) | `hiveme-core::config` | 1.1 | done |
 | Shared config initialization with unchanged, updated, and created outcomes | [config.md](config.md#the-setup-string), [cli.md](cli.md#setting-up) | `hiveme-core::config::ConfigFile::initialize`, `crates/hmc` | 3.1 | done |
 | Message envelope and parser | [message.md](message.md) | `hiveme-core::message` | 1.2 | done |
-| Topic resolution and filters | [config.md](config.md#topic-resolution) | `hiveme-core::topic` | 1.3 | done |
+| Fixed default publishing to the prefix; explicit topics and filters | [config.md](config.md#topic-resolution) | `hiveme-core::topic` | 1.3 | done |
 | Notification rule engine | [gui.md](gui.md#notifications) | `hiveme-core::rules` | 1.3 | done |
 | Schema and spec tooling | [app.md](#spec-sync) | `xtask`, `scripts` | 1.4 | done |
 | MQTT client | [hivemq-cloud.md](hivemq-cloud.md#how-hiveme-connects) | `hiveme-core::mqtt` | 2.1 | done |
 | CLI | [cli.md](cli.md) | `crates/hmc` | 3.1 | done |
+| CLI confirmation after a successful publish | [cli.md](cli.md#output) | `crates/hmc/src/run.rs` | 3.1 | done |
+| Graceful GUI quit with MQTT session cleanup | [hivemq-cloud.md](hivemq-cloud.md#disconnect-and-quit), [gui.md](gui.md#window) | `hiveme-core::mqtt`, `src-tauri/src/window.rs` | 4.3 | done |
 | Tauri scaffold | [gui.md](gui.md#build-and-run) | `src-tauri`, `src` | 4.1 | done |
 | Message storage | [gui.md](gui.md#storage) | `hiveme-core::storage` | 4.2 | done |
 | Backend commands and events | [gui.md](gui.md#ipc) | `src-tauri` | 4.3 | done |
+| Payload levels independent of MQTT topics; message-box severity colors | [gui.md](gui.md#message-view), [cli.md](cli.md#the-message) | `hiveme-core::rules`, `crates/hmc`, `src/components/MessageView.tsx` | 4.4 | done |
+| Recursive topic selection with database filtering, shared pagination, and live descendant updates | [gui.md](gui.md#storage) | `hiveme-core::storage`, `src/lib/store.tsx`, `src-tauri/src/controller.rs` | 4.4 | done |
+| Rounded message bubbles with hover controls and direct copy | [gui.md](gui.md#message-view) | `src/components/MessageView.tsx` | 4.4 | done |
+| Always-visible, selected startup topic `hiveme`; label selection independent of icon expansion | [gui.md](gui.md#topic-tree) | `src/components/TopicTree.tsx`, `src/lib/store.tsx` | 4.4 | done |
 | Messages tab | [gui.md](gui.md#layout) | `src/components` | 4.4 | done |
 | Settings tab opening on Appearance, with immediate changes and automatic saving | [gui.md](gui.md#settings) | `src/components/Config.tsx`, `src/lib/store.tsx` | 4.5 | done |
 | Copy CLI setup command, ready to paste and run | [gui.md](gui.md#copy-cli-setup) | `src/components/Config.tsx` | 4.5 | done |
 | OS notifications | [gui.md](gui.md#notifications) | `src-tauri/notification.rs` | 4.6 | done |
 | Update check and packaging | [app.md](#install) | `src-tauri/update.rs` | 5.1 | done |
+| Native hmc-to-hmg end-to-end regression | [development.md](../development.md#native-end-to-end-test) | `scripts/ts/test-e2e.ts`, Linux CI | 5.2 | done |
 | Documentation and onboarding | [README](../../README.md) | `README.md`, `docs/` | 5.2 | done, except the screenshots |
 | Encryption | [message.md](message.md#encryption) | `hiveme-core::crypto` | 6 | designed, types and parsing in place |
 | REST API client | [hivemq-cloud.md](hivemq-cloud.md#rest-api) | `hiveme-core::cloud` | 6 | designed |
@@ -306,7 +317,7 @@ Recorded so the plan and the tree can be reconciled later.
 2. Every repository script is Deno TypeScript under `scripts/ts/`, so that the
    project stays cross platform. The plan wrote `scripts/check-spec-sync.sh`; there
    are no shell scripts. The set is `check-license-headers.ts`, `check-spec-sync.ts`,
-   `gen-types.ts`, and `change-version.ts`, plus the `scripts/license-header.txt`
+   `gen-types.ts`, `change-version.ts`, and `test-e2e.ts`, plus the `scripts/license-header.txt`
    template. The `cargo xtask` alias needs `.cargo/config.toml`, and
    `schemas/README.md` keeps the generated directory present in a fresh clone.
 3. Resolved in step 4.1: the workflows build and upload the bundles unconditionally.

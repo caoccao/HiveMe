@@ -8,6 +8,6 @@
     "password": "secret",
     "futureBrokerKey": ["a"]
   },
-  "topics": { "prefix": "hiveme", "default": "info", "subscriptions": ["#"] },
+  "topics": { "prefix": "hiveme", "subscriptions": ["#"] },
   "notifications": { "futureNotificationKey": null }
 }

@@ -453,7 +453,7 @@ hmc: connection:",
 fn an_unencrypted_broker_warns_even_without_verbose() {
   let (_directory, path) = scratch();
   write(&path, &usable());
-  // A successful run over TLS prints nothing, but a password about to cross the
+  // A successful run over TLS has no warnings, but a password about to cross the
   // network in the clear is worth a line whether or not anyone asked for one.
   hmc()
     .arg("--config")

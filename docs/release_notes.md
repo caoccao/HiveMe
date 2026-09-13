@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+* Added a native end-to-end test covering CLI confirmation, MQTT topics and payload
+  levels, GUI rendering and sending, settings, tree expansion, and SQLite history
+  after restart. Linux CI runs it with a real local broker and WebDriver.
+
+* Topic labels select messages without expanding or collapsing children. Only the
+  icon to the left toggles expansion.
+
+* Removed the default-topic setting from the shared config and settings UI. Without
+  an explicit topic, hmc always publishes to the prefix itself (`hiveme` by default).
+
+* Selecting a topic now shows its direct messages and every recursive child topic.
+  Parent paths without direct messages are selectable. History is filtered in SQL,
+  paginated across the subtree, and updated live as descendant messages arrive.
+  Selecting a parent also clears its descendants' unread counts.
+
+* hmg now disconnects MQTT and ends its broker session before quitting. Startup and
+  reconnection cannot keep the application alive indefinitely when the broker is
+  unreachable. Explicit disconnect and connection replacement also end the session.
+* hmc now prints `Message sent to <topic>.` after a successful publish, including
+  the resolved topic. Failed publishes do not print a success message.
+
+* Restyled messages with rounded bubbles and more padding. Timestamps, direct copy,
+  and options appear below the bubble on hover or keyboard focus, without shifting
+  the layout. Payload level and delivery details are available in the options menu.
+
+* All log levels now publish to `hiveme` by default and remain in the JSON payload.
+  Notification rules match both the MQTT topic and payload level. Message boxes use
+  regular colors for info, warning colors for warn, and error colors for error.
+* hmg always shows, selects, and highlights `hiveme` at startup, even without history,
+  while disconnected, or with a custom topic prefix. Existing history keeps its original
+  topic paths. No config or history migration was added.
+
 * Moved CLI config initialization into the shared Rust config library. Matching
   setup values leave the existing file untouched; changed values update only those
   fields and preserve other settings. New files include the complete shared defaults.
@@ -44,7 +76,7 @@
   jitter that sends the subscriptions again when the broker has forgotten the session.
 * Added `hmc`, the command line publisher: a message from an argument or from stdin, a
   topic relative to the configured prefix or absolute, `--json` for a payload HiveMe
-  does not shape, a level inferred from the notification rule that matches the topic,
+  does not shape, a payload level independent of the topic,
   and an exit code per kind of failure so a script can tell a wrong password from an
   unacknowledged message. A first run with no config writes one and says where.
 * Made `hmg` the one place a HiveMQ Cloud cluster is set up. Its Settings tab will show

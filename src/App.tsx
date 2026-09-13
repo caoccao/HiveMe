@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Box, CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import { listen } from '@tauri-apps/api/event';
 import * as Protocol from './lib/protocol';
+import { STARTUP_TOPIC } from './lib/constants';
 import { useAppStore } from './lib/store';
 import { changeLanguage } from './i18n';
 import Layout from './components/Layout';
@@ -61,6 +62,7 @@ function App() {
   const initAbout = useAppStore((state) => state.initAbout);
   const initStatus = useAppStore((state) => state.initStatus);
   const refreshTopics = useAppStore((state) => state.refreshTopics);
+  const selectTopic = useAppStore((state) => state.selectTopic);
   const receiveMessage = useAppStore((state) => state.receiveMessage);
   const setStatus = useAppStore((state) => state.setStatus);
 
@@ -73,7 +75,8 @@ function App() {
     initAbout();
     initStatus();
     refreshTopics();
-  }, [initConfig, initAbout, initStatus, refreshTopics]);
+    void selectTopic(STARTUP_TOPIC);
+  }, [initConfig, initAbout, initStatus, refreshTopics, selectTopic]);
 
   useEffect(() => {
     void changeLanguage(language);

@@ -53,6 +53,7 @@ const topics: Protocol.TopicNode[] = [
 ];
 
 let backendConfig: Protocol.Config;
+let backendTopics: Protocol.TopicNode[];
 let failSave = false;
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -69,7 +70,7 @@ vi.mock('@tauri-apps/api/core', () => ({
       case 'get_status':
         return { ...INITIAL_STATUS, state: 'Connected', host: 'abc.s1.eu.hivemq.cloud', port: 8883 };
       case 'list_topics':
-        return topics;
+        return backendTopics;
       case 'get_messages':
         return [];
       case 'get_update_result':
@@ -87,6 +88,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   failSave = false;
+  backendTopics = topics;
   backendConfig = { version: 1, broker: {}, topics: { prefix: 'hiveme' }, gui: { language: 'en-US' } };
   useAppStore.setState({
     config: null,
@@ -94,6 +96,10 @@ beforeEach(() => {
     status: INITIAL_STATUS,
     topics: [],
     selectedTopic: null,
+    topicFilter: '',
+    messages: new Map(),
+    loadedTopics: new Set(),
+    hasOlder: new Map(),
     tabAboutStatus: Protocol.ControlStatus.Hidden,
     tabSettingsStatus: Protocol.ControlStatus.Hidden,
   });
@@ -125,10 +131,31 @@ describe('the application window', () => {
   it('shows the topic tree and the status bar the backend described', async () => {
     render(<App />);
 
-    expect(await screen.findByText('hiveme')).toBeInTheDocument();
-    expect(screen.getByText('info')).toBeInTheDocument();
+    expect(await screen.findByText('info')).toBeInTheDocument();
     expect(screen.getByText('abc.s1.eu.hivemq.cloud:8883')).toBeInTheDocument();
-    expect(screen.getByText(/Select a topic/)).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: /^hiveme/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByText(/Select a topic/)).not.toBeInTheDocument();
+  });
+
+  it('opens on hiveme with an empty database even when the topic prefix is customized', async () => {
+    backendTopics = [];
+    backendConfig.topics = { prefix: 'team' };
+    useAppStore.setState({ selectedTopic: 'team/build' });
+    render(<App />);
+
+    await waitFor(() => expect(useAppStore.getState().status.state).toBe('Connected'));
+    expect(useAppStore.getState().selectedTopic).toBe('hiveme');
+    const startup = screen.getByRole('treeitem', { name: 'hiveme' });
+    expect(startup).toHaveAttribute('aria-selected', 'true');
+    expect(startup.querySelector('.MuiTreeItem-content')).toHaveAttribute('data-selected');
+    expect(invoke).toHaveBeenCalledWith('get_messages', expect.objectContaining({ topic: 'hiveme' }));
+    const composer = screen.getByRole('textbox', { name: i18n.t('composer.placeholder') });
+    expect(composer).toBeEnabled();
+    await userEvent.type(composer, 'Ready to send');
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
+
+    await useAppStore.getState().clearSelectedTopic();
+    expect(screen.getByRole('treeitem', { name: 'hiveme' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it.each(Protocol.LANGUAGES)('loads the saved %s language throughout the window', async (language) => {

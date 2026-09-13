@@ -15,12 +15,22 @@
 * limitations under the License.
 */
 
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import { changeLanguage } from '../i18n';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { ThemeProvider, alpha, createTheme } from '@mui/material/styles';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import i18n, { changeLanguage } from '../i18n';
+import { useAppStore } from '../lib/store';
 import type { MessageRow } from '../lib/protocol';
 import { Tier } from '../lib/protocol';
 import { Bubble, JsonTree } from './MessageView';
+
+vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({ writeText: vi.fn(async () => undefined) }));
+beforeEach(() => vi.clearAllMocks());
+
+function openDetails() {
+  fireEvent.click(screen.getByLabelText(i18n.t('messages.actions')));
+}
 
 function row(overrides: Partial<MessageRow> = {}): MessageRow {
   const raw = JSON.stringify({
@@ -33,7 +43,7 @@ function row(overrides: Partial<MessageRow> = {}): MessageRow {
   });
   return {
     rowId: 1,
-    topic: 'hiveme/info',
+    topic: 'hiveme',
     id: 'msg-1',
     ts: '2026-09-12T09:41:23.512Z',
     receivedTs: '2026-09-12T09:41:23.512Z',
@@ -72,11 +82,41 @@ describe('bubble alignment', () => {
   });
 });
 
+describe('message severity colors', () => {
+  it.each(['light', 'dark'] as const)('colors the whole bubble by payload level in %s mode', (mode) => {
+    const theme = createTheme({ palette: { mode } });
+    render(
+      <ThemeProvider theme={theme}>
+        {['info', 'warn', 'error', 'debug'].flatMap((level) => [false, true].map((outgoing) => (
+          <Bubble key={`${level}-${outgoing}`} row={row({ level, outgoing })} />
+        )))}
+      </ThemeProvider>
+    );
+    const bubbles = screen.getAllByRole('article').map((article) => article.querySelector('.message-bubble')!);
+    for (const index of [0, 6]) {
+      expect(bubbles[index]).toHaveStyle({ backgroundColor: theme.palette.action.hover });
+      expect(bubbles[index + 1]).toHaveStyle({
+        backgroundColor: mode === 'dark' ? theme.palette.grey[800] : theme.palette.common.black,
+        color: theme.palette.common.white,
+      });
+    }
+    for (const [index, severity] of [[2, 'warning'], [4, 'error']] as const) {
+      for (const bubble of bubbles.slice(index, index + 2)) {
+        expect(bubble).toHaveStyle({
+          backgroundColor: alpha(theme.palette[severity].main, mode === 'dark' ? 0.24 : 0.12),
+          borderColor: theme.palette[severity].main,
+        });
+      }
+    }
+  });
+});
+
 describe('the tiers', () => {
   it('renders an envelope with its title, body, and level', () => {
     render(<Bubble row={row()} />);
     expect(screen.getByText('CI')).toBeInTheDocument();
     expect(screen.getByText('Build finished')).toBeInTheDocument();
+    openDetails();
     expect(screen.getByText('info')).toBeInTheDocument();
   });
 
@@ -88,6 +128,7 @@ describe('the tiers', () => {
       payload: { body: 'from a newer writer', level: 'catastrophe' },
     });
     render(<Bubble row={row({ raw, rawLength: raw.length, level: 'catastrophe', title: null })} />);
+    openDetails();
     expect(screen.getByText('catastrophe (info)')).toBeInTheDocument();
   });
 
@@ -99,6 +140,7 @@ describe('the tiers', () => {
       payload: { body: 'written by a future HiveMe' },
     });
     render(<Bubble row={row({ raw, rawLength: raw.length, title: null })} />);
+    openDetails();
     expect(screen.getByText('newer version')).toBeInTheDocument();
   });
 
@@ -130,6 +172,7 @@ describe('the tiers', () => {
     });
     render(<Bubble row={row({ raw, body: 'encrypted (key key-42)', level: 'warn' })} />);
     expect(screen.getByText('verschlüsselt (Schlüssel key-42)')).toBeInTheDocument();
+    openDetails();
     expect(screen.getByText('Warnung')).toBeInTheDocument();
     expect(screen.queryByText('encrypted (key key-42)')).not.toBeInTheDocument();
     expect(screen.queryByText('Ignore plaintext when encryption is present')).not.toBeInTheDocument();
@@ -139,6 +182,7 @@ describe('the tiers', () => {
     await changeLanguage('ja');
     render(<Bubble row={row({ tier: Tier.Text, raw: 'Original text', level: 'custom-level' })} />);
     expect(screen.getByText('Original text')).toBeInTheDocument();
+    openDetails();
     expect(screen.getByText('custom-level（情報）')).toBeInTheDocument();
   });
 
@@ -151,7 +195,48 @@ describe('the tiers', () => {
   it('marks a retained message', () => {
     render(<Bubble row={row({ retain: true })} />);
     expect(screen.getByLabelText('Message actions')).toBeInTheDocument();
+    openDetails();
     expect(screen.getByTestId('PushPinIcon')).toBeInTheDocument();
+  });
+});
+
+describe('message controls', () => {
+  it('keeps time and actions outside the bubble and hidden at rest', () => {
+    render(<Bubble row={row()} />);
+    const article = screen.getByRole('article');
+    const controls = article.querySelector('.message-controls');
+    expect(controls).toHaveStyle({ opacity: 0, pointerEvents: 'none' });
+    expect(controls).toContainElement(article.querySelector('time'));
+    expect(controls).toContainElement(screen.getByLabelText('Copy body'));
+    expect(article.querySelector('.message-bubble')).not.toContainElement(article.querySelector('time'));
+    expect(screen.queryByText('QoS 1')).not.toBeInTheDocument();
+  });
+
+  it('copies the body directly and reports success', async () => {
+    const message = row({ body: 'Original text\nwith a second line' });
+    render(<Bubble row={message} />);
+    fireEvent.click(screen.getByLabelText('Copy body'));
+    await waitFor(() => expect(writeText).toHaveBeenCalledExactlyOnceWith(message.body));
+    expect(useAppStore.getState().dialogNotification?.title).toBe(i18n.t('messages.copiedBody'));
+  });
+
+  it('keeps controls visible while the menu is open and copies the original JSON', async () => {
+    const message = row({ retain: true });
+    render(<Bubble row={message} />);
+    openDetails();
+    expect(document.querySelector('.message-controls')).toHaveStyle({ opacity: 1, pointerEvents: 'auto' });
+    expect(screen.getByText('QoS 1')).toBeInTheDocument();
+    expect(screen.getByText('Retained by the broker')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy JSON' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledExactlyOnceWith(message.raw));
+  });
+
+  it('reports a clipboard failure without changing the message', async () => {
+    vi.mocked(writeText).mockRejectedValueOnce(new Error('Clipboard unavailable'));
+    render(<Bubble row={row()} />);
+    fireEvent.click(screen.getByLabelText('Copy body'));
+    await waitFor(() => expect(useAppStore.getState().dialogNotification?.title).toBe('Clipboard unavailable'));
+    expect(screen.getByText('Build finished')).toBeInTheDocument();
   });
 });
 

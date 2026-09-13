@@ -5,7 +5,7 @@ this repository. `AGENTS.md` links to this file; do not modify it.
 
 ## Project Overview
 
-HiveMe, short for HiveMQ Messager, is two applications on top of MQTT, sharing one
+HiveMe is two applications on top of MQTT, sharing one
 config file and one message format:
 
 * **`hmc`**, a CLI that publishes one message and exits.

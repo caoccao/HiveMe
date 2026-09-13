@@ -2,7 +2,7 @@
 
 [![Linux Build](https://github.com/caoccao/HiveMe/actions/workflows/linux_build.yml/badge.svg)](https://github.com/caoccao/HiveMe/actions/workflows/linux_build.yml) [![MacOS Build](https://github.com/caoccao/HiveMe/actions/workflows/macos_build.yml/badge.svg)](https://github.com/caoccao/HiveMe/actions/workflows/macos_build.yml) [![Windows Build](https://github.com/caoccao/HiveMe/actions/workflows/windows_build.yml/badge.svg)](https://github.com/caoccao/HiveMe/actions/workflows/windows_build.yml)
 
-HiveMe, short for HiveMQ Messager, is a pair of desktop applications for your own
+HiveMe is a pair of desktop applications for your own
 MQTT topics, built on [HiveMQ Cloud](https://www.hivemq.com/).
 
 * **`hmc`**, a CLI that sends a message from a shell or a script.
@@ -91,14 +91,19 @@ and a shell finds it already; elsewhere it is in the install folder, and
 ### 6. Send a message
 
 ```sh
-hmc "Build finished"          # goes to hiveme/info
-hmc -t warn "Disk at 87%"     # goes to hiveme/warn
-hmc -t error "Build failed"   # goes to hiveme/error
+hmc "Build finished"                  # info payload on hiveme
+hmc --level warn "Disk at 87%"         # warn payload on hiveme
+hmc --level error "Build failed"       # error payload on hiveme
+hmc -t build/ci "Custom topic"         # info payload on hiveme/build/ci
 ```
 
+The CLI confirms each successful publish with `Message sent to <topic>.`.
+
 Each one appears in the GUI within a moment, under its topic in the tree on the left,
-and raises a desktop notification: the three built-in rules match `info`, `warn`, and
-`error`. Click a topic to read its history, and type in the box at the bottom to
+and raises a desktop notification: the three built-in rules match the payload levels
+`info`, `warn`, and `error`. Message boxes use regular, warning, and error colors.
+`hiveme` is always visible, selected, and highlighted when hmg starts, even without
+history or when the CLI default is customized. Type in the box at the bottom to
 publish back to it.
 
 That is the whole loop. Put `hmc` at the end of a long build, a backup script, or a

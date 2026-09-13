@@ -79,10 +79,11 @@ export interface Status {
   configError: string | null;
 }
 
-/** One node of the topic tree. Only a node with a `topic` can be selected. */
+/** Every nonempty path selects its full subtree, including parents without direct messages. */
 export interface TopicNode {
   id: string;
   label: string;
+  /** The selected subtree root; null only for an empty leading segment. */
   topic: string | null;
   unread: number;
   messages: number;

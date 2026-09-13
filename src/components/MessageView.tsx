@@ -16,11 +16,13 @@
 */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Chip, IconButton, Menu, MenuItem, Tooltip, Typography } from '@mui/material';
+import { Box, Chip, Divider, IconButton, Menu, MenuItem, Tooltip, Typography } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import LockIcon from '@mui/icons-material/Lock';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
+import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
+import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import PushPinIcon from '@mui/icons-material/PushPin';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -57,14 +59,12 @@ const STICK_THRESHOLD_PX = 48;
 const LOAD_OLDER_THRESHOLD_PX = 64;
 
 /** The chip color of each level. */
-function levelColor(level: Protocol.Level): 'default' | 'info' | 'warning' | 'error' {
+function levelColor(level: Protocol.Level): 'default' | 'warning' | 'error' {
   switch (level) {
     case Protocol.Level.Warn:
       return 'warning';
     case Protocol.Level.Error:
       return 'error';
-    case Protocol.Level.Info:
-      return 'info';
     default:
       return 'default';
   }
@@ -78,7 +78,7 @@ export function JsonTree({ value, name, depth = 0 }: { value: unknown; name?: st
   if (!isBranch) {
     return (
       <Box sx={{ display: 'flex', gap: 0.5, pl: depth * 1.5, fontFamily: 'monospace', fontSize: '0.72rem' }}>
-        {name !== undefined && <Box component="span" sx={{ color: 'text.secondary' }}>{name}:</Box>}
+        {name !== undefined && <Box component="span" sx={{ opacity: 0.7 }}>{name}:</Box>}
         <Box component="span">{JSON.stringify(value)}</Box>
       </Box>
     );
@@ -95,7 +95,7 @@ export function JsonTree({ value, name, depth = 0 }: { value: unknown; name?: st
         sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.72rem' }}
       >
         {open ? <ExpandMoreIcon sx={{ fontSize: 14 }} /> : <ChevronRightIcon sx={{ fontSize: 14 }} />}
-        <Box component="span" sx={{ color: 'text.secondary' }}>
+        <Box component="span" sx={{ opacity: 0.7 }}>
           {name !== undefined ? `${name}: ` : ''}
           {Array.isArray(value) ? `[${entries.length}]` : `{${entries.length}}`}
         </Box>
@@ -117,6 +117,7 @@ export function Bubble({ row }: { row: Protocol.MessageRow }) {
   const payload = envelope ? payloadOf(envelope) : null;
   const sender = envelope ? senderOf(envelope) : null;
   const level = displayedLevel(row.level);
+  const severity = levelColor(level);
 
   const copy = async (text: string, message: string) => {
     setAnchor(null);
@@ -129,115 +130,161 @@ export function Bubble({ row }: { row: Protocol.MessageRow }) {
   };
 
   return (
-    <Box sx={{ display: 'flex', justifyContent: row.outgoing ? 'flex-end' : 'flex-start', px: 1, py: 0.5 }}>
+    <Box sx={{ display: 'flex', justifyContent: row.outgoing ? 'flex-end' : 'flex-start', px: 2, py: 0.75 }}>
       <Box
+        component="article"
         sx={{
-          maxWidth: '80%',
-          minWidth: 160,
-          border: 1,
-          borderColor: 'divider',
-          borderRadius: 2,
-          px: 1.25,
-          py: 0.75,
-          bgcolor: row.outgoing ? 'action.selected' : 'background.paper',
+          maxWidth: 'min(80%, 720px)',
+          minWidth: 'min(180px, 80%)',
+          '&:hover .message-controls, &:has(:focus-visible) .message-controls': {
+            opacity: 1,
+            pointerEvents: 'auto',
+          },
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.25 }}>
-          {!row.outgoing && (
+        {!row.outgoing && (
+          <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, px: 2.5, mb: 0.5, color: 'text.secondary' }}>
             <Typography variant="caption" sx={{ fontWeight: 600 }}>
               {senderLabel(sender) || t('messages.unknownSender')}
             </Typography>
-          )}
-          {sender?.app && !row.outgoing && (
-            <Typography variant="caption" color="text.secondary">
-              {sender.app}
-            </Typography>
-          )}
-          <Box sx={{ flex: 1 }} />
-          {envelope && isNewerVersion(envelope) && (
-            <Chip size="small" variant="outlined" color="warning" label={t('messages.newerVersion')} />
-          )}
-          {row.retain && (
-            <Tooltip title={t('messages.retained')}>
-              <PushPinIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
-            </Tooltip>
-          )}
-          <Chip
-            size="small"
-            variant="outlined"
-            color={levelColor(level)}
-            label={
-              isKnownLevel(row.level) || !row.level
-                ? t(`levels.${level}`)
-                : t('messages.unknownLevel', { level: row.level, fallback: t(`levels.${level}`) })
-            }
-          />
-          <IconButton
-            size="small"
-            aria-label={t('messages.actions')}
-            sx={{ p: 0.25 }}
-            onClick={(event) => setAnchor(event.currentTarget)}
-          >
-            <MoreVertIcon sx={{ fontSize: 14 }} />
-          </IconButton>
-        </Box>
-
-        {envelope && isEncrypted(envelope) ? (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-            <LockIcon sx={{ fontSize: 16 }} />
-            <Typography variant="body2">{previewOf(parsed)}</Typography>
-          </Box>
-        ) : parsed.tier === Protocol.Tier.Envelope ? (
-          <>
-            {payload?.title && (
-              <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                {payload.title}
-              </Typography>
-            )}
-            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-              {payload?.body ?? ''}
-            </Typography>
-            {payload?.data !== undefined && payload?.data !== null && (
-              <Box sx={{ mt: 0.5 }}>
-                <JsonTree name={t('messages.data')} value={payload.data} />
-              </Box>
-            )}
-          </>
-        ) : parsed.tier === Protocol.Tier.Json ? (
-          <JsonTree value={parsed.value} />
-        ) : parsed.tier === Protocol.Tier.Text ? (
-          <Typography
-            variant="body2"
-            sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
-          >
-            {parsed.text}
-          </Typography>
-        ) : (
-          <Box>
-            <Typography variant="caption" color="text.secondary">
-              {t('messages.bytes', { count: parsed.length })}
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
-              {formatHex(parsed.hex)}
-            </Typography>
+            {sender?.app && <Typography variant="caption">{sender.app}</Typography>}
           </Box>
         )}
+        <Box
+          className="message-bubble"
+          sx={(theme) => ({
+            border: severity === 'default' ? 0 : 1,
+            borderColor: severity === 'default' ? undefined : `${severity}.main`,
+            borderRadius: 6,
+            px: 2.5,
+            py: 1.5,
+            fontSize: '1rem',
+            lineHeight: 1.6,
+            overflowWrap: 'anywhere',
+            '& .MuiTypography-body2': { fontSize: 'inherit', lineHeight: 'inherit' },
+            bgcolor: severity === 'default'
+              ? row.outgoing
+                ? theme.palette.mode === 'dark' ? theme.palette.grey[800] : theme.palette.common.black
+                : 'action.hover'
+              : alpha(theme.palette[severity].main, theme.palette.mode === 'dark' ? 0.24 : 0.12),
+            color: severity === 'default' && row.outgoing ? 'common.white' : 'text.primary',
+          })}
+        >
+          {envelope && isEncrypted(envelope) ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              <LockIcon sx={{ fontSize: 16 }} />
+              <Typography variant="body2">{previewOf(parsed)}</Typography>
+            </Box>
+          ) : parsed.tier === Protocol.Tier.Envelope ? (
+            <>
+              {payload?.title && (
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  {payload.title}
+                </Typography>
+              )}
+              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {payload?.body ?? ''}
+              </Typography>
+              {payload?.data !== undefined && payload?.data !== null && (
+                <Box sx={{ mt: 0.5 }}>
+                  <JsonTree name={t('messages.data')} value={payload.data} />
+                </Box>
+              )}
+            </>
+          ) : parsed.tier === Protocol.Tier.Json ? (
+            <JsonTree value={parsed.value} />
+          ) : parsed.tier === Protocol.Tier.Text ? (
+            <Typography
+              variant="body2"
+              sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+            >
+              {parsed.text}
+            </Typography>
+          ) : (
+            <Box>
+              <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                {t('messages.bytes', { count: parsed.length })}
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+                {formatHex(parsed.hex)}
+              </Typography>
+            </Box>
+          )}
+        </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.25 }}>
-          <Box sx={{ flex: 1 }} />
-          <Typography variant="caption" color="text.secondary">
-            {t('messages.qos', { qos: row.qos })}
-          </Typography>
+        <Box
+          className="message-controls"
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: row.outgoing ? 'flex-end' : 'flex-start',
+            gap: 0.5,
+            pt: 0.5,
+            px: 1,
+            minHeight: 36,
+            color: 'text.secondary',
+            opacity: anchor === null ? 0 : 1,
+            pointerEvents: anchor === null ? 'none' : 'auto',
+            transition: 'opacity 120ms ease',
+            '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+          }}
+        >
           <Tooltip title={formatDateTime(row.ts)}>
-            <Typography variant="caption" color="text.secondary">
+            <Typography component="time" dateTime={row.ts} variant="caption" sx={{ mr: 0.5, whiteSpace: 'nowrap' }}>
               {formatTime(row.ts)}
             </Typography>
+          </Tooltip>
+          <Tooltip title={t('messages.copyBody')}>
+            <IconButton
+              size="small"
+              aria-label={t('messages.copyBody')}
+              onClick={() => copy(row.body, t('messages.copiedBody'))}
+              sx={{ color: 'inherit' }}
+            >
+              <ContentCopyOutlinedIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={t('messages.actions')}>
+            <IconButton
+              size="small"
+              aria-label={t('messages.actions')}
+              aria-haspopup="menu"
+              aria-expanded={anchor !== null}
+              onClick={(event) => setAnchor(event.currentTarget)}
+              sx={{ color: 'inherit' }}
+            >
+              <MoreHorizIcon sx={{ fontSize: 18 }} />
+            </IconButton>
           </Tooltip>
         </Box>
 
         <Menu anchorEl={anchor} open={anchor !== null} onClose={() => setAnchor(null)}>
-          <MenuItem onClick={() => copy(row.body, t('messages.copiedBody'))}>{t('messages.copyBody')}</MenuItem>
           <MenuItem onClick={() => copy(row.raw, t('messages.copiedJson'))}>{t('messages.copyJson')}</MenuItem>
+          <Divider />
+          <Box sx={{ px: 2, py: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Chip
+              size="small"
+              variant="outlined"
+              color={levelColor(level)}
+              label={
+                isKnownLevel(row.level) || !row.level
+                  ? t(`levels.${level}`)
+                  : t('messages.unknownLevel', { level: row.level, fallback: t(`levels.${level}`) })
+              }
+            />
+            <Typography variant="caption" color="text.secondary">
+              {t('messages.qos', { qos: row.qos })}
+            </Typography>
+            {row.retain && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                <PushPinIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                <Typography variant="caption">{t('messages.retained')}</Typography>
+              </Box>
+            )}
+            {envelope && isNewerVersion(envelope) && (
+              <Chip size="small" variant="outlined" color="warning" label={t('messages.newerVersion')} />
+            )}
+          </Box>
         </Menu>
       </Box>
     </Box>

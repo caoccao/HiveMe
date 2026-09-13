@@ -112,7 +112,6 @@
     "copyCliSetupHint": "Copies the complete hmc --init command. It contains the broker password in plain text.",
     "cliSetupCopied": "CLI setup command copied. Paste it into your terminal and run it.",
     "prefix": "Prefix",
-    "defaultTopic": "Default topic",
     "subscriptions": "Subscriptions",
     "subscriptionFilter": "Subscription filter {{index}}",
     "absolute": "Absolute",

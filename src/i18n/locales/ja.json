@@ -108,7 +108,6 @@
     "copyCliSetupHint": "完全な hmc --init コマンドをコピーします。ブローカーのパスワードが平文で含まれます。",
     "cliSetupCopied": "CLI 設定コマンドをコピーしました。ターミナルに貼り付けて実行してください。",
     "prefix": "接頭辞",
-    "defaultTopic": "既定のトピック",
     "subscriptions": "サブスクリプション",
     "subscriptionFilter": "サブスクリプションフィルター {{index}}",
     "absolute": "絶対指定",

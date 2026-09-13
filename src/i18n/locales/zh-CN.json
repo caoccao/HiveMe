@@ -108,7 +108,6 @@
     "copyCliSetupHint": "复制完整的 hmc --init 命令，其中包含明文的代理服务器密码。",
     "cliSetupCopied": "CLI 配置命令已复制。请粘贴到终端并运行。",
     "prefix": "前缀",
-    "defaultTopic": "默认主题",
     "subscriptions": "订阅",
     "subscriptionFilter": "订阅筛选器 {{index}}",
     "absolute": "绝对路径",

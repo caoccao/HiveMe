@@ -173,12 +173,5 @@ mod tests {
     let mut subscriptions = before.clone();
     subscriptions.topics.subscriptions.clear();
     assert!(needs_reconnect(&before, &subscriptions));
-
-    let mut default_topic = before.clone();
-    default_topic.topics.default = "warn".to_owned();
-    assert!(
-      !needs_reconnect(&before, &default_topic),
-      "the default publish topic is not part of the connection"
-    );
   }
 }

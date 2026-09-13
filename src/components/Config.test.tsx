@@ -45,7 +45,7 @@ const CONFIG: ConfigType = {
     connectTimeoutSecs: 10,
     reconnect: { initialDelayMs: 1000, maxDelayMs: 30000 },
   },
-  topics: { prefix: 'hiveme', default: 'info', subscriptions: ['#'] },
+  topics: { prefix: 'hiveme', subscriptions: ['#'] },
   publish: { qos: 1, retain: false, timeoutSecs: 10 },
   notifications: {
     enabled: true,

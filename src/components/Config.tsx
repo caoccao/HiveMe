@@ -380,12 +380,6 @@ export default function Config() {
           onChange={(event) => update((next) => ((next.topics ??= {}).prefix = event.target.value))}
           sx={{ minWidth: 200 }}
         />
-        <TextField
-          label={t('settings.defaultTopic')}
-          value={topics.default ?? ''}
-          onChange={(event) => update((next) => ((next.topics ??= {}).default = event.target.value))}
-          sx={{ minWidth: 200 }}
-        />
       </Box>
 
       <Section>

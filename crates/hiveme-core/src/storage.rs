@@ -440,25 +440,30 @@ impl Store {
       .map_err(|source| failed("list its topics", source))
   }
 
-  /// One page of a topic's history, oldest first.
+  /// One page of a topic and all its descendants, oldest first.
   ///
   /// `before` is the `row_id` of the oldest message already on screen, so paging
   /// upwards is `before = rows.first().row_id`. The page is taken from the newest end
   /// and handed back in reading order.
   pub fn messages(&self, topic: &str, before: Option<i64>, limit: u32) -> Result<Vec<StoredMessage>> {
     let limit = if limit == 0 { DEFAULT_PAGE_SIZE } else { limit };
+    let (descendants, after_descendants) = descendant_topic_bounds(topic);
     let connection = self.lock();
     let mut statement = connection
       .prepare(
         "SELECT m.id, t.topic, m.msg_id, m.ts, m.received_ts, m.sender_id, m.sender_name, m.app,
                 m.tier, m.level, m.title, m.body, m.raw, m.qos, m.retain, m.outgoing
          FROM messages m JOIN topics t ON t.id = m.topic_id
-         WHERE t.topic = ?1 AND (?2 IS NULL OR m.id < ?2)
-         ORDER BY m.id DESC LIMIT ?3",
+         WHERE (t.topic = ?1 OR (t.topic >= ?2 AND t.topic < ?3))
+           AND (?4 IS NULL OR m.id < ?4)
+         ORDER BY m.id DESC LIMIT ?5",
       )
       .map_err(|source| failed("read a topic's history", source))?;
     let rows = statement
-      .query_map(params![topic, before, limit], read_message)
+      .query_map(
+        params![topic, descendants, after_descendants, before, limit],
+        read_message,
+      )
       .map_err(|source| failed("read a topic's history", source))?;
     let mut messages = rows
       .collect::<rusqlite::Result<Vec<_>>>()
@@ -483,11 +488,15 @@ impl Store {
       .map_err(|source| failed("read a message", source))
   }
 
-  /// Clears the unread count of one topic.
+  /// Clears unread counts for the selected topic and all its descendants.
   pub fn mark_read(&self, topic: &str) -> Result<()> {
+    let (descendants, after_descendants) = descendant_topic_bounds(topic);
     let connection = self.lock();
     connection
-      .execute("UPDATE topics SET unread = 0 WHERE topic = ?1", params![topic])
+      .execute(
+        "UPDATE topics SET unread = 0 WHERE topic = ?1 OR (topic >= ?2 AND topic < ?3)",
+        params![topic, descendants, after_descendants],
+      )
       .map_err(|source| failed("mark a topic read", source))?;
     Ok(())
   }
@@ -563,6 +572,13 @@ impl std::fmt::Debug for Store {
   fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     formatter.debug_struct("Store").field("path", &self.path).finish()
   }
+}
+
+/// An indexed, case-sensitive prefix range under SQLite's BINARY collation.
+/// '0' immediately follows '/' in byte order, so every name beginning with
+/// "{topic}/" is in this range. SQL wildcard characters in names stay literal.
+fn descendant_topic_bounds(topic: &str) -> (String, String) {
+  (format!("{topic}/"), format!("{topic}0"))
 }
 
 fn read_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMessage> {

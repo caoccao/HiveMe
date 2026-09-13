@@ -189,9 +189,6 @@ impl Config {
     if let Err(reason) = crate::topic::validate_prefix(&self.topics.prefix) {
       issues.push(format!("topics.prefix: {reason}"));
     }
-    if let Err(reason) = crate::topic::validate_topic(&self.topics.default) {
-      issues.push(format!("topics.default: {reason}"));
-    }
     if self.topics.subscriptions.is_empty() {
       issues.push("topics.subscriptions is empty, hmg would receive nothing".to_owned());
     }
@@ -256,7 +253,7 @@ impl Config {
 
   /// The absolute topic `hmc` publishes to when no topic is given.
   pub fn default_topic(&self) -> String {
-    self.resolve_topic(&self.topics.default, false)
+    self.resolve_topic("", false)
   }
 
   /// The absolute filters `hmg` subscribes to.
@@ -437,8 +434,6 @@ impl Default for Reconnect {
 pub struct Topics {
   /// Prepended to every relative topic. May be empty, which puts topics at the root.
   pub prefix: String,
-  /// Where `hmc` publishes when no topic is given, relative to the prefix.
-  pub default: String,
   /// What `hmg` subscribes to, relative to the prefix.
   pub subscriptions: Vec<Subscription>,
 }
@@ -447,7 +442,6 @@ impl Default for Topics {
   fn default() -> Self {
     Self {
       prefix: "hiveme".to_owned(),
-      default: "info".to_owned(),
       subscriptions: vec![Subscription::Relative("#".to_owned())],
     }
   }
@@ -567,7 +561,7 @@ pub struct Rule {
   pub topic: String,
   #[serde(default, skip_serializing_if = "is_false")]
   pub absolute: bool,
-  /// The notification level, and the level `hmc` infers for a matching topic.
+  /// The payload level this notification rule matches. It never determines the MQTT topic.
   #[serde(default)]
   pub level: Level,
   #[serde(default = "default_true")]
@@ -590,7 +584,7 @@ impl Rule {
       .into_iter()
       .map(|level| Self {
         id: level.as_str().to_owned(),
-        topic: level.as_str().to_owned(),
+        topic: "#".to_owned(),
         absolute: false,
         level: level.clone(),
         enabled: true,

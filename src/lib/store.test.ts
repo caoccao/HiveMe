@@ -17,13 +17,18 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
-import type { Config } from './protocol';
+import type { Config, MessageRow } from './protocol';
+import { MESSAGE_PAGE_SIZE } from './constants';
 import * as Service from './service';
 import { INITIAL_STATUS, useAppStore } from './store';
 
 vi.mock('./service', () => ({
   setConfig: vi.fn(async (config: Config) => config),
   getStatus: vi.fn(async () => INITIAL_STATUS),
+  getMessages: vi.fn(async () => [] as MessageRow[]),
+  listTopics: vi.fn(async () => []),
+  markRead: vi.fn(async () => undefined),
+  clearTopic: vi.fn(async () => 1),
 }));
 
 beforeEach(() => {
@@ -32,12 +37,115 @@ beforeEach(() => {
   useAppStore.setState({
     config: { version: 1, broker: { username: 'initial' }, gui: { language: 'en-US' } },
     dialogNotification: null,
+    selectedTopic: null,
+    messages: new Map(),
+    loadedTopics: new Set(),
+    hasOlder: new Map(),
+    loadingOlder: false,
   });
 });
 
 afterEach(async () => {
   await useAppStore.getState().flushConfig();
   vi.useRealTimers();
+});
+
+function message(rowId: number, topic: string, body = String(rowId)): MessageRow {
+  return {
+    rowId, topic, id: 'shared-envelope', body, raw: body, rawLength: body.length,
+    ts: '2026-09-13T12:00:00Z', receivedTs: '2026-09-13T12:00:00Z',
+    senderId: null, senderName: null, app: null, tier: 'text', level: null,
+    title: null, qos: 1, retain: false, outgoing: false,
+  };
+}
+
+describe('recursive topic history', () => {
+  it('loads a subtree through the backend and marks that selection read', async () => {
+    const rows = [message(1, 'hiveme'), message(2, 'hiveme/build/ci')];
+    vi.mocked(Service.getMessages).mockResolvedValueOnce(rows);
+    await useAppStore.getState().selectTopic('hiveme');
+    expect(Service.getMessages).toHaveBeenCalledExactlyOnceWith('hiveme', null, MESSAGE_PAGE_SIZE);
+    expect(Service.markRead).toHaveBeenCalledWith('hiveme');
+    expect(useAppStore.getState().messages.get('hiveme')).toEqual(rows);
+  });
+
+  it('updates every cached ancestor with live messages and deduplicates only by row id', () => {
+    const roots = ['hiveme', 'hiveme/build', 'hiveme/build/ci', 'hiveme/builder', 'HiveMe'];
+    useAppStore.setState({ loadedTopics: new Set(roots), messages: new Map(roots.map((root) => [root, []])) });
+    const receive = useAppStore.getState().receiveMessage;
+    receive(message(2, 'hiveme/build/ci'));
+    receive(message(1, 'hiveme/build'));
+    receive(message(2, 'hiveme/build/ci', 'delivery updated'));
+    receive(message(3, 'hiveme2'));
+    const views = useAppStore.getState().messages;
+    expect(views.get('hiveme')?.map((row) => row.rowId)).toEqual([1, 2]);
+    expect(views.get('hiveme/build')?.map((row) => row.rowId)).toEqual([1, 2]);
+    expect(views.get('hiveme/build/ci')).toEqual([message(2, 'hiveme/build/ci', 'delivery updated')]);
+    expect(views.get('hiveme/builder')).toEqual([]);
+    expect(views.get('HiveMe')).toEqual([]);
+  });
+
+  it('keeps live descendants that arrive while the first page is loading', async () => {
+    let finish!: (rows: MessageRow[]) => void;
+    vi.mocked(Service.getMessages).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const selecting = useAppStore.getState().selectTopic('hiveme');
+    useAppStore.getState().receiveMessage(message(2, 'hiveme/child', 'latest delivery'));
+    useAppStore.getState().receiveMessage(message(3, 'hiveme/child/deep'));
+    finish([message(1, 'hiveme'), message(2, 'hiveme/child')]);
+    await selecting;
+    expect(useAppStore.getState().messages.get('hiveme')).toEqual([
+      message(1, 'hiveme'), message(2, 'hiveme/child', 'latest delivery'), message(3, 'hiveme/child/deep'),
+    ]);
+  });
+
+  it('pages older descendants with one row cursor while retaining live updates', async () => {
+    useAppStore.setState({
+      loadedTopics: new Set(['hiveme']),
+      messages: new Map([['hiveme', [message(5, 'hiveme/child'), message(6, 'hiveme')]]]),
+      hasOlder: new Map([['hiveme', true]]),
+    });
+    let finish!: (rows: MessageRow[]) => void;
+    vi.mocked(Service.getMessages).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const paging = useAppStore.getState().loadOlderMessages('hiveme');
+    useAppStore.getState().receiveMessage(message(7, 'hiveme/deep/child'));
+    finish([message(1, 'hiveme/other'), message(4, 'hiveme')]);
+    await paging;
+    expect(Service.getMessages).toHaveBeenCalledWith('hiveme', 5, MESSAGE_PAGE_SIZE);
+    expect(useAppStore.getState().messages.get('hiveme')?.map((row) => row.rowId)).toEqual([1, 4, 5, 6, 7]);
+    expect(useAppStore.getState().hasOlder.get('hiveme')).toBe(false);
+  });
+
+  it('ignores a stale page that finishes after clearing its topic', async () => {
+    let finishOld!: (rows: MessageRow[]) => void;
+    vi.mocked(Service.getMessages)
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
+      .mockResolvedValueOnce([message(2, 'hiveme/child')]);
+    const selecting = useAppStore.getState().selectTopic('hiveme');
+    await useAppStore.getState().clearSelectedTopic();
+    finishOld([message(1, 'hiveme'), message(2, 'hiveme/child')]);
+    await selecting;
+    expect(useAppStore.getState().messages.get('hiveme')).toEqual([message(2, 'hiveme/child')]);
+  });
+
+  it('refreshes affected ancestor caches after exact-topic clearing and keeps descendants', async () => {
+    const root = message(1, 'hiveme');
+    const child = message(2, 'hiveme/child');
+    const grandchild = message(3, 'hiveme/child/deep');
+    useAppStore.setState({
+      selectedTopic: 'hiveme/child',
+      loadedTopics: new Set(['hiveme', 'hiveme/child', 'hiveme/child/deep']),
+      messages: new Map([['hiveme', [root, child, grandchild]], ['hiveme/child', [child, grandchild]], ['hiveme/child/deep', [grandchild]]]),
+    });
+    vi.mocked(Service.getMessages).mockResolvedValueOnce([grandchild]);
+    await useAppStore.getState().clearSelectedTopic();
+    expect(Service.clearTopic).toHaveBeenCalledExactlyOnceWith('hiveme/child');
+    expect(useAppStore.getState().messages.get('hiveme/child')).toEqual([grandchild]);
+    expect(useAppStore.getState().messages.get('hiveme/child/deep')).toEqual([grandchild]);
+    expect(useAppStore.getState().loadedTopics.has('hiveme')).toBe(false);
+    vi.mocked(Service.getMessages).mockResolvedValueOnce([root, grandchild]);
+    await useAppStore.getState().selectTopic('hiveme');
+    expect(useAppStore.getState().messages.get('hiveme')).toEqual([root, grandchild]);
+  });
 });
 
 describe('automatic settings saves', () => {

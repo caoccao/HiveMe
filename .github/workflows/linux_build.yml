@@ -60,7 +60,7 @@ jobs:
     - name: Install Linux packages
       run: |
         sudo apt-get update
-        sudo apt-get install -y libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libwebkit2gtk-4.1-dev librsvg2-dev
+        sudo apt-get install -y libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libwebkit2gtk-4.1-dev librsvg2-dev webkit2gtk-driver xvfb
 
     - name: Type check the Deno scripts
       run: deno task -c scripts/ts/deno.json check
@@ -118,6 +118,21 @@ jobs:
 
     - name: Build HiveMe
       run: pnpm tauri build
+
+    - name: Install the native GUI test driver
+      run: cargo install tauri-driver --version 2.0.6 --locked
+
+    - name: Test hmc and hmg end to end
+      timeout-minutes: 10
+      run: xvfb-run -a pnpm test:e2e --release
+
+    - name: Upload end-to-end diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: HiveMe-linux-e2e-diagnostics
+        path: target/e2e/
+        if-no-files-found: ignore
 
     - name: Upload hmc
       uses: actions/upload-artifact@v7

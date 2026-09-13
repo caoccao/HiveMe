@@ -42,7 +42,7 @@ pub struct Cli {
   #[arg(long, value_name = "JSON", conflicts_with_all = ["message", "topic", "absolute_topic", "json", "title", "level", "qos", "retain"])]
   pub init: Option<String>,
 
-  /// Topic relative to topics.prefix [default: topics.default]
+  /// Topic relative to topics.prefix [default: the prefix itself]
   #[arg(short = 't', long, value_name = "TOPIC")]
   pub topic: Option<String>,
 
@@ -58,7 +58,7 @@ pub struct Cli {
   #[arg(long, value_name = "TITLE")]
   pub title: Option<String>,
 
-  /// debug | info | warn | error [default: inferred from matching rule, else info]
+  /// debug | info | warn | error [default: info; independent of topic]
   #[arg(short = 'l', long, value_name = "LEVEL", value_parser = LEVELS, hide_possible_values = true)]
   pub level: Option<String>,
 

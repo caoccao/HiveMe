@@ -17,7 +17,7 @@ Answers gathered before writing this plan. They are binding for the phases below
 | 3 | Producers and GUI strictness | Producers are HiveMe tools plus the user's own scripts. GUI is lenient: it parses the HiveMe envelope when valid and otherwise shows the raw payload. |
 | 4 | Encryption key model (spec only) | Symmetric pre-shared key. AES-256-GCM with HKDF-derived keys, key id in the envelope for rotation. Not implemented in this plan. |
 | 5 | Profiles | Single `broker` object. Config is versioned so a `profiles` map can be added later without breaking existing files. |
-| 6 | Topic layout | Configurable `topics.prefix` (default `hiveme`) and `topics.default` (default `info`, relative to prefix). Built-in rules match `<prefix>/info`, `<prefix>/warn`, `<prefix>/error`. GUI subscribes to `<prefix>/#` by default, additional filters configurable. |
+| 6 | Topic layout | Configurable `topics.prefix` (default `hiveme`). Without an explicit topic, publishing always uses the prefix itself; there is no default-topic setting. All log levels publish to `hiveme` by default. Built-in rules match `<prefix>/#` and filter by payload level. GUI subscribes to `<prefix>/#` by default, additional filters configurable. |
 | 7 | Message history | Persisted in a local SQLite database next to the config file. Bounded per topic and by retention days. |
 | 8 | Notification rules | Configurable `notifications.rules` array with the three built-in rules as defaults. |
 | 9 | Schema source of truth | Rust types (`serde` + `schemars`) in `hiveme-core` generate `schemas/config.schema.json` and `schemas/message.schema.json`. Tests fail if committed schemas are stale. Spec examples are validated in tests. TypeScript types for config and message are generated from the schemas. |
@@ -186,8 +186,8 @@ HiveMe/
 `hmc "Build finished"`
 
 1. Resolve the config path (`--config`, then `HIVEME_CONFIG`, then the per-OS location). If the file is missing, write a default config with a fresh `device.id` and exit with code 3 and a message telling the user to edit the broker section.
-2. Build the envelope: `v: 1`, UUID v7 `id`, RFC 3339 `ts`, `sender` from `device`, `payload.body` from the argument or stdin, `payload.level` inferred from the matching rule (else `info`).
-3. Resolve the topic: `topics.prefix` + `/` + (`--topic` or `topics.default`).
+2. Build the envelope: `v: 1`, UUID v7 `id`, RFC 3339 `ts`, `sender` from `device`, `payload.body` from the argument or stdin, `payload.level` from `--level` (default `info`, independently of the topic).
+3. Resolve the topic: the prefix itself without `--topic`, otherwise `topics.prefix` + `/` + `--topic`.
 4. Connect (clean start, session expiry 0, TLS with native roots), publish QoS 1 with MQTT 5 properties, wait for PUBACK, disconnect. Exit 0.
 
 `hmg`
@@ -263,7 +263,6 @@ Full example with defaults:
   },
   "topics": {
     "prefix": "hiveme",
-    "default": "info",
     "subscriptions": ["#"]
   },
   "publish": {
@@ -275,9 +274,9 @@ Full example with defaults:
     "enabled": true,
     "notifyOwnMessages": false,
     "rules": [
-      { "id": "info",  "topic": "info",  "level": "info",  "enabled": true, "title": "{title|topic}", "body": "{body}" },
-      { "id": "warn",  "topic": "warn",  "level": "warn",  "enabled": true, "title": "{title|topic}", "body": "{body}" },
-      { "id": "error", "topic": "error", "level": "error", "enabled": true, "title": "{title|topic}", "body": "{body}" }
+      { "id": "info",  "topic": "#",  "level": "info",  "enabled": true, "title": "{title|topic}", "body": "{body}" },
+      { "id": "warn",  "topic": "#",  "level": "warn",  "enabled": true, "title": "{title|topic}", "body": "{body}" },
+      { "id": "error", "topic": "#", "level": "error", "enabled": true, "title": "{title|topic}", "body": "{body}" }
     ]
   },
   "gui": {
@@ -319,13 +318,12 @@ Field reference:
 | `broker.passwordRef` | object or null | no | null | `{ "type": "Env", "name": "HIVEME_PASSWORD" }` is implemented in phase 1. `{ "type": "Keychain", "service": "HiveMe", "account": "<username>" }` is reserved. |
 | `broker.clientIdPrefix` | string | no | `hiveme` | Client id = `<prefix>-<app>-<first 8 hex of device.id>[-<random>]`. |
 | `broker.keepAliveSecs` | integer | no | 30 | |
-| `broker.sessionExpirySecs` | integer | no | 3600 | GUI only; `hmc` always uses 0. |
+| `broker.sessionExpirySecs` | integer | no | 3600 | GUI retention during network interruptions; explicit disconnect and quit discard the session. `hmc` always uses 0. |
 | `broker.connectTimeoutSecs` | integer | no | 10 | |
 | `broker.tls.verifyServer` | boolean | no | true | `false` is only honored for non-`hivemq.cloud` hosts and logs a warning. |
 | `broker.tls.caFile` | path or null | no | null | Extra PEM roots appended to the native store. |
 | `broker.reconnect.*` | integer | no | 1000 / 30000 | Exponential backoff with jitter. |
 | `topics.prefix` | string | no | `hiveme` | May be empty, in which case relative topics are absolute. No leading or trailing `/`, no wildcards. |
-| `topics.default` | string | no | `info` | Relative to prefix. |
 | `topics.subscriptions` | (string or object)[] | no | `["#"]` | Filters relative to prefix. A filter starting with `$`, or given as `{ "filter": "...", "absolute": true }`, is used verbatim. |
 | `publish.qos` | 0, 1, 2 | no | 1 | |
 | `publish.retain` | boolean | no | false | |
@@ -541,7 +539,7 @@ Rule object:
 | `id` | string | required | Unique within the config. Built-ins: `info`, `warn`, `error`. |
 | `topic` | string | required | MQTT topic filter, relative to the prefix unless `absolute` is true. Wildcards `+` and `#` allowed. |
 | `absolute` | boolean | false | |
-| `level` | string | `info` | Notification level. Also the default `payload.level` when publishing to a matching topic. |
+| `level` | string | `info` | The payload level to match, independently of the MQTT topic. |
 | `enabled` | boolean | true | |
 | `title` | string | `{title|topic}` | Template. |
 | `body` | string | `{body}` | Template. |
@@ -549,7 +547,7 @@ Rule object:
 
 Templates support `{title}`, `{body}`, `{topic}`, `{level}`, `{sender}`, `{app}`, and the fallback form `{a|b}` which uses the first non-empty value. Unknown placeholders render as empty strings. No expressions.
 
-Evaluation: rules are checked in config order; the first enabled rule whose filter matches the topic fires. Messages whose `sender.id` equals `device.id` are skipped unless `notifyOwnMessages` is true. Notifications are rate-limited to one per rule per second with an "and N more" suffix. The toolbar "pause notifications" toggle suppresses all rules for the session.
+Evaluation: rules are checked in config order; the first enabled rule matching both the MQTT topic filter and payload level fires. Messages whose `sender.id` equals `device.id` are skipped unless `notifyOwnMessages` is true. Notifications are rate-limited to one per rule per second with an "and N more" suffix. The toolbar "pause notifications" toggle suppresses all rules for the session.
 
 Defaults: if `notifications.rules` is absent, the three built-in rules apply. If present (even empty), only the listed rules apply. Users override a built-in by reusing its `id`.
 
@@ -568,11 +566,12 @@ Spec file: `docs/specs/gui.md`. Layout and component structure follow BetterMedi
 
 `Messages.tsx` (tab 0): horizontal split with a draggable divider persisted in `localStorage`.
 
-- `TopicTree.tsx` (left, `@mui/x-tree-view` `RichTreeView`): topic hierarchy split on `/`, root node is the prefix. Each node shows an unread badge. Nodes appear when the first message on that topic arrives or when a message is sent to it, and persist in SQLite. A filter field sits above the tree.
-- `MessageView.tsx` (right): chat view for the selected topic. Messages from this device (`sender.id == device.id`) align right, others align left with the sender name and app. Bubbles show `title` (bold), `body`, a collapsed `data` JSON tree, a `level` chip, and time. Raw JSON and raw text tiers use a monospace bubble. Encrypted messages show a lock placeholder. Virtualized list (`@tanstack/react-virtual`, already used by BetterMediaInfo), newest at the bottom, auto-scroll unless the user scrolled up. Right-click or hover menu: copy body, copy JSON (clipboard plugin).
+- `TopicTree.tsx` (left, `@mui/x-tree-view` `SimpleTreeView`): topic hierarchy split on `/`, with an always-visible, selectable `hiveme` root. Other nodes follow actual stored MQTT paths. Every nonempty parent path is selectable, including paths with only descendant messages. Each node shows an unread badge. A filter field sits above the tree and keeps `hiveme` visible even when it does not match.
+- `hiveme` always appears and is selected and highlighted at startup, even without history or with a custom topic prefix. Message boxes use regular colors for info, warning colors for warn, and error colors for error. Existing history stays on its original MQTT paths; no migration is added.
+- `MessageView.tsx` (right): chat view for the selected topic and all recursive descendants, filtered by the stored topic field in SQL and paged together. Messages from this device (`sender.id == device.id`) align right, others align left with the sender name and app. Rounded bubbles show `title` (bold), `body`, and a collapsed `data` JSON tree. A reserved row below reveals time, copy body, and options on hover or keyboard focus; level and delivery metadata live in the options menu. Raw JSON and raw text tiers use a monospace bubble. Encrypted messages show a lock placeholder. Virtualized list (`@tanstack/react-virtual`, already used by BetterMediaInfo), newest at the bottom, auto-scroll unless the user scrolled up. Hover controls: direct copy body and an options menu with copy JSON (clipboard plugin).
 - `Composer.tsx` (bottom of the message view): multi-line `TextField` and a send `IconButton`. Enter sends, Shift+Enter inserts a newline. A small menu on the send button toggles "send as raw JSON" and per-message QoS/retain overrides. Disabled when disconnected or when no topic is selected.
 
-`Config.tsx` (Settings tab): `SectionHeader` sections as in BetterMediaInfo: Broker (URL, username, password with visibility toggle, TLS options with a CA file picker via the dialog plugin, advanced timings), Topics (prefix, default, subscriptions list editor), Notifications (enabled, notify own messages, rules table with add/edit/delete), Appearance (display mode toggle, theme select, language select), Update (check interval). Save calls `set_config`; the backend reconnects when broker or subscription fields changed. Encryption and Cloud API sections are read-only placeholders that state "not implemented yet" until their phases.
+`Config.tsx` (Settings tab): `SectionHeader` sections as in BetterMediaInfo: Broker (URL, username, password with visibility toggle, TLS options with a CA file picker via the dialog plugin, advanced timings), Topics (prefix, default, subscriptions list editor), Notifications (enabled, notify own messages, rules table with add/edit/delete), Appearance (display mode toggle, theme select, language select), Update (check interval). Changes apply immediately and automatically call `set_config`; the backend reconnects when broker or subscription fields changed. Encryption and Cloud API sections are read-only placeholders that state "not implemented yet" until their phases.
 
 `About.tsx`: app icon, name, version, links to GitHub and author, license, copyright. Update notice appears here and as a dialog in `MainContent` like BetterMediaInfo.
 
@@ -608,11 +607,11 @@ Arguments:
   [MESSAGE]  Message body. Read from stdin when omitted.
 
 Options:
-  -t, --topic <TOPIC>        Topic relative to topics.prefix [default: topics.default]
+  -t, --topic <TOPIC>        Topic relative to topics.prefix [default: the prefix itself]
   -T, --absolute-topic       Treat --topic as an absolute topic
       --json                 Publish MESSAGE (or stdin) as a raw JSON payload without the envelope
       --title <TITLE>        Optional title for the message
-  -l, --level <LEVEL>        debug | info | warn | error [default: inferred from matching rule, else info]
+  -l, --level <LEVEL>        debug | info | warn | error [default: info; independent of topic]
   -q, --qos <QOS>            0 | 1 | 2 [default: publish.qos]
   -r, --retain               Set the retain flag
   -c, --config <PATH>        Config file path
@@ -684,7 +683,7 @@ Each step lists tasks, spec sync, tests, and the done condition. Steps inside a 
 - Done when: `schemas/message.schema.json` committed, `spec_examples_are_valid` passes for `message.md`.
 
 **Step 1.3 Topic and rules modules.**
-- Tasks: prefix resolution, topic validation, filter matching with `+`, `#`, and `$`-prefixed topics; rule engine with templating and first-match semantics; per-rule rate limiter; level inference for publishing.
+- Tasks: prefix resolution, topic validation, filter matching with `+`, `#`, and `$`-prefixed topics; rule engine with templating and first-match semantics; per-rule rate limiter; payload levels independent of publishing topics.
 - Spec sync: `gui.md#notifications` and `config.md#topics` updated with the exact matching semantics and the template grammar.
 - Tests: MQTT filter matching table from the MQTT 5 spec examples; template rendering including the `{a|b}` fallback; built-in defaults apply only when `rules` is absent.
 - Done when: rule behavior in the spec is executable as tests.
@@ -705,7 +704,7 @@ Each step lists tasks, spec sync, tests, and the done condition. Steps inside a 
 ### Phase 3: `hmc`
 
 **Step 3.1 CLI.**
-- Tasks: clap definition from section 9; stdin handling; `--json`; level inference; exit code mapping from core error types; first-run default config creation; refusal when `encryption.mode != Off`.
+- Tasks: clap definition from section 9; stdin handling; `--json`; explicit payload levels; exit code mapping from core error types; first-run default config creation; refusal when `encryption.mode != Off`.
 - Spec sync: `cli.md` gets the exact help text (checked by `cli_help_matches_spec`), the exit code table, and stdin semantics.
 - Tests: `assert_cmd` tests for usage errors, missing config (exit 3, file created), `--json` with invalid JSON (exit 2); integration test that publishes through the Docker broker and a subscriber receives a valid envelope.
 - Done when: `echo hi | hmc` and `hmc -t error "disk full"` work against the user's Serverless cluster (manual check recorded in the PR).

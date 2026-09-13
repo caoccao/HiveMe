@@ -20,11 +20,11 @@ Arguments:
 
 Options:
       --init <JSON>     Initialize the shared config from a setup string, then exit
-  -t, --topic <TOPIC>   Topic relative to topics.prefix [default: topics.default]
+  -t, --topic <TOPIC>   Topic relative to topics.prefix [default: the prefix itself]
   -T, --absolute-topic  Treat --topic as an absolute topic
       --json            Publish MESSAGE (or stdin) as a raw JSON payload without the envelope
       --title <TITLE>   Optional title for the message
-  -l, --level <LEVEL>   debug | info | warn | error [default: inferred from matching rule, else info]
+  -l, --level <LEVEL>   debug | info | warn | error [default: info; independent of topic]
   -q, --qos <QOS>       0 | 1 | 2 [default: publish.qos]
   -r, --retain          Set the retain flag
   -c, --config <PATH>   Config file path
@@ -37,8 +37,8 @@ Options:
 
 ```sh
 hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret","prefix":"hiveme"}'
-hmc "Build finished"                  # publish to <prefix>/<topics.default>
-hmc -t error "Disk full"              # publish to <prefix>/error
+hmc "Build finished"                  # publish to the prefix itself
+hmc --level error "Disk full"         # error payload on the default topic
 hmc -T -t '$SYS/status' "up"          # publish to an absolute topic
 echo "Build finished" | hmc           # read the body from stdin
 hmc --json '{"stage":"deploy","ok":true}'
@@ -96,19 +96,20 @@ authority, which the operating system already trusts. See
 
 ### The topic
 
-- The topic is `topics.prefix` joined with `--topic`, or with `topics.default` when
-  `--topic` is absent. `--absolute-topic` skips the prefix and may only be given
-  together with `--topic`. See [config.md](config.md#topic-resolution).
-- The resolved topic is checked before connecting. A wildcard in `--topic` is a usage
-  error and a wildcard in `topics.default` is a config error, because they are
-  different people's mistakes.
+- Without `--topic`, hmc always publishes to `topics.prefix` itself (`hiveme` by
+  default), regardless of log level. There is no configurable default topic.
+  An explicit `--topic` is joined with the prefix; `--absolute-topic` skips the
+  prefix and requires `--topic`. See [config.md](config.md#topic-resolution).
+- The resolved topic is checked before connecting. An invalid `--topic` is a usage
+  error. An invalid prefix, or an empty prefix without an explicit topic, is a config
+  error.
 
 ### The message
 
-- `--level` defaults to the level of the first notification rule whose filter matches
-  the topic, and to `info` when no rule matches. A rule is considered here whether or
-  not it is `enabled`, because `enabled` governs notifications rather than what a topic
-  means.
+- `--level` defaults to `info` independently of the MQTT topic and notification rules.
+  `hmc --level warn "Disk at 87%"` and `hmc --level error "Build failed"` both publish
+  to `hiveme` with different `payload.level` values under the default configuration.
+  `--topic` selects a custom topic without changing the payload level.
 - The message is built as described in [message.md](message.md): `v`, a UUID v7 `id`,
   an RFC 3339 `ts`, `type` `message`, and `sender` taken from the `device` block with
   `app` `hmc`.
@@ -133,14 +134,19 @@ authority, which the operating system already trusts. See
 
 ### Output
 
-- `hmc` writes to stdout only for `--init`, reporting whether the config was unchanged,
-  updated, or created, followed by the path. A publish prints nothing there.
+- After a successful publish, `hmc` prints `Message sent to <resolved-topic>.` on
+  stdout, for example `Message sent to hiveme.`. At QoS 1 and 2 this follows the
+  broker acknowledgement; at QoS 0 it follows writing the packet. A failed publish
+  prints no success message. A subsequent disconnect failure still goes to stderr
+  and produces a nonzero exit code.
+- `--init` reports whether the config was unchanged, updated, or created on stdout,
+  followed by the path.
 - Errors go to stderr as a single line: `hmc: <category>: <detail>`, where the category
   is `usage`, `config`, `connection`, `timeout`, or `error`, matching the exit codes
   below. A config with several problems is folded onto that one line.
-- Warnings go to stderr too, so a successful run over TLS prints nothing at all while
-  an unencrypted `mqtt://` broker still says so. `--verbose` adds the connection
-  details, and `RUST_LOG` overrides both.
+- Warnings go to stderr too. A successful run over TLS normally leaves stderr empty;
+  an unencrypted `mqtt://` broker still warns about the plaintext connection.
+  `--verbose` adds the connection details, and `RUST_LOG` overrides both.
 - On Windows `hmc` is a console application, so it never opens a window.
 
 ## Appearance
@@ -164,8 +170,8 @@ those platforms.
 `<broker.clientIdPrefix>-hmc-<first 8 alphanumerics of device.id>-<8 random
 characters>`. The random suffix keeps concurrent `hmc` invocations, and a running
 `hmg`, from colliding on the broker, which disconnects duplicate client identifiers.
-`hmg` uses the same shape without the suffix, so its session is stable across
-restarts.
+`hmg` uses the same shape without the suffix to resume its session after a network
+interruption. A normal quit ends that session.
 
 ## Exit codes
 

@@ -87,7 +87,6 @@ value the applications use when the key is absent.
   },
   "topics": {
     "prefix": "hiveme",
-    "default": "info",
     "subscriptions": ["#"]
   },
   "publish": {
@@ -99,9 +98,9 @@ value the applications use when the key is absent.
     "enabled": true,
     "notifyOwnMessages": false,
     "rules": [
-      { "id": "info",  "topic": "info",  "level": "info",  "enabled": true, "title": "{title|topic}", "body": "{body}" },
-      { "id": "warn",  "topic": "warn",  "level": "warn",  "enabled": true, "title": "{title|topic}", "body": "{body}" },
-      { "id": "error", "topic": "error", "level": "error", "enabled": true, "title": "{title|topic}", "body": "{body}" }
+      { "id": "info",  "topic": "#",  "level": "info",  "enabled": true, "title": "{title|topic}", "body": "{body}" },
+      { "id": "warn",  "topic": "#",  "level": "warn",  "enabled": true, "title": "{title|topic}", "body": "{body}" },
+      { "id": "error", "topic": "#", "level": "error", "enabled": true, "title": "{title|topic}", "body": "{body}" }
     ]
   },
   "gui": {
@@ -144,14 +143,13 @@ value the applications use when the key is absent.
 | `broker.passwordRef` | object or null | no | null | `{ "type": "Env", "name": "<VARIABLE>" }` is implemented. `{ "type": "Keychain", "service": "HiveMe", "account": "<username>" }` is reserved for phase 6 and reports that it is not implemented rather than failing silently. |
 | `broker.clientIdPrefix` | string | no | `hiveme` | Client id is `<prefix>-<app>-<first 8 hex of device.id>` plus a random suffix for `hmc`. |
 | `broker.keepAliveSecs` | integer | no | 30 | MQTT keep alive. |
-| `broker.sessionExpirySecs` | integer | no | 3600 | `hmg` only. `hmc` always uses 0. |
+| `broker.sessionExpirySecs` | integer | no | 3600 | `hmg` session retention during network interruptions; explicit disconnect and quit discard the session. `hmc` always uses 0. |
 | `broker.connectTimeoutSecs` | integer | no | 10 | |
 | `broker.tls.verifyServer` | boolean | no | true | `false` is honored only for hosts outside `hivemq.cloud` and logs a warning. |
 | `broker.tls.caFile` | path or null | no | null | Extra PEM roots appended to the native trust store. |
 | `broker.reconnect.initialDelayMs` | integer | no | 1000 | |
 | `broker.reconnect.maxDelayMs` | integer | no | 30000 | Exponential backoff with jitter, `hmg` only. |
 | `topics.prefix` | string | no | `hiveme` | May be empty, in which case relative topics are absolute. No leading or trailing `/`, no wildcards. |
-| `topics.default` | string | no | `info` | Relative to the prefix. Used by `hmc` when `--topic` is absent. |
 | `topics.subscriptions` | (string or object)[] | no | `["#"]` | Filters relative to the prefix. A filter starting with `$`, or written as `{ "filter": "...", "absolute": true }`, is used verbatim. |
 | `publish.qos` | 0, 1, 2 | no | 1 | |
 | `publish.retain` | boolean | no | false | |
@@ -176,7 +174,13 @@ value the applications use when the key is absent.
 
 ## Topic resolution
 
+- Without `--topic`, hmc always publishes to the prefix itself (`hiveme` by default).
+  This behavior is built in; there is no default-topic setting. If the prefix is
+  empty, hmc requires an explicit topic. hmg always selects `hiveme` at startup.
 - A relative topic `t` resolves to `<prefix>/t`, or to `t` when the prefix is empty.
+  An empty relative topic resolves to the prefix itself. Both cannot be empty.
+- Log levels live in `payload.level` and never determine the topic. Existing config
+  values and historical topic paths are preserved; no migration is added.
 - `hmc --topic` is relative. `hmc --absolute-topic` (`-T`) makes it verbatim.
 - Topics are validated before publishing: non-empty, no wildcard characters, no NUL
   byte, at most 65535 bytes of UTF-8.
@@ -200,7 +204,6 @@ Settings tab open. Every problem is reported at once rather than one at a time.
 | A password is reachable: the field, `passwordRef`, or `HIVEME_PASSWORD` | `broker.password` |
 | `broker.reconnect.initialDelayMs` is not greater than `maxDelayMs` | `initialDelayMs` |
 | `topics.prefix` has no leading or trailing `/` and no wildcard | `topics.prefix` |
-| `topics.default` is a publishable topic, so no wildcard | `topics.default` |
 | `topics.subscriptions` is not empty, and every filter is well formed | `topics.subscriptions` |
 | `publish.qos` is 0, 1, or 2 | `publish.qos` |
 | Every notification rule has a non-empty id, and no two share one | `empty id`, `share the id` |
@@ -228,9 +231,7 @@ UTF-8.
   deliberate departure from the reference project, which serializes the struct
   directly.
 - Adding an optional field with a default does not bump `version`.
-- Renaming a field or changing its meaning bumps `version` and adds a
-  `migrate_vN_to_vN+1` function plus a fixture pair under
-  `crates/hiveme-core/tests/fixtures/config/`.
+- HiveMe is unpublished. Schema changes do not add config migrations.
 - A config whose `version` is newer than the binary understands is loaded on a best
   effort basis with a warning, and is never rewritten.
 - The schema carries `$id` `https://hiveme.dev/schemas/config/v1.json`. That URL is an

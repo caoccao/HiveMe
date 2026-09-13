@@ -188,7 +188,7 @@ async fn next_message(incoming: &mut Receiver<IncomingMessage>) -> IncomingMessa
 }
 
 /// Fails with the process output when `hmc` did not exit 0.
-fn assert_published(output: &std::process::Output) {
+fn assert_published(output: &std::process::Output, topic: &str) {
   assert!(
     output.status.success(),
     "hmc exited {:?}\nstdout: {}\nstderr: {}",
@@ -196,10 +196,9 @@ fn assert_published(output: &std::process::Output) {
     String::from_utf8_lossy(&output.stdout),
     String::from_utf8_lossy(&output.stderr)
   );
-  assert!(
-    output.stdout.is_empty(),
-    "hmc wrote to stdout: {}",
-    String::from_utf8_lossy(&output.stdout)
+  assert_eq!(
+    String::from_utf8_lossy(&output.stdout),
+    format!("Message sent to {topic}.\n")
   );
 }
 
@@ -211,12 +210,12 @@ fn a_message_argument_reaches_a_subscriber_as_an_envelope() {
       let (subscriber, mut incoming) = fixture.subscriber().await;
 
       let output = fixture
-        .hmc(vec!["--title", "CI", "-t", "warn", "the build finished"], None)
+        .hmc(vec!["--title", "CI", "--level", "warn", "the build finished"], None)
         .await;
-      assert_published(&output);
+      assert_published(&output, "hiveme");
 
       let received = next_message(&mut incoming).await;
-      assert_eq!(received.topic, "hiveme/warn");
+      assert_eq!(received.topic, "hiveme");
       assert_eq!(received.properties.content_type.as_deref(), Some("application/json"));
       assert_eq!(received.properties.hiveme_version(), Some(1));
       assert!(!received.retain);
@@ -226,7 +225,7 @@ fn a_message_argument_reaches_a_subscriber_as_an_envelope() {
           let payload = envelope.payload.as_ref().expect("the payload");
           assert_eq!(payload.body, "the build finished");
           assert_eq!(payload.title.as_deref(), Some("CI"));
-          // The topic matches the built-in warn rule, so the level is inferred from it.
+          // The explicit payload level does not change the default MQTT topic.
           assert_eq!(envelope.level(), Level::Warn);
 
           let sender = envelope.sender.as_ref().expect("the sender");
@@ -251,11 +250,11 @@ fn a_body_piped_in_reaches_a_subscriber() {
 
     // `echo hi | hmc`, newline and all.
     let output = fixture.hmc(Vec::new(), Some("the build finished\n")).await;
-    assert_published(&output);
+    assert_published(&output, "hiveme");
 
     let received = next_message(&mut incoming).await;
     // No --topic, so this went to the configured default.
-    assert_eq!(received.topic, "hiveme/info");
+    assert_eq!(received.topic, "hiveme");
     match received.parse() {
       Parsed::Envelope(envelope) => {
         assert_eq!(envelope.payload.as_ref().unwrap().body, "the build finished");
@@ -279,7 +278,7 @@ fn a_json_publish_arrives_unchanged_and_claims_no_envelope() {
       let output = fixture
         .hmc(vec!["--json", r#"{"stage":"deploy","ok":true}"#], None)
         .await;
-      assert_published(&output);
+      assert_published(&output, "hiveme");
 
       let received = next_message(&mut incoming).await;
       assert_eq!(received.payload, payload.as_bytes());
@@ -306,7 +305,7 @@ fn an_absolute_topic_leaves_the_prefix_behind() {
       .expect("the broker accepts the subscription");
 
     let output = fixture.hmc(vec!["-T", "-t", "elsewhere/status", "up"], None).await;
-    assert_published(&output);
+    assert_published(&output, "elsewhere/status");
 
     let received = next_message(&mut incoming).await;
     assert_eq!(received.topic, "elsewhere/status");
@@ -321,13 +320,13 @@ fn a_retained_message_waits_for_the_next_subscriber() {
     "a_retained_message_waits_for_the_next_subscriber",
     |fixture| async move {
       let output = fixture.hmc(vec!["--retain", "the last word"], None).await;
-      assert_published(&output);
+      assert_published(&output, "hiveme");
 
       // Subscribing only now: the message can only arrive because the broker kept it.
       let (subscriber, mut incoming) = fixture.subscriber().await;
       let received = next_message(&mut incoming).await;
       assert!(received.retain);
-      assert_eq!(received.topic, "hiveme/info");
+      assert_eq!(received.topic, "hiveme");
 
       subscriber.disconnect().await.expect("the subscriber says goodbye");
     },
@@ -346,11 +345,11 @@ fn every_quality_of_service_is_acknowledged_before_hmc_exits() {
       // message.
       for qos in ["0", "1", "2"] {
         let output = fixture.hmc(vec!["-q", qos, "hello"], None).await;
-        assert_published(&output);
+        assert_published(&output, "hiveme");
       }
 
       for _ in 0..3 {
-        assert_eq!(next_message(&mut incoming).await.topic, "hiveme/info");
+        assert_eq!(next_message(&mut incoming).await.topic, "hiveme");
       }
 
       subscriber.disconnect().await.expect("the subscriber says goodbye");
@@ -369,8 +368,8 @@ fn two_runs_at_once_do_not_disconnect_each_other() {
       fixture.hmc(vec!["-t", "info", "first"], None),
       fixture.hmc(vec!["-t", "info", "second"], None)
     );
-    assert_published(&first);
-    assert_published(&second);
+    assert_published(&first, "hiveme/info");
+    assert_published(&second, "hiveme/info");
 
     let mut bodies = Vec::new();
     for _ in 0..2 {
@@ -465,11 +464,11 @@ fn a_real_cloud_cluster_accepts_a_message_from_hmc() {
 
     let output = tokio::task::spawn_blocking({
       let config_path = config_path.clone();
-      move || run_hmc(&config_path, vec!["-t", "info", "hello from hmc"], None)
+      move || run_hmc(&config_path, vec!["hello from hmc"], None)
     })
     .await
     .expect("the hmc process runs");
-    assert_published(&output);
+    assert_published(&output, &config.default_topic());
 
     let received = next_message(&mut incoming).await;
     assert_eq!(received.topic, config.default_topic());

@@ -116,7 +116,6 @@
     "copyCliSetupHint": "Copia el comando completo hmc --init. Contiene la contraseña del bróker en texto sin cifrar.",
     "cliSetupCopied": "Comando de configuración de la CLI copiado. Péguelo en el terminal y ejecútelo.",
     "prefix": "Prefijo",
-    "defaultTopic": "Tema predeterminado",
     "subscriptions": "Suscripciones",
     "subscriptionFilter": "Filtro de suscripción {{index}}",
     "absolute": "Absoluto",

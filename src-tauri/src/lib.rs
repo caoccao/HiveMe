@@ -195,8 +195,9 @@ pub fn run() {
       set_notifications_paused,
       skip_version
     ])
-    .run(tauri::generate_context!())
-    .expect("the application runs");
+    .build(tauri::generate_context!())
+    .expect("the application builds")
+    .run(window::on_run_event);
 }
 
 #[tauri::command]

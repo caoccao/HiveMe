@@ -22,6 +22,7 @@ import { TreeItem } from '@mui/x-tree-view/TreeItem';
 import { useTranslation } from 'react-i18next';
 import type { TopicNode } from '../lib/protocol';
 import { formatNumber } from '../lib/format';
+import { STARTUP_TOPIC } from '../lib/constants';
 import { useAppStore } from '../lib/store';
 
 /**
@@ -52,7 +53,18 @@ export function allNodeIds(nodes: TopicNode[]): string[] {
 
 export default function TopicTree() {
   const { t } = useTranslation();
-  const topics = useAppStore((state) => state.topics);
+  const storedTopics = useAppStore((state) => state.topics);
+  // The startup topic is always available to publish to, even without stored history.
+  // Merge it with the existing root so historical children and counts stay intact.
+  const topics = useMemo(() => {
+    if (storedTopics.some((node) => node.id === STARTUP_TOPIC)) {
+      return storedTopics.map((node) => node.id === STARTUP_TOPIC ? { ...node, topic: STARTUP_TOPIC } : node);
+    }
+    return [
+      { id: STARTUP_TOPIC, label: STARTUP_TOPIC, topic: STARTUP_TOPIC, unread: 0, messages: 0, children: [] },
+      ...storedTopics,
+    ];
+  }, [storedTopics]);
   const filter = useAppStore((state) => state.topicFilter);
   const setFilter = useAppStore((state) => state.setTopicFilter);
   const selectedTopic = useAppStore((state) => state.selectedTopic);
@@ -61,6 +73,9 @@ export default function TopicTree() {
   const [touched, setTouched] = useState(false);
 
   const filtered = useMemo(() => filterNodes(topics, filter), [topics, filter]);
+  const visible = filtered.some((node) => node.id === STARTUP_TOPIC)
+    ? filtered
+    : [{ ...topics.find((node) => node.id === STARTUP_TOPIC)!, children: [] }, ...filtered];
 
   // A filter is only useful when what it matched is visible, and the first tree a user
   // sees should be open rather than a single collapsed root.
@@ -78,6 +93,11 @@ export default function TopicTree() {
     <TreeItem
       key={node.id}
       itemId={node.id}
+      aria-selected={node.topic ? node.id === selectedTopic : undefined}
+      sx={{
+        '& > .MuiTreeItem-content[data-selected]': { bgcolor: 'action.selected', color: 'primary.main' },
+        '& > .MuiTreeItem-content[data-selected]:hover': { bgcolor: 'action.selected' },
+      }}
       label={
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1, minWidth: 0 }}>
           <Typography
@@ -89,7 +109,8 @@ export default function TopicTree() {
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
               fontStyle: node.topic ? 'normal' : 'italic',
-              color: node.topic ? 'text.primary' : 'text.secondary',
+              color: node.id === selectedTopic ? 'primary.main' : node.topic ? 'text.primary' : 'text.secondary',
+              fontWeight: node.id === selectedTopic ? 600 : 400,
             }}
           >
             {node.label}
@@ -121,34 +142,33 @@ export default function TopicTree() {
         slotProps={{ htmlInput: { 'aria-label': t('topics.filter') } }}
       />
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-        {filtered.length === 0 ? (
+        {filtered.length === 0 && (
           <Typography variant="caption" color="text.secondary" sx={{ p: 1, display: 'block' }}>
-            {topics.length === 0 ? t('topics.empty') : t('topics.noMatch')}
+            {t('topics.noMatch')}
           </Typography>
-        ) : (
-          <SimpleTreeView
-            aria-label={t('settings.topics')}
-            expandedItems={expanded}
-            selectedItems={selectedTopic ?? null}
-            onExpandedItemsChange={(_, items) => {
-              setTouched(true);
-              setExpanded(items);
-            }}
-            onSelectedItemsChange={(_, itemId) => {
-              if (typeof itemId !== 'string') {
-                return;
-              }
-              // Only a node a message has arrived on is a real topic; an intermediate
-              // segment such as `hiveme/build` has no history to show.
-              const found = findNode(filtered, itemId);
-              if (found?.topic) {
-                selectTopic(found.topic);
-              }
-            }}
-          >
-            {filtered.map(render)}
-          </SimpleTreeView>
         )}
+        <SimpleTreeView
+          aria-label={t('settings.topics')}
+          expansionTrigger="iconContainer"
+          expandedItems={expanded}
+          selectedItems={selectedTopic ?? null}
+          onExpandedItemsChange={(_, items) => {
+            setTouched(true);
+            setExpanded(items);
+          }}
+          onSelectedItemsChange={(_, itemId) => {
+            if (typeof itemId !== 'string') {
+              return;
+            }
+            // Parent paths select their complete subtree, even without direct messages.
+            const found = findNode(visible, itemId);
+            if (found?.topic) {
+              selectTopic(found.topic);
+            }
+          }}
+        >
+          {visible.map(render)}
+        </SimpleTreeView>
       </Box>
     </Box>
   );
