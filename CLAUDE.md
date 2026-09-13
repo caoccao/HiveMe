@@ -8,7 +8,8 @@ this repository. `AGENTS.md` links to this file; do not modify it.
 HiveMe is two applications on top of MQTT, sharing one
 config file and one message format:
 
-* **`hmc`**, a CLI that publishes one message and exits.
+* **`hmc`**, a CLI that publishes one message and exits, or, run with no arguments on a
+  terminal, opens a ratatui terminal UI with every feature of `hmg`.
 * **`hmg`**, a Tauri 2 desktop GUI with a React 19, TypeScript, and Material UI
   frontend.
 
@@ -16,7 +17,8 @@ The broker is [HiveMQ Cloud](https://docs.hivemq.com/hivemq-cloud/index.html), r
 over MQTT 5 with TLS.
 
 **Read the specifications before changing anything**: [docs/specs/app.md](docs/specs/app.md)
-is the index. The build order is [docs/plans/plan-initialization.md](docs/plans/plan-initialization.md).
+is the index. The build order was [docs/plans/plan-initialization.md](docs/plans/plan-initialization.md),
+then [docs/plans/plan-terminal-ui.md](docs/plans/plan-terminal-ui.md).
 
 **The reference project is `../BetterMediaInfo`**, by the same author. HiveMe copies
 its layout, module split, and conventions on purpose. When you add structure, open the
@@ -32,6 +34,7 @@ cargo build --workspace
 cargo test --workspace                          # add -r for release mode
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
+cargo test -p hmc --test tui                    # the terminal UI in a pseudo-terminal; needs Docker
 
 # Repository automation
 cargo xtask schema                              # regenerate schemas/ from the Rust types
@@ -74,8 +77,9 @@ not modify runtime config or data files.
 
 ```
 Cargo.toml           workspace root, [workspace.package] version and shared deps
-crates/hiveme-core   config, message, topic, rules, mqtt, storage, cloud
-crates/hmc           the CLI binary
+crates/hiveme-core   config, message, topic, rules, mqtt, storage, session, i18n, cloud
+crates/hmc           the CLI binary and its terminal UI in src/tui
+locales              the nine catalogs, shared by the frontend and hmc
 xtask                repository automation
 src-tauri            the Tauri backend of hmg
 src                  the React frontend of hmg
@@ -97,7 +101,9 @@ The same protocol pattern as BetterMediaInfo:
    holds one thin `#[tauri::command]` per call, alphabetized, each returning
    `Result<T, String>` through `convert_error`.
 3. **Business logic**: `hiveme-core`, so that `hmc` and `hmg` cannot diverge.
-   `src-tauri/src/controller.rs` only orchestrates.
+   `src-tauri/src/controller.rs` only orchestrates. Everything between the broker and
+   the screen is `hiveme_core::session`, which `src-tauri` adapts to Tauri and
+   `crates/hmc/src/tui` to the terminal.
 4. **State**: Zustand in `src/lib/store.tsx`. Components never call Tauri APIs
    directly.
 
@@ -117,6 +123,8 @@ The specifications describe the code as built, and CI enforces it. See
   `docs/specs/message.md`, and rerun `cargo xtask schema` and `pnpm gen:types`.
 * Change the CLI, update `docs/specs/cli.md`, including the `text hiveme:help` block.
 * Change the IPC surface, update `docs/specs/gui.md` and both protocol files.
+* Change the shared session, update `docs/specs/session.md`; change the terminal UI or
+  the Rust catalogs, update `docs/specs/tui.md`.
 * JSON examples in the specifications are tagged `json hiveme:<tag>` and are parsed
   and validated by `cargo xtask check-spec`.
 * Update the status table at the end of `docs/specs/app.md` when a feature lands, and
@@ -158,3 +166,7 @@ The specifications describe the code as built, and CI enforces it. See
    `target/release/hmc`. On Windows that entry is a `resources` one, which
    `tauri-build` reads, so `cargo build -r -p hmc` has to come first or nothing that
    touches `hmg` compiles.
+7. **Writing to stdout or stderr while the terminal UI is up.** The terminal is the
+   screen: a `println!` or `eprintln!` corrupts it, and after the terminal has been
+   closed a failed `eprintln!` panics, which is why the TUI never drops ratatui's
+   `Terminal`. Log with `log`, which the terminal UI writes to `hmc.log`.

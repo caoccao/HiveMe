@@ -5,8 +5,7 @@ top of MQTT, sharing one config file and one message format.
 
 1. **HiveMe CLI** (`hmc`) sends a message to the broker from a shell or a script. Run
    with no arguments on a terminal, it opens a terminal UI, specified in
-   [tui.md](tui.md), that grows every feature of the GUI; its shell is built, and its
-   tabs are completed phase by phase.
+   [tui.md](tui.md), that has every feature of the GUI.
 2. **HiveMe GUI** (`hmg`) watches the broker, keeps a local history, and raises OS
    notifications from rules.
 
@@ -22,20 +21,20 @@ with TLS.
 | [message.md](message.md) | The JSON message envelope, its payload, parse tiers, compatibility rules, and the encryption design |
 | [cli.md](cli.md) | `hmc`: usage, behavior, exit codes, the interactive mode trigger |
 | [gui.md](gui.md) | `hmg`: layout, notifications, storage, IPC, settings, window |
-| [tui.md](tui.md) | The terminal UI of `hmc`: layout, keys, theme, languages, startup; the languages and the shell are built, the tabs are specified |
+| [tui.md](tui.md) | The terminal UI of `hmc`: layout, keys, theme, languages, startup, shutdown, tests |
 | [session.md](session.md) | The backend both applications share: operations, events, types, notifications, two processes on one installation; `hmg` runs on it |
 | [hivemq-cloud.md](hivemq-cloud.md) | What the broker offers, how HiveMe connects, and the REST API |
 
 The implementation plans are
 [docs/plans/plan-initialization.md](../plans/plan-initialization.md), which built what
 exists, and [docs/plans/plan-terminal-ui.md](../plans/plan-terminal-ui.md), which
-builds the terminal UI and the shared session phase by phase.
+built the terminal UI and the shared session.
 
 ## Applications
 
 ### HiveMe CLI
 
-`hmc` publishes one message and exits.
+`hmc` publishes one message and exits, or opens the terminal UI.
 
 - `hmc --help` or `hmc -h` shows the help.
 - `hmc <message>` sends to the default topic.
@@ -143,10 +142,7 @@ set of habits.
 
 ## Repository layout
 
-The target layout. Directories that belong to a later phase are listed here but do
-not exist yet, marked `planned` with the phase of
-[the terminal UI plan](../plans/plan-terminal-ui.md) that adds them; see
-[Status](#status) for what is built.
+The layout as built; see [Status](#status) for the phase that built each part.
 
 ```
 HiveMe/
@@ -177,8 +173,9 @@ HiveMe/
       src/i18n/                   # locale resolution, catalogs, plural rules, formatting (feature i18n)
     hmc/                          # CLI binary `hmc`
       build.rs, icons/            # the Windows executable icon and version information
-      src/tui/                    # the terminal UI of tui.md: the shell (phase 3); messages/ and the
-                                  # remaining settings/ panels are planned for phases 4 and 5
+      src/tui/                    # the terminal UI of tui.md: the shell, messages/, settings/, widgets/,
+                                  # and tests/, the in-process tests
+      tests/                      # cli.rs, publish.rs, and tui.rs, the terminal UI in a pseudo-terminal
   xtask/                          # `cargo xtask schema`, `cargo xtask check-spec`
   schemas/                        # broker-init, config, message .schema.json (generated, committed), README.md
   scripts/
@@ -274,7 +271,8 @@ Their phase numbers are that plan's, not the initialization plan's.
 | Terminal UI shell: trigger, toolbar, tabs, footer, snackbar, help, theme, keys, OS notifications, update notice | [tui.md](tui.md), [cli.md](cli.md#interactive-mode) | `crates/hmc/src/tui` | TUI 3 | done |
 | Terminal UI Messages tab: topic tree, message view, composer | [tui.md](tui.md#topic-tree) | `crates/hmc/src/tui/messages` | TUI 4 | done |
 | Terminal UI Settings and About tabs | [tui.md](tui.md#settings) | `crates/hmc/src/tui/settings`, `crates/hmc/src/tui/about.rs` | TUI 5 | done |
-| Terminal UI end-to-end test, hardening, onboarding | [tui.md](tui.md#tests) | `crates/hmc/tests/tui.rs`, `docs`, `README.md` | TUI 6 | planned |
+| Terminal UI end-to-end test, performance tests, hardening, onboarding | [tui.md](tui.md#tests) | `crates/hmc/tests/tui.rs`, `crates/hmc/src/tui/tests/performance.rs`, `docs`, `README.md` | TUI 6 | done |
+| Two processes on one database each show and notify what arrives | [session.md](session.md#two-processes-one-installation) | `hiveme-core::session`, `hiveme-core::storage` | TUI 6 | done |
 
 ## Build and release
 
@@ -583,3 +581,51 @@ The entries below are against [the terminal UI plan](../plans/plan-terminal-ui.m
     gains `broker_init`, and `hiveme_core::config` exports `BrokerUrlParts`,
     `DEFAULT_SCHEME`, `Scheme::ALL`, and `Scheme::from_alias`; `BrokerUrl::parse` reads
     its scheme through `Scheme::from_alias`.
+45. Phase 6: the end-to-end test reads the pseudo-terminal back into a screen with
+    `vt100`, a dev-dependency the plan did not name, and answers the two queries a
+    terminal answers and `vt100` does not: the cursor position ConPTY asks for before it
+    passes anything on, and the device attributes crossterm asks for after the keyboard
+    flags. On Unix it reads the terminal without blocking, through `libc`, so that
+    closing the terminal can drop the reader's copy of it, which is what makes the kernel
+    send `SIGHUP`, and it asks `tcgetattr` whether raw mode is on; `rumqttc` asks the
+    broker whether the session is gone, as the session test does. The client identifier
+    comes from `hmc.log`, which the test turns on with `--verbose`. The file runs on
+    Windows through ConPTY as well, wherever Docker is, not only on the Linux workflow.
+46. Phase 6: the plan's two-process check is part of that test rather than a check by
+    hand with `hmg`. `hmg` is played by its session, `SessionApp::Gui`, in the test
+    process, since everything `hmg` does between the broker and `HiveMe.db` is that
+    session. The check found that whichever process stored a message second took the row
+    for the echo of its own publish, so only one of the two applications showed the
+    message live and raised its notification, and that two processes storing one message
+    at the same moment could both find it missing, the second insert then failing on the
+    unique key. The session now remembers the last 10,000 messages it stored or sent, a
+    retained copy of a stored message raises nothing, and `Store::insert` runs in one
+    immediate transaction; [session.md](session.md#two-processes-one-installation)
+    describes both. The notifier logs `rule <id> showed a notification for <topic>` at
+    debug, which is how the test counts the toasts of the terminal UI.
+47. Phase 6: closing the terminal under interactive `hmc` ended the broker session
+    cleanly and then exited with code 101 on Linux: ratatui's `Terminal` shows the cursor
+    again when it is dropped and reports a failure with `eprintln!`, which panics once
+    the terminal is gone. The terminal is now never dropped, since `restore_terminal`
+    already shows the cursor on every way out. The Linux run of the end-to-end test found
+    it; on Windows the system ends the process after a console close either way.
+48. Phase 6: on macOS `hmc` sets the bundle identifier of `hmg`, `com.caoccao.hiveme`,
+    before its first toast, as the Tauri notification plugin does for `hmg`, rather than
+    only recording the label an unbundled binary gets. Left alone, `mac-notification-sys`
+    looks an application named `use_default` up with AppleScript and labels the toast
+    Finder; with the identifier set, the label is HiveMe where HiveMe.app is installed
+    and Terminal where it is not. That is read from the library's source and has not
+    been seen on a Mac.
+49. Phase 6: the benchmark is `crates/hmc/src/tui/tests/performance.rs`, in process on
+    `TestBackend` like the other screen tests, with a budget per frame of 150 ms in a
+    release build and 750 ms in a debug one. Resizing is tested there as a size change
+    between two frames with input arriving in between, since the event loop draws
+    synchronously and the size cannot change inside one draw.
+50. Phase 6: the checks by hand the plan lists are not done: the terminal UI by eye in
+    Windows Terminal and in the legacy Windows console, the toast label on Windows, and
+    the toast of an unbundled binary on macOS. A Linux desktop without a notification
+    daemon is covered by the notifier's test of a refused toast and by the Linux run of
+    the end-to-end test, which has no daemon and whose toasts are logged as refused while
+    everything else goes on. [screenshots.md](../screenshots.md) has the recipe for
+    `tui.png` but no image, as entry 19 has for the others. [todos.md](../todos.md) lists
+    what is left.

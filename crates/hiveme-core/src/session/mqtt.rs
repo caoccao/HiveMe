@@ -23,6 +23,7 @@
 //! every message that arrives is stored, turned into an event, and offered to the
 //! notification rules.
 
+use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -37,6 +38,39 @@ use crate::storage::{NewMessage, Store};
 use super::config::ConfigStore;
 use super::notify::Notifier;
 use super::types::{MessageRow, SessionEvent, Status};
+
+/// How many messages a session remembers having stored or sent.
+const REMEMBERED_MESSAGES: usize = 10_000;
+
+/// The messages this session stored or sent, oldest first and bounded.
+///
+/// A row that is already in the database is either one this process put there, whose
+/// echo or second delivery raises nothing again, or one that another process on the same
+/// `HiveMe.db` stored a moment earlier, which this process has not shown yet. The
+/// database cannot tell the two apart, so the session remembers.
+#[derive(Debug, Default)]
+pub(super) struct Remembered {
+  keys: HashSet<(String, String)>,
+  order: VecDeque<(String, String)>,
+}
+
+impl Remembered {
+  /// Remembers a message by topic and id, and says whether it was new to this session.
+  pub(super) fn insert(&mut self, topic: &str, msg_id: &str) -> bool {
+    let key = (topic.to_owned(), msg_id.to_owned());
+    if self.keys.contains(&key) {
+      return false;
+    }
+    if self.order.len() == REMEMBERED_MESSAGES
+      && let Some(oldest) = self.order.pop_front()
+    {
+      self.keys.remove(&oldest);
+    }
+    self.keys.insert(key.clone());
+    self.order.push_back(key);
+    true
+  }
+}
 
 /// One live connection and the tasks that serve it.
 struct Connection {
@@ -67,6 +101,7 @@ pub(super) struct Shared {
   notifier: Arc<Notifier>,
   config: Arc<ConfigStore>,
   events: broadcast::Sender<SessionEvent>,
+  remembered: Mutex<Remembered>,
 }
 
 impl Shared {
@@ -100,6 +135,11 @@ impl Shared {
   /// Raises the status as it stands.
   pub(super) fn emit_status(&self) {
     self.emit(SessionEvent::Status(self.status()));
+  }
+
+  /// Remembers a message this session stored or sent, and says whether it was new to it.
+  pub(super) fn remember(&self, topic: &str, msg_id: &str) -> bool {
+    self.remembered.lock().unwrap().insert(topic, msg_id)
   }
 
   /// A send with no receiver is not an error: nothing is on screen yet.
@@ -138,6 +178,7 @@ impl Mqtt {
         notifier,
         config,
         events,
+        remembered: Mutex::new(Remembered::default()),
       }),
     }
   }
@@ -331,9 +372,13 @@ async fn pump(shared: Arc<Shared>, mut incoming: mpsc::Receiver<IncomingMessage>
         topic: message.topic.clone(),
       });
     }
-    if !insertion.is_new {
-      // The echo of something this installation published. The bubble is already on
-      // screen and the rules already had their say when it was sent.
+    let new_here = shared.remember(&row.topic, &row.msg_id);
+    if !insertion.is_new && (message.retain || !new_here) {
+      // Stored by this session already: the echo of its own publish, whose bubble is on
+      // screen and whose rules had their say when it was sent, or the broker delivering
+      // a message again. A retained copy of a stored message is old news too. What is
+      // left was stored a moment ago by another process on the same database, `hmg` or
+      // another terminal UI, and is new to this one.
       continue;
     }
     shared.emit(SessionEvent::Message(MessageRow::from(insertion.message)));
@@ -367,6 +412,21 @@ mod tests {
     fn show(&self, _title: &str, _body: &str) -> std::result::Result<(), String> {
       Ok(())
     }
+  }
+
+  #[test]
+  fn a_session_remembers_the_newest_messages_it_stored() {
+    let mut remembered = Remembered::default();
+    assert!(remembered.insert("hiveme", "first"));
+    assert!(!remembered.insert("hiveme", "first"), "the echo is recognized");
+    assert!(remembered.insert("hiveme/other", "first"), "a topic is part of the key");
+    for index in 0..REMEMBERED_MESSAGES {
+      remembered.insert("hiveme/flood", &index.to_string());
+    }
+    assert_eq!(remembered.order.len(), REMEMBERED_MESSAGES);
+    assert_eq!(remembered.keys.len(), REMEMBERED_MESSAGES);
+    assert!(remembered.insert("hiveme", "first"), "the oldest were forgotten");
+    assert!(!remembered.insert("hiveme/flood", &(REMEMBERED_MESSAGES - 1).to_string()));
   }
 
   #[tokio::test]

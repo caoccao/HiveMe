@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+* `hmg` and the terminal UI of `hmc` run side by side on one installation: a message
+  that arrives shows up live and raises its notification in both, where one of them used
+  to take it for a message already seen and stay silent.
+
+* Closing the terminal window under the terminal UI of `hmc` still ends the broker
+  session, and on Linux and macOS `hmc` now exits with 0 afterward rather than 101.
+
+* On macOS the notifications of `hmc` are labeled HiveMe when HiveMe.app is installed,
+  as those of `hmg` are.
+
+* The README walks from nothing to a live session in the terminal UI, without the GUI.
+
 * The terminal UI of `hmc` has all of Settings and the About tab. Appearance applies a
   display mode, a theme, or a language to the whole screen at once; Broker has the
   protocol list, the line that says which URL and port will be used, the connection and

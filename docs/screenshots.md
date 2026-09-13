@@ -1,7 +1,8 @@
 # Screenshots
 
 > None yet. They have to be taken by hand on a desktop session, so they are the one
-> piece of step 5.2 that is still open. The recipe below produces the state to shoot.
+> piece of step 5.2 of the initialization plan, and of phase 6 of the terminal UI plan,
+> that is still open. The recipe below produces the state to shoot.
 
 Wanted, to be saved under `docs/screenshots/` and linked from here and from the
 [README](../README.md):
@@ -11,6 +12,7 @@ Wanted, to be saved under `docs/screenshots/` and linked from here and from the
 | `messages.png` | The main window: toolbar, topic tree with unread badges, chat view of a selected topic, status bar |
 | `settings.png` | The Settings tab, Broker category, with the category strip and **Copy CLI setup** |
 | `notification.png` | A desktop notification raised by the built-in `error` rule |
+| `tui.png` | Interactive `hmc` in a terminal of 120 columns by 40 rows: the toolbar, the topic tree, the chat view of `hiveme` with the newest message focused so its metadata row shows, and the status bar |
 
 ## Setting up the shot
 
@@ -46,4 +48,15 @@ hmc -c /tmp/hmc.json --level error --title CI     "Nightly build 483 failed: 2 t
 hmc -c /tmp/hmc.json -t build/ci --json '{"build":483,"branch":"main","failed":["config::migrate"]}'
 ```
 
-Use the already selected `hiveme` topic for the main shot, and `docker stop hiveme-shots` afterward.
+Use the already selected `hiveme` topic for the main shot.
+
+For `tui.png`, open the terminal UI on the same config in a terminal window of 120 by
+40, with the same light theme, once the messages are in; it shares `HiveMe.db` with the
+GUI, so the history is already there:
+
+```sh
+hmc --tui -c /tmp/HiveMe.json
+```
+
+Press `Tab` to move to the message list, which focuses the newest message, and shoot
+the whole window. `docker stop hiveme-shots` afterward.

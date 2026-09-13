@@ -6,12 +6,9 @@ snackbar, OS notifications, and the update notice, rendered with
 [ratatui](https://ratatui.rs/) in the terminal, in all nine languages, on the same
 backend `hmg` uses. The one-shot publish mode of [cli.md](cli.md) is unchanged.
 
-**Status: the languages, the shell, the Messages tab, Settings, and About are built;
-the end-to-end test is specified.** [The terminal UI plan](../plans/plan-terminal-ui.md)
-builds it phase by phase. Every section below names the phase that builds it, and the
-status table in [app.md](app.md#status) records what has landed. Phases 1 to 5 are done;
-until a later section's phase is done, that section describes intent rather than code,
-the way [message.md](message.md#encryption) describes encryption.
+**Status: built.** [The terminal UI plan](../plans/plan-terminal-ui.md) built it in
+phases 0 to 6. Every section below names the phase that built it, and the status table
+in [app.md](app.md#status) records each one.
 
 The behaviors are those of [gui.md](gui.md), rendered in cells. Where the terminal
 cannot do what the GUI does, this document says what replaces it. The shared backend
@@ -33,7 +30,8 @@ behind both applications is specified in [session.md](session.md).
 
 ## Components
 
-*Phase 3 for the shell, 4 for `messages/`, 5 for `settings/` and `about.rs`.*
+*Phase 3 for the shell, 4 for `messages/`, 5 for `settings/` and `about.rs`, 6 for the
+end-to-end test and the performance tests.*
 
 The file split mirrors `src/components/` on purpose, as the component table of
 [gui.md](gui.md#components) does, so that a feature has the same name in both
@@ -67,10 +65,11 @@ applications.
 | `crates/hmc/src/tui/about.rs` | The About tab: the gradient letters, the cards and the links, and the table |
 | `crates/hmc/src/tui/widgets/` | The one-line text input, the multi-line editor, `truncate`, and `wrap`. The select popup, checkbox, radio row, number field, and editable table are rows of `settings/form.rs`, the one place that uses them |
 | `crates/hmc/src/tui/clipboard.rs` | `arboard`, then the OSC 52 escape sequence |
-| `crates/hmc/src/tui/notify.rs` | The `Toaster` of [session.md](session.md#notifications): `notify-rust`, or the Windows toast crate |
+| `crates/hmc/src/tui/notify.rs` | The `Toaster` of [session.md](session.md#notifications): `notify-rust`, under the bundle identifier of `hmg` on macOS, or the Windows toast crate |
 | `crates/hmc/src/tui/open.rs` | Opens URLs and the config directory |
 | `crates/hiveme-core/src/i18n/` | Locale resolution, the catalogs, plural rules, formatting; see [Languages](#languages). Built in phase 2 |
-| `crates/hmc/src/tui/tests/` | The in-process tests: `mod.rs` holds the scripted session and the shell, `messages.rs` the Messages tab, `settings.rs` the Settings and About tabs |
+| `crates/hmc/src/tui/tests/` | The in-process tests: `mod.rs` holds the scripted session and the shell, `messages.rs` the Messages tab, `settings.rs` the Settings and About tabs, `performance.rs` a large history and a terminal that changes size |
+| `crates/hmc/tests/tui.rs` | The end-to-end test: the real binary in a pseudo-terminal, against the Docker broker |
 | `locales/*.json` | The nine catalogs, shared with the frontend |
 
 Third party ratatui widgets (`tui-textarea`, `tui-tree-widget`) are used only if they
@@ -601,7 +600,7 @@ Spanish (`es`), French (`fr`), Italian (`it`), Japanese (`ja`), Simplified Chine
 
 ## Notifications
 
-*Phase 3.*
+*Phase 3, and phase 6 for the macOS identity.*
 
 Interactive `hmc` raises OS notifications from the shared rules of
 [gui.md](gui.md#notifications), through the session's notifier of
@@ -612,7 +611,7 @@ the same code `hmg` runs. `hmc` supplies only the final show call.
 | Platform | How `hmc` shows a toast |
 |----------|-------------------------|
 | Linux | `notify-rust` over D-Bus. A desktop without a notification daemon is a reason for the message to be silent, not for it to be lost: the failure is logged and the message is still stored and shown. |
-| macOS | `notify-rust`. An unbundled binary shows its toasts under the identity of the terminal application that runs it; phase 6 records the label that is seen. |
+| macOS | `notify-rust`, under the bundle identifier of `hmg`, `com.caoccao.hiveme`, which `hmc` sets before its first toast so that a toast is labeled HiveMe where HiveMe.app is installed. Where it is not, the identifier cannot be set and the toast is labeled Terminal, the default of `mac-notification-sys`; left alone, the library would look an application up by name and settle on Finder. This is read from the library's source and has not been seen on a Mac yet, see [todos.md](../todos.md). A unit test keeps the identifier equal to `identifier` in `src-tauri/tauri.conf.json`. |
 | Windows | `tauri-winrt-notification` against the same `HiveMe` `AppUserModelId` `hmg` registers, so the toast is labeled HiveMe rather than the console host. The registry entry is written by whichever application starts first. |
 
 The manual checklist of [gui.md](gui.md#platform-notes) is run with interactive `hmc`
@@ -790,13 +789,31 @@ bundles: every installer already carries `hmc` beside `hmg`.
 - `assert_cmd` proves the trigger: no arguments with piped stdin publishes; `--tui`
   with a redirected stdout exits 2; `--tui` conflicts with the publish and init
   options.
-- `crates/hmc/tests/tui.rs` drives the real binary in a pseudo-terminal through
-  `portable-pty` against the Docker broker of `publish.rs`: the frame comes up, a
-  message published by one-shot `hmc` appears, a message typed and sent is
-  acknowledged and stored, a language change re-renders the toolbar, and `Ctrl+Q`
-  ends the session and restores the terminal. A second run closes the
-  pseudo-terminal instead, which delivers `SIGHUP`, and proves that the broker session
-  ended all the same. It is gated like `publish.rs`; the Linux workflow runs it.
+- Built in phase 6, in `crates/hmc/src/tui/tests/performance.rs`: ten thousand rows over
+  two hundred topics, envelopes, raw JSON, and long text in both directions, opened at
+  200 x 60, paged through to the oldest row, moved through with the list keys, joined by
+  fifty live messages, and walked node by node through the tree, with every frame and
+  the work before it within 150 ms in a release build and 750 ms in a debug one; and a
+  terminal resized between two frames on each tab, to sizes above, at, and below
+  80 x 24, with a key, the wheel, and a click arriving while the application still knows
+  the old size, drawn whole at the new one with no click target outside it.
+- Built in phase 6, `crates/hmc/tests/tui.rs` runs the real binary in a pseudo-terminal
+  from `portable-pty`, openpty on Linux and macOS and ConPTY on Windows, against the
+  Docker broker of `publish.rs`. `vt100` reads what `hmc` writes back into a screen, and
+  the test answers the cursor position and device attribute queries a terminal answers.
+  One run waits for the frame to connect; sees a message that one-shot `hmc` published
+  as another device appear under that device's name; types a message, presses `Enter`,
+  and finds the bubble above an empty message box and one outgoing row in `HiveMe.db`;
+  changes the language with `F10`, `Tab`, and the Language select, and finds the German
+  toolbar and `gui.language` saved; and leaves with `Ctrl+Q`: exit 0, the frame and every
+  terminal mode gone, raw mode off again on Unix, `the MQTT connection and session have
+  ended` in `hmc.log`, and no session left on the broker for the client identifier the
+  log names. A second run closes the pseudo-terminal instead, which is `SIGHUP` on Unix
+  and `CTRL_CLOSE_EVENT` on Windows, and finds the same end in the log and on the broker,
+  and exit 0 on Unix. A third runs `hmg`'s session in the test process on the same config
+  and database, see [session.md](session.md#two-processes-one-installation). The file is
+  skipped like `publish.rs`; the Linux workflow runs it, and it runs on Windows through
+  ConPTY wherever Docker is.
 - Quit tests against a scripted session: the Quit tool, `Ctrl+Q`, `Ctrl+C` in a
   focused text field, and a signal each end the session once and restore the terminal;
   a second press exits at once; a shutdown that hangs is cut off at

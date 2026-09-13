@@ -48,8 +48,16 @@ windows-registry = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
+# tests/tui.rs: the terminal UI in a pseudo-terminal, read back as a screen.
+portable-pty = { workspace = true }
 predicates = { workspace = true }
+# tests/tui.rs asks the broker whether a client identifier still has a session.
+rumqttc = { workspace = true }
 tempfile = { workspace = true }
 testcontainers = { workspace = true }
 # `test-util` pauses the clock, so the shutdown timeout is tested without waiting it out.
 tokio = { workspace = true, features = ["test-util"] }
+vt100 = { workspace = true }
+
+[target.'cfg(unix)'.dev-dependencies]
+libc = { workspace = true }

@@ -102,6 +102,21 @@ Publishing before any `--init` writes a default config and exits 3. The help and
 lines `hmc` prints follow `gui.language` of the config, so `--help` against a German
 config is German. Full reference in [specs/cli.md](specs/cli.md).
 
+Run with nothing after it in a terminal, `hmc` opens the terminal UI instead. `--tui`
+opens it whatever stdin is, and `--config` keeps it off your real config:
+
+```sh
+cargo run -p hmc
+cargo run -p hmc -- --tui --config ./scratch/HiveMe.json
+cargo run -p hmc -- --tui --verbose --config ./scratch/HiveMe.json   # logs to ./scratch/hmc.log
+```
+
+A config that does not exist yet is written with the defaults, and the terminal UI opens
+on its Broker fields. It writes nothing to stdout or stderr while it is up, so follow
+`hmc.log` beside the config from another terminal; the log is only written with
+`--verbose` or `RUST_LOG`. `?` shows the keys and `Ctrl+Q` leaves. Full reference in
+[specs/tui.md](specs/tui.md).
+
 ## Packaging `hmc`
 
 Every installer carries `hmc` beside `hmg`, so that installing the desktop application
@@ -165,6 +180,13 @@ this usually means a second copy of `hmg` running against the same config, or an
 MQTT client of yours using the same id. A Serverless cluster also allows 100
 concurrent connections in total.
 
+**`hmc` opens a full screen instead of sending.** With no message, no publish option,
+and a terminal on stdin, `hmc` opens its terminal UI; `Ctrl+Q` leaves it. Give it the
+message as an argument, or pipe it in, to publish.
+
+**The terminal UI only says the terminal is too small.** It needs 80 columns by 24 rows;
+make the window larger and it draws again.
+
 **`hmc` exits 3 and prints a config path.** There is no config yet, so it wrote a
 default one. Run `hmc --init '<paste>'` with the string from the GUI.
 
@@ -223,7 +245,10 @@ More detail lives in [specs/hivemq-cloud.md](specs/hivemq-cloud.md) and
   an in-memory store, see `crates/hmc/src/tui/tests/`. One of them,
   `against_a_real_broker_the_composer_and_one_shot_hmc_meet_in_the_view`, starts the
   HiveMQ CE container as `crates/hmc/tests/publish.rs` does and is skipped the same way
-  with `HIVEME_SKIP_DOCKER=1`.
+  with `HIVEME_SKIP_DOCKER=1`. `performance.rs` there holds ten thousand rows to a frame
+  budget and resizes the terminal between frames; its budget is looser in a debug build.
+* `crates/hmc/tests/tui.rs` runs the real terminal UI in a pseudo-terminal, see
+  [Testing against a broker](#testing-against-a-broker).
 
 ## Config file location
 
@@ -321,7 +346,16 @@ runs in well under a minute.
 cargo test -p hiveme-core --test mqtt           # the client
 cargo test -p hiveme-core --test session        # the shared session hmg runs on
 cargo test -p hmc --test publish                # CLI broker integration
+cargo test -p hmc --test tui                    # the terminal UI in a pseudo-terminal
 ```
+
+`tui.rs` starts `target/<profile>/hmc --tui` in a pseudo-terminal, openpty on Linux and
+macOS and ConPTY on Windows, reads the screen back with `vt100`, and types into it: it
+waits for the connection, sends a message, changes the language, and quits with
+`Ctrl+Q`, then closes the terminal under a second run, and runs a third next to the
+session `hmg` runs, on one config and one database. Each run keeps its config,
+`HiveMe.db`, and `hmc.log` in a temporary directory, and a failure prints the screen
+and the log.
 
 Each test says why it did nothing and passes when Docker is unavailable, or when
 `HIVEME_SKIP_DOCKER=1` is set, as the macOS and Windows workflows do. The Linux
@@ -369,6 +403,7 @@ file.
 * [React 19](https://react.dev/)
 * [TypeScript](https://www.typescriptlang.org/)
 * [Material UI](https://mui.com/) with [MUI X Tree View](https://mui.com/x/react-tree-view/)
+* [ratatui](https://ratatui.rs/) and [crossterm](https://crates.io/crates/crossterm) for the terminal UI of `hmc`
 * [Zustand](https://zustand.docs.pmnd.rs/)
 * [react-i18next](https://react.i18next.com/)
 * [Vite](https://vite.dev/)

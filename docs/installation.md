@@ -1,7 +1,8 @@
 # Installation
 
 HiveMe ships two programs from one repository: `hmg`, the
-desktop application, and `hmc`, the command line publisher. They share a config file,
+desktop application, and `hmc`, the command line publisher, which also opens a terminal
+UI with everything the desktop application has. They share a config file,
 and every installer carries both, so setting the cluster up once is enough for both.
 
 Download the latest release from the
@@ -77,7 +78,8 @@ See [Where the config lives](#where-the-config-lives).
 
 Installing the GUI installs `hmc` too, so this is for a machine that wants only the
 CLI, or for putting `hmc` where a shell can find it on the platforms whose installer
-does not. It is a single executable with no dependencies:
+does not. It is a single executable with no dependencies; it carries SQLite and its
+terminal UI inside it, which is why it is some megabytes larger than a bare publisher:
 
 ```sh
 # Linux and macOS
@@ -89,7 +91,8 @@ Move-Item hmc.exe "$env:LOCALAPPDATA\Programs\HiveMe\"
 # then add that folder to PATH, or call the executable by its full path
 ```
 
-Check it with `hmc --version`.
+Check it with `hmc --version`. Run `hmc` on its own in a terminal to open its terminal
+UI.
 
 ## Where the config lives
 
@@ -124,6 +127,12 @@ Full rules in [specs/config.md](specs/config.md#location-and-precedence).
 3. Press **Copy CLI setup** in that same section, paste the complete command into
    your terminal, and run it. The command already includes `hmc --init` and the JSON.
 4. Send a test message: `hmc "hello"`. It appears in the GUI.
+
+On a machine without a desktop, or to stay in the terminal, run `hmc` with nothing
+after it instead of steps 2 and 3. With no config yet it opens on the Broker fields of
+its Settings tab; enter the same URL, username, and password there, and it connects once
+they are saved. Messages then appear in its Messages tab, and `hmc "hello"` from another
+terminal uses the same config.
 
 The [README](../README.md#quick-start) walks through the same path in more detail,
 and [development.md](development.md#troubleshooting) lists what to do when a step does

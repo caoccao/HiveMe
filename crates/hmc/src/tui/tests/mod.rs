@@ -22,10 +22,12 @@
 //! same event loop the real terminal uses. The scripted session keeps its rows in a real
 //! in-memory store, so the tree, the unread counts, and the paging are the store's own.
 //!
-//! This file holds the harness and the shell; `messages.rs` holds the Messages tab and
-//! `settings.rs` the Settings and About tabs.
+//! This file holds the harness and the shell; `messages.rs` holds the Messages tab,
+//! `settings.rs` the Settings and About tabs, and `performance.rs` a large history and a
+//! terminal that changes size.
 
 mod messages;
+mod performance;
 mod settings;
 
 use std::cell::Cell;

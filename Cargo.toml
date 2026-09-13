@@ -34,10 +34,15 @@ env_logger = "0.11"
 futures-core = "0.3"
 hostname = "0.4"
 jsonschema = "0.56"
+# Unix only, in the hmc pseudo-terminal test: a non-blocking read of the terminal side.
+libc = "0.2"
 log = "0.4"
 # Linux and macOS only: the OS notifications of the hmc terminal UI.
 notify-rust = "4.18"
 open = "5.4"
+# The pseudo-terminal the hmc end-to-end test runs the terminal UI in: openpty on Unix,
+# ConPTY on Windows.
+portable-pty = "0.9"
 predicates = "3.1"
 ratatui = "0.30"
 rumqttc = { version = "0.25", features = ["use-rustls"] }
@@ -67,6 +72,8 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"
 unicode-width = "0.2"
 ureq = { version = "2", features = ["json"] }
 uuid = { version = "1.26", features = ["v7", "serde"] }
+# Reads what the terminal UI wrote to the pseudo-terminal back into a screen of cells.
+vt100 = "0.16"
 # Windows only: puts the icon and the version information inside hmc.exe.
 winresource = "0.1"
 

@@ -212,10 +212,13 @@ so that a message from any of them is indistinguishable.
 
 Every message the broker delivers is counted, parsed with the lenient reader of
 [message.md](message.md#parse-tiers), and stored. A new row raises `Message` and is
-offered to the notifier; a row that was already there is the echo of something this
-installation published, and raises nothing. `TopicAdded` is raised for a topic the
-store has not seen. Inserts run on the runtime in arrival order, which is the order the
-chat views show.
+offered to the notifier. A row that was already there raises nothing when this session
+put it there, as the echo of its own publish or a second delivery, or when the message
+is a retained copy; one that another process on the same database stored a moment
+earlier is raised and offered to the notifier as new, see
+[Two processes, one installation](#two-processes-one-installation). `TopicAdded` is
+raised for a topic the store has not seen. Inserts run on the runtime in arrival order,
+which is the order the chat views show.
 
 ## Notifications
 
@@ -284,18 +287,35 @@ One-shot `hmc` does not use the session; it keeps `Role::Cli`. The full table is
 `HiveMe.db`.
 
 - SQLite runs in WAL mode and the store sets a five second busy timeout, so a write
-  that meets the other process's write waits instead of failing.
-- An envelope received by both is one row per process view: the second insert finds
-  the row and does not count it unread again. A payload with no id of its own (raw
-  JSON, text, bytes) has an id generated on insert, so one received by both becomes
-  two rows. This is documented, not prevented; only an envelope can claim to be the
-  same message.
+  that meets the other process's write waits instead of failing. A message is stored in
+  one immediate transaction, the lookup and the insert together, so the two processes
+  never both find a message missing and both insert it.
+- An envelope received by both is one row: whichever stores it second finds the row
+  and does not count it unread again. Both still show it live and offer it to the rules.
+  The database cannot say who put a row there, so each session remembers the last 10,000
+  messages it stored or sent itself: a row it did not put there was stored a moment ago
+  by the other process and is raised as new, while the echo of its own publish, a second
+  delivery, and a retained copy of a stored message raise nothing. So an envelope from
+  another device is one row, counted unread once, one `Message` event in each process,
+  and one notification in each.
+- A payload with no id of its own (raw JSON, text, bytes) has an id generated on insert,
+  so one received by both becomes two rows, each counted unread, and each process raises
+  its own. This is documented, not prevented; only an envelope can claim to be the same
+  message.
 - Both processes prune; the second pass finds nothing.
 - Both hold the config in memory and write it atomically. The last writer wins, and a
   change made in one is seen by the other at its next start. A file watcher is an open
   item in [todos.md](../todos.md).
 - The client identifiers differ by construction, so the broker never disconnects one
   for the other.
+- Verified in phase 6 by `hmg_and_the_terminal_ui_share_one_installation` in
+  `crates/hmc/tests/tui.rs`: interactive `hmc` in a pseudo-terminal and `hmg`'s session,
+  `SessionApp::Gui` in the test process, on one config and one database, with one-shot
+  `hmc` publishing as another device. An envelope is one row, unread once, and one
+  notification in each; a raw JSON payload is two rows, and the unread count is three.
+  The check found that the second process took the first one's row for its own echo and
+  showed and notified nothing, which is what the remembered messages and the immediate
+  transaction above fixed.
 
 ## What each application adds
 
@@ -324,4 +344,9 @@ toggle stops the toaster from being called while the message is still stored and
 raised; `shutdown` ends the session within its bound, the broker keeps no session for
 the client identifier, and later work is refused. A scripted `Toaster` records the
 calls. The unit tests of the moved code moved with it, and `tests/storage.rs` proves
-that two handles on one database store an envelope once and count it unread once.
+that two handles on one database store an envelope once and count it unread once, and
+that two threads storing the same two hundred envelopes through two handles at once
+store each one once, new to exactly one of them. Built in phase 6: two sessions, `Gui`
+and `Tui`, on one config and database each raise a message from another device once and
+show its notification once, and a message one of them sends is raised once by each, by
+the other as this device's message.

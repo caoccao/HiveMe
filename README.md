@@ -5,17 +5,19 @@
 HiveMe is a pair of desktop applications for your own
 MQTT topics, built on [HiveMQ Cloud](https://www.hivemq.com/).
 
-* **`hmc`**, a CLI that sends a message from a shell or a script.
+* **`hmc`**, a CLI that sends a message from a shell or a script. Run on its own in a
+  terminal, it opens a terminal UI with everything the GUI has, for a server or an SSH
+  session with no desktop.
 * **`hmg`**, a GUI that watches your topics, keeps a local history, and raises OS
   notifications from rules.
 
 Both share one config file and one JSON message format, and both run on Linux, macOS,
 and Windows.
 
-> **Status: phase 5.** Both applications are built and documented. There is no
-> published release yet, so build from source; the packaging is described in
+> **Status:** both applications are built and documented, `hmc` with its terminal UI.
+> There is no published release yet, so build from source; the packaging is described in
 > [docs/installation.md](docs/installation.md) and the remaining work in
-> [docs/plans/plan-initialization.md](docs/plans/plan-initialization.md).
+> [docs/todos.md](docs/todos.md).
 
 ## Quick start
 
@@ -51,7 +53,7 @@ pnpm tauri build       # the bundle for this OS, carrying both, under target/rel
 [docs/development.md](docs/development.md#commands) has the rest of the commands, and
 what each one is for.
 
-### 4. Tell the GUI about the cluster
+### 4. Tell HiveMe about the cluster
 
 Start HiveMe, press **F10** for the Settings tab, select **Broker**, and fill in:
 
@@ -70,11 +72,20 @@ Changes save automatically when you pause typing. The status bar at the bottom t
 to **connected**. There is nothing to configure for TLS: a HiveMQ Cloud certificate
 chains to an authority your operating system already trusts.
 
+**Or stay in the terminal.** Run `hmc` with nothing after it. The first time, with no
+config yet, it opens on the same Broker fields in its own Settings tab, with the cursor
+in the URL box: paste the URL, press **Tab** to reach the username and again for the
+password, and type them. It saves when you pause, and the status bar at the bottom turns
+to **connected**. Its Messages tab, **Alt+1**, is the same tree and chat view as the
+GUI's; **?** lists every key, and **Ctrl+Q** quits. The terminal UI writes the config
+file the CLI reads, so on this machine step 5 is already done.
+
 ### 5. Tell the CLI, without retyping any of it
 
 In that same Broker section, press **Copy CLI setup**, paste the copied command into
 your terminal, and run it. The clipboard already contains `hmc --init` and the quoted
-JSON, so there is nothing to add.
+JSON, so there is nothing to add. The terminal UI has the same button, for setting up
+`hmc` on another machine.
 
 Both applications share the same config file and Rust config implementation. The
 command reports whether the config was unchanged, updated, or created. Matching
@@ -99,12 +110,12 @@ hmc -t build/ci "Custom topic"         # info payload on hiveme/build/ci
 
 The CLI confirms each successful publish with `Message sent to <topic>.`.
 
-Each one appears in the GUI within a moment, under its topic in the tree on the left,
-and raises a desktop notification: the three built-in rules match the payload levels
-`info`, `warn`, and `error`. Message boxes use regular, warning, and error colors.
-`hiveme` is always visible, selected, and highlighted when hmg starts, even without
-history or when the CLI default is customized. Type in the box at the bottom to
-publish back to it.
+Each one appears in the GUI, or in the terminal UI, within a moment, under its topic in
+the tree on the left, and raises a desktop notification: the three built-in rules match
+the payload levels `info`, `warn`, and `error`. Message boxes use regular, warning, and
+error colors. `hiveme` is always visible, selected, and highlighted when either starts,
+even without history or when the CLI default is customized. Type in the box at the
+bottom to publish back to it.
 
 That is the whole loop. Put `hmc` at the end of a long build, a backup script, or a
 cron job, and the machine tells you when it is done.
@@ -119,8 +130,11 @@ lists what usually goes wrong and what to do about it.
   * [Message format](docs/specs/message.md)
   * [CLI](docs/specs/cli.md)
   * [GUI](docs/specs/gui.md)
+  * [Terminal UI](docs/specs/tui.md)
+  * [Shared session](docs/specs/session.md)
   * [HiveMQ Cloud](docs/specs/hivemq-cloud.md)
 * [Initialization plan](docs/plans/plan-initialization.md)
+* [Terminal UI plan](docs/plans/plan-terminal-ui.md)
 * [Development](docs/development.md)
 * [Installation](docs/installation.md)
 * [Release Notes](docs/release_notes.md)

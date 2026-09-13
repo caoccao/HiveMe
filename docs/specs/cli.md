@@ -3,8 +3,7 @@
 `hmc` publishes one message to the MQTT broker and exits. It is the scripting entry
 point for HiveMe and shares its config with the GUI. Run with no arguments on a
 terminal, it opens the terminal UI of [tui.md](tui.md) instead, see
-[Interactive mode](#interactive-mode); the shell of that UI is built, and its Messages,
-Settings, and About tabs are completed by the later phases of
+[Interactive mode](#interactive-mode), built by
 [the terminal UI plan](../plans/plan-terminal-ui.md).
 
 ## Usage
@@ -301,11 +300,10 @@ See [Interactive mode](#interactive-mode).
 
 ## Later phases
 
-- The terminal UI is built by [the terminal UI plan](../plans/plan-terminal-ui.md):
+- The terminal UI was built by [the terminal UI plan](../plans/plan-terminal-ui.md):
   the shared session in phase 1, the setup string language and the catalogs in phase
-  2, the shell in phase 3, the Messages tab in phase 4, and Settings and About in phase 5
-  are built; the end-to-end test is phase 6. The status table in [app.md](app.md#status) says
-  what has landed.
+  2, the shell in phase 3, the Messages tab in phase 4, Settings and About in phase 5, and
+  the end-to-end test in phase 6. The status table in [app.md](app.md#status) records each.
 - There are no subcommands, now or later: a bare word is a message, see
   [The body](#the-body). Every later mode is an option.
 - The config and keychain helpers (showing the config, printing its path, storing the

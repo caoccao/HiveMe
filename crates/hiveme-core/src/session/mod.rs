@@ -323,6 +323,7 @@ impl Session {
     let row = NewMessage::from_payload(topic, payload, qos.as_u8(), retain, true);
     let insertion = self.store.insert(&row)?;
     let shared = self.mqtt.shared();
+    shared.remember(&row.topic, &row.msg_id);
     if insertion.topic_is_new {
       shared.emit(SessionEvent::TopicAdded {
         topic: topic.to_owned(),

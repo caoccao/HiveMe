@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 
 use crate::config::History;
 use crate::error::{Error, Result};
@@ -314,8 +314,14 @@ impl Store {
   /// The unread count only moves for a message that is new and came from the broker;
   /// what this installation sent has been seen by definition.
   pub fn insert(&self, message: &NewMessage) -> Result<Insertion> {
-    let connection = self.lock();
-    let existing_topic: Option<i64> = connection
+    let mut connection = self.lock();
+    // Immediate, so that two processes on one database never both find a message missing
+    // and both insert it: the second waits out the first under the busy timeout and then
+    // finds the row.
+    let transaction = connection
+      .transaction_with_behavior(TransactionBehavior::Immediate)
+      .map_err(|source| failed("begin storing a message", source))?;
+    let existing_topic: Option<i64> = transaction
       .query_row(
         "SELECT id FROM topics WHERE topic = ?1",
         params![message.topic],
@@ -326,7 +332,7 @@ impl Store {
     let topic_is_new = existing_topic.is_none();
     let topic_id = match existing_topic {
       Some(id) => {
-        connection
+        transaction
           .execute(
             "UPDATE topics SET last_seen_ts = ?2 WHERE id = ?1",
             params![id, message.received_ts],
@@ -335,17 +341,17 @@ impl Store {
         id
       }
       None => {
-        connection
+        transaction
           .execute(
             "INSERT INTO topics (topic, first_seen_ts, last_seen_ts, unread) VALUES (?1, ?2, ?2, 0)",
             params![message.topic, message.received_ts],
           )
           .map_err(|source| failed("record a topic", source))?;
-        connection.last_insert_rowid()
+        transaction.last_insert_rowid()
       }
     };
 
-    let existing: Option<(i64, bool, u8, bool)> = connection
+    let existing: Option<(i64, bool, u8, bool)> = transaction
       .query_row(
         "SELECT id, outgoing, qos, retain FROM messages WHERE topic_id = ?1 AND msg_id = ?2",
         params![topic_id, message.msg_id],
@@ -364,14 +370,14 @@ impl Store {
         } else {
           (message.qos, message.retain)
         };
-        connection
+        transaction
           .execute(
             "UPDATE messages SET qos = ?2, retain = ?3, outgoing = ?4 WHERE id = ?1",
             params![row_id, qos, retain, outgoing],
           )
           .map_err(|source| failed("update a message", source))?;
         if message.outgoing && !was_outgoing {
-          connection
+          transaction
             .execute(
               "UPDATE topics SET unread = MAX(0, unread - 1) WHERE id = ?1",
               params![topic_id],
@@ -381,7 +387,7 @@ impl Store {
         (row_id, false, outgoing, qos, retain)
       }
       None => {
-        connection
+        transaction
           .execute(
             "INSERT INTO messages (
                topic_id, msg_id, ts, received_ts, sender_id, sender_name, app,
@@ -406,15 +412,18 @@ impl Store {
             ],
           )
           .map_err(|source| failed("store a message", source))?;
-        let row_id = connection.last_insert_rowid();
+        let row_id = transaction.last_insert_rowid();
         if !message.outgoing {
-          connection
+          transaction
             .execute("UPDATE topics SET unread = unread + 1 WHERE id = ?1", params![topic_id])
             .map_err(|source| failed("count an unread message", source))?;
         }
         (row_id, true, message.outgoing, message.qos, message.retain)
       }
     };
+    transaction
+      .commit()
+      .map_err(|source| failed("store a message", source))?;
 
     Ok(Insertion {
       message: StoredMessage {

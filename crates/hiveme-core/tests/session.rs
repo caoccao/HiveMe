@@ -477,3 +477,83 @@ fn shutdown_ends_the_broker_session_within_the_bound() {
     },
   );
 }
+
+#[test]
+fn two_sessions_on_one_database_each_raise_what_arrives_once() {
+  with_broker(
+    "two_sessions_on_one_database_each_raise_what_arrives_once",
+    |broker| async move {
+      // hmg and the terminal UI of hmc on one config and one HiveMe.db.
+      let gui_toasts = Arc::new(Recorder::default());
+      let gui = broker.session(SessionApp::Gui, "shared", gui_toasts.clone());
+      let tui_toasts = Arc::new(Recorder::default());
+      let path = broker.directory.path().join("shared").join("HiveMe.json");
+      let tui = Session::open(Some(&path), SessionApp::Tui, tui_toasts.clone()).expect("the second session opens");
+      gui.connect().await.expect("the first session connects");
+      tui.connect().await.expect("the second session connects");
+      let mut gui_events = gui.subscribe();
+      let mut tui_events = tui.subscribe();
+      let rows = |events: Vec<SessionEvent>| -> Vec<String> {
+        events
+          .into_iter()
+          .filter_map(|event| match event {
+            SessionEvent::Message(row) => Some(row.body),
+            _ => None,
+          })
+          .collect()
+      };
+
+      // From another device: one row, unread once, and in each session one event and
+      // one notification, whichever of the two stored it first.
+      let publisher = broker.client("elsewhere", Role::Cli).await;
+      let config = broker.config("elsewhere");
+      let message = Message::new_text(Sender::from_device(&config.device, "hmc"), "Disk full")
+        .with_title("Disk")
+        .with_level(Level::Error);
+      publisher
+        .publish_message("hiveme/disk", &message, Qos::AtLeastOnce, false)
+        .await
+        .expect("the broker acknowledges the publish");
+      let (gui_seen, tui_seen) = tokio::join!(
+        events_within(&mut gui_events, Duration::from_secs(3)),
+        events_within(&mut tui_events, Duration::from_secs(3))
+      );
+      assert_eq!(rows(gui_seen), ["Disk full"]);
+      assert_eq!(rows(tui_seen), ["Disk full"]);
+      assert_eq!(gui.messages("hiveme", None, 0).unwrap().len(), 1);
+      assert_eq!(tui.topic_tree().unwrap()[0].unread, 1);
+      let shown = vec![("Disk".to_owned(), "Disk full".to_owned())];
+      assert_eq!(gui_toasts.shown(), shown);
+      assert_eq!(tui_toasts.shown(), shown);
+
+      // Sent from one of them: that one raises its own row only, and its echo is
+      // recognized; the other shows it as it arrives, as this device's message.
+      let sent = gui
+        .publish("hiveme", "Deployed", PublishOptions::default())
+        .await
+        .expect("the broker acknowledges the publish");
+      let (gui_seen, tui_seen) = tokio::join!(
+        events_within(&mut gui_events, Duration::from_secs(3)),
+        events_within(&mut tui_events, Duration::from_secs(3))
+      );
+      assert_eq!(rows(gui_seen), ["Deployed"]);
+      let tui_rows: Vec<MessageRowSummary> = tui_seen
+        .into_iter()
+        .filter_map(|event| match event {
+          SessionEvent::Message(row) => Some((row.row_id, row.outgoing)),
+          _ => None,
+        })
+        .collect();
+      assert_eq!(tui_rows, [(sent.row_id, true)]);
+      assert_eq!(gui.messages("hiveme", None, 0).unwrap().len(), 2);
+      assert_eq!(tui_toasts.shown().len(), 1, "this device's own message raises nothing");
+
+      publisher.disconnect().await.expect("the publisher says goodbye");
+      gui.shutdown().await.expect("the first session ends");
+      tui.shutdown().await.expect("the second session ends");
+    },
+  );
+}
+
+/// A row event reduced to its row id and direction.
+type MessageRowSummary = (i64, bool);

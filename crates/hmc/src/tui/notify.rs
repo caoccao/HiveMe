@@ -21,12 +21,20 @@
 //! are decided in [`hiveme_core::session`], the same code `hmg` runs. This is only the
 //! show call: `notify-rust` on Linux and macOS, and on Windows the toast API under the
 //! `HiveMe` application identity `hmg` registers, so the toast is labeled HiveMe rather
-//! than the console host.
+//! than the console host. macOS labels a toast with the application of a bundle
+//! identifier, and an unbundled `hmc` has none, so it borrows the one of `hmg`.
 
 use hiveme_core::session::Toaster;
 
 /// The application identity a toast is shown under.
 const APP_ID: &str = hiveme_core::APP_NAME;
+
+/// The bundle identifier of `hmg`, `identifier` in `src-tauri/tauri.conf.json`.
+#[cfg_attr(
+  not(target_os = "macos"),
+  allow(dead_code, reason = "only macOS labels toasts by bundle")
+)]
+const MACOS_BUNDLE_ID: &str = "com.caoccao.hiveme";
 
 /// Shows the notifications the session decides on.
 #[derive(Debug)]
@@ -38,6 +46,13 @@ impl DesktopToaster {
     if let Err(error) = register_identity() {
       // The toast still appears, under the console host's name.
       log::warn!("the Windows notification identity could not be registered: {error}");
+    }
+    // Set before the first toast, which would otherwise look an application up by name
+    // and settle on Finder. Where HiveMe.app is not installed this fails, and the toasts
+    // are labeled Terminal instead.
+    #[cfg(target_os = "macos")]
+    if let Err(error) = notify_rust::set_application(MACOS_BUNDLE_ID) {
+      log::info!("toasts are not labeled HiveMe, {MACOS_BUNDLE_ID} is not installed: {error}");
     }
     Self
   }
@@ -82,4 +97,16 @@ fn register_identity() -> Result<(), String> {
   key
     .set_string("IconBackgroundColor", "0")
     .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn the_macos_toast_identity_is_the_bundle_identifier_of_hmg() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../src-tauri/tauri.conf.json");
+    let config: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    assert_eq!(config["identifier"], MACOS_BUNDLE_ID);
+  }
 }

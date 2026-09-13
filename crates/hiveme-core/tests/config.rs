@@ -503,9 +503,12 @@ fn the_keychain_is_honest_about_not_being_implemented() {
     service: "HiveMe".to_owned(),
     account: "hiveme-sam".to_owned(),
   });
-  let error = config.broker.resolved_password().unwrap_err();
-  assert!(matches!(error, Error::NotImplemented(_)), "got {error}");
-  assert!(error.to_string().contains("phase 6"));
+  // HIVEME_PASSWORD would win over the reference, and another test sets it.
+  temporarily_set(PASSWORD_VARIABLE, None, || {
+    let error = config.broker.resolved_password().unwrap_err();
+    assert!(matches!(error, Error::NotImplemented(_)), "got {error}");
+    assert!(error.to_string().contains("phase 6"));
+  });
 }
 
 #[test]

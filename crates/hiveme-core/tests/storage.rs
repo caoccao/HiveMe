@@ -534,3 +534,37 @@ fn two_processes_on_one_database_store_an_envelope_once_and_count_it_once() {
   assert_eq!(gui.message_count().unwrap(), 1);
   assert_eq!(tui.topics().unwrap()[0].unread, 1, "the envelope counts as unread once");
 }
+
+#[test]
+fn two_processes_storing_the_same_messages_at_once_store_each_once() {
+  // Both applications receive a message at the same moment. Without a transaction
+  // around the lookup and the insert, both could find it missing, and the second insert
+  // would fail on the unique key instead of recognizing the row.
+  let directory = tempfile::tempdir().unwrap();
+  let path = directory.path().join("HiveMe.db");
+  let messages: Vec<Message> = (0..200)
+    .map(|index| envelope("device-2", &format!("message {index}")))
+    .collect();
+  let stores = [Store::open(&path).unwrap(), Store::open(&path).unwrap()];
+
+  let new_rows: usize = std::thread::scope(|scope| {
+    let workers: Vec<_> = stores
+      .iter()
+      .map(|store| {
+        let messages = &messages;
+        scope.spawn(move || {
+          messages
+            .iter()
+            .map(|message| store.insert(&incoming("hiveme/race", message)).unwrap())
+            .filter(|insertion| insertion.is_new)
+            .count()
+        })
+      })
+      .collect();
+    workers.into_iter().map(|worker| worker.join().unwrap()).sum()
+  });
+
+  assert_eq!(new_rows, messages.len(), "each message is new to exactly one process");
+  assert_eq!(stores[0].message_count().unwrap(), 200);
+  assert_eq!(stores[1].topics().unwrap()[0].unread, 200);
+}

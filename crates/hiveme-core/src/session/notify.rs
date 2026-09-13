@@ -104,6 +104,7 @@ impl Notifier {
       log::warn!("the OS would not show a notification: {error}");
       return None;
     }
+    log::debug!("rule {} showed a notification for {topic}", notification.rule_id);
     Some(notification.rule_id)
   }
 }

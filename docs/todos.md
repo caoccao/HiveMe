@@ -2,7 +2,7 @@
 
 Tracked work lives in [the initialization plan](plans/plan-initialization.md), whose
 phases 0 to 5 are done, and in [the terminal UI plan](plans/plan-terminal-ui.md),
-which builds the interactive mode of `hmc` and the shared session. This page collects
+which built the interactive mode of `hmc` and the shared session. This page collects
 what the plans deliberately left open.
 
 ## Open items from the terminal UI plan
@@ -17,6 +17,12 @@ what the plans deliberately left open.
   left to its phase 6, is still wanted now that interactive mode tails every
   configured subscription. It would be an option, never a subcommand: a bare word is
   a message.
+* The checks by hand that phase 6 left open: the terminal UI by eye in Windows Terminal
+  and in the legacy Windows console, the label of a toast from `hmc` on Windows, and on
+  macOS whether a toast from an unbundled `hmc` appears and is labeled HiveMe with
+  HiveMe.app installed and Terminal without it, as [tui.md](specs/tui.md#notifications)
+  expects from the source of `mac-notification-sys`. The screenshots, `tui.png`
+  included, are still to be taken.
 * Whether the block letters of the About tab and the scrollbar of a settings panel need
   ASCII fallbacks on the Linux console and a Windows console outside Windows Terminal,
   whose fonts phase 5 assumed draw them.

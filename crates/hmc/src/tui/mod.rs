@@ -47,6 +47,7 @@ mod tests;
 
 use std::future::poll_fn;
 use std::io::{self, IsTerminal, Write};
+use std::mem::ManuallyDrop;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -134,14 +135,17 @@ pub fn start(cli: &Cli, locale: Locale) -> Result<()> {
 
 async fn run(path: PathBuf, first_run: bool, locale: Locale) -> Result<()> {
   let session = Session::open(Some(&path), SessionApp::Tui, Arc::new(DesktopToaster::new()))?;
-  let mut terminal = enter_terminal().map_err(|source| {
+  // Never dropped: `restore_terminal` shows the cursor on every way out, and ratatui's own
+  // drop would show it again and, after a hangup, print why it could not to a stderr that
+  // is gone, which panics and turns the exit code into 101.
+  let mut terminal = ManuallyDrop::new(enter_terminal().map_err(|source| {
     restore_terminal();
     Failure::Unexpected(t_with(
       locale,
       "cli.terminalUnavailable",
       &[("error", &source.to_string())],
     ))
-  })?;
+  })?);
 
   let (mut app, mut receivers) = App::new(
     session.clone(),
@@ -151,7 +155,7 @@ async fn run(path: PathBuf, first_run: bool, locale: Locale) -> Result<()> {
   );
   session.start_background_work();
   let mut inputs = forward_inputs();
-  let exit = drive(&mut app, &mut terminal, &mut inputs, &mut receivers, restore_terminal).await;
+  let exit = drive(&mut app, &mut *terminal, &mut inputs, &mut receivers, restore_terminal).await;
   log::info!("the terminal UI has ended: {exit:?}");
   Ok(())
 }

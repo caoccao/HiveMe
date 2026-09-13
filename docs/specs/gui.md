@@ -414,9 +414,9 @@ one database are in [session.md](session.md#two-processes-one-installation).
   this build has not stamped, whether it is brand new or older than the table itself,
   so the tables are created with `IF NOT EXISTS` and the version is written afterward.
   A database from a newer build is refused rather than guessed at.
-- Inserts de-duplicate on `(topic_id, msg_id)`, which is how a message the composer
-  sent and the copy the broker echoes back collapse into one bubble, regardless of
-  arrival order. An outgoing publish sets the row's outgoing flag and preserves the
+- Inserts de-duplicate on `(topic_id, msg_id)`, in one immediate transaction, which is
+  how a message the composer sent and the copy the broker echoes back collapse into one
+  bubble, regardless of arrival order. An outgoing publish sets the row's outgoing flag and preserves the
   QoS and retain options used to send it; a subscription echo cannot replace them
   with its delivery flags. An echo stored before the outgoing publish is reconciled
   as sent and removed from the unread count.
@@ -553,8 +553,10 @@ PublishOptions = { topic?, json?, qos?, retain?, title?, level? }
 
 The events are the session's, see [session.md](session.md#events). A `message` event
 is emitted once per stored row, whether the message arrived or the composer sent it.
-The echo of a message this installation published raises no second event, because it
-collapses into the row that is already there. `status` is also emitted when the pause
+The echo of a message this process published raises no second event, because it
+collapses into the row that is already there; a row that interactive `hmc` stored first
+on the same database is raised all the same, see
+[session.md](session.md#two-processes-one-installation). `status` is also emitted when the pause
 toggle changes.
 
 ## Settings

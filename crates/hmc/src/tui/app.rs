@@ -80,6 +80,7 @@ pub enum QuitReason {
   Hangup,
   /// `CTRL_CLOSE_EVENT`, `CTRL_LOGOFF_EVENT`, or `CTRL_SHUTDOWN_EVENT`. Windows ends the
   /// process about five seconds later, so nothing but the broker session is attempted.
+  #[cfg_attr(not(windows), allow(dead_code, reason = "only Windows has console control events"))]
   ConsoleClose,
 }
 
