@@ -36,6 +36,7 @@ Answers gathered before writing this plan. They are binding for the phases below
 | 22 | Pane split and drafts (*assumed*) | The topic pane width, composer drafts, expansion state, and the selected settings category live in process memory only, as the GUI keeps its drafts. Nothing new is written to the config. |
 | 23 | Minimum terminal (*assumed*) | 80 columns by 24 rows. Below that the TUI draws one centered line asking for a larger terminal, the way `hmg` enforces 600 x 450. |
 | 24 | End-to-end driver (*assumed*) | The pseudo-terminal test is a Rust integration test using `portable-pty`, not a Deno script: Deno has no PTY API. `scripts/ts/test-e2e.ts` stays the `hmg` driver. |
+| 25 | No subcommands (answered in phase 0) | `hmc [OPTIONS] [MESSAGE]` stays the whole grammar. A bare word is the message, so `hmc config` publishes `config`; every mode is an option, which is why the trigger of decision 4 is "no arguments" and the forcing flag is `--tui`. The helpers the initialization plan once spelled as subcommands are options when they are built. |
 
 ---
 
@@ -381,7 +382,7 @@ Every text field takes the usual editing keys (`Left`/`Right`, `Home`/`End`, `Ba
 | `docs/development.md` | Running the TUI, its log file, the pseudo-terminal test, the shared `locales/` directory, `hmc` now linking SQLite |
 | `docs/installation.md` | `hmc` opens an interactive UI; nothing else changes |
 | `docs/screenshots.md` | A `tui.png` row and its recipe |
-| `docs/todos.md` | `hmc sub` is superseded by interactive mode; a config file watcher is a new open item |
+| `docs/todos.md` | The non-interactive tail option is superseded by interactive mode; a config file watcher is a new open item |
 | `README.md` | The two-sentence description of `hmc`, a quick start step for the terminal UI |
 | `CLAUDE.md` | Project overview line for `hmc`, the workspace table (`locales/`, `session`), the build order note, the pitfall about stderr in the TUI. `AGENTS.md` is untouched |
 
@@ -580,5 +581,5 @@ The workflows need no new steps: `cargo test -r --workspace` picks up the new te
 - Whether `tui-textarea` and `tui-tree-widget` support ratatui 0.30 at the time of phase 3; if not, the in-house widgets stay.
 - Whether the kitty keyboard protocol is worth enabling on Windows Terminal by default, or only when detected.
 - Whether the two applications should watch the config file for changes made by the other; if so, it belongs to the session and lands in a later plan.
-- Whether `hmc sub`, the non-interactive tail from the initialization plan's phase 6, is still wanted now that interactive mode tails every subscription.
+- Whether a non-interactive tail option, which the initialization plan left to its phase 6, is still wanted now that interactive mode tails every subscription. It would be an option, never a subcommand.
 - The exact glyph fallbacks (`🔒`, `📌`, `▾`, `✕`) on terminals without those code points; phase 3 picks ASCII fallbacks behind one table.

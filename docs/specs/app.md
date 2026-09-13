@@ -3,7 +3,9 @@
 HiveMe is a Rust project with two applications built on
 top of MQTT, sharing one config file and one message format.
 
-1. **HiveMe CLI** (`hmc`) sends a message to the broker from a shell or a script.
+1. **HiveMe CLI** (`hmc`) sends a message to the broker from a shell or a script. Run
+   with no arguments on a terminal, it opens a terminal UI with every feature of the
+   GUI; that mode is specified in [tui.md](tui.md) and not built yet.
 2. **HiveMe GUI** (`hmg`) watches the broker, keeps a local history, and raises OS
    notifications from rules.
 
@@ -17,11 +19,16 @@ with TLS.
 |----------|--------|
 | [config.md](config.md) | The shared JSON config: location, fields, versioning, secrets, topic resolution |
 | [message.md](message.md) | The JSON message envelope, its payload, parse tiers, compatibility rules, and the encryption design |
-| [cli.md](cli.md) | `hmc`: usage, behavior, exit codes |
+| [cli.md](cli.md) | `hmc`: usage, behavior, exit codes, the interactive mode trigger |
 | [gui.md](gui.md) | `hmg`: layout, notifications, storage, IPC, settings, window |
+| [tui.md](tui.md) | The terminal UI of `hmc`: layout, keys, theme, languages, startup; specified, not built |
+| [session.md](session.md) | The backend both applications share: operations, events, types, notifications, two processes on one installation; specified, not built |
 | [hivemq-cloud.md](hivemq-cloud.md) | What the broker offers, how HiveMe connects, and the REST API |
 
-The implementation plan is [docs/plans/plan-initialization.md](../plans/plan-initialization.md).
+The implementation plans are
+[docs/plans/plan-initialization.md](../plans/plan-initialization.md), which built what
+exists, and [docs/plans/plan-terminal-ui.md](../plans/plan-terminal-ui.md), which
+builds the terminal UI and the shared session phase by phase.
 
 ## Applications
 
@@ -33,8 +40,9 @@ The implementation plan is [docs/plans/plan-initialization.md](../plans/plan-ini
 - `hmc <message>` sends to the default topic.
 - `hmc -t <topic> <message>` sends to a topic.
 - `echo <message> | hmc` reads the body from stdin.
+- `hmc` alone, on a terminal, opens the terminal UI (phase 3 of the terminal UI plan).
 
-Full reference in [cli.md](cli.md).
+Full reference in [cli.md](cli.md) and, for the terminal UI, [tui.md](tui.md).
 
 ### HiveMe GUI
 
@@ -95,11 +103,12 @@ revises them.
 | 10 | Spec files | Split by concern, as listed above. |
 | 11 | Frontend stack | Vite, React 19, TypeScript, MUI with `@mui/x-tree-view`, Zustand, react-i18next, pnpm. |
 | 12 | Tests and CI | Broker integration tests against HiveMQ CE. A native hmc-to-hmg end-to-end test requires Docker and WebDriver and fails if unavailable; Linux CI runs it under Xvfb. One GitHub Actions build workflow per OS. |
-| 13 | CLI scope for phase 1 | Message argument, `-t`, stdin, and `--json`. No subcommands. |
+| 13 | CLI scope for phase 1 | Message argument, `-t`, stdin, and `--json`. No subcommands, then or later: a bare word is the message, and every mode is an option. See [cli.md](cli.md#the-body). |
 | 14 | MQTT version | MQTT 5, through `rumqttc`. |
 | 15 | GUI publishing | Inside the message view, chat style, with an input box and a send button at the bottom. |
 | 16 | Payload fields | `title`, `body`, `level`, a free-form `data` object, and `sender` in the envelope. |
 | 17 | Reference architecture | The UI layout and Tauri architecture follow the sibling project `../BetterMediaInfo`. See below. |
+| 18 | Terminal UI | The decisions behind the interactive mode of `hmc`, the shared session, and the shared catalogs are section 1 of [the terminal UI plan](../plans/plan-terminal-ui.md). |
 
 ## Reference architecture
 
@@ -132,8 +141,9 @@ set of habits.
 
 ## Repository layout
 
-The target layout. Directories that belong to a later phase, such as `src-tauri/`
-and `src/components/`, are listed here but do not exist yet; see
+The target layout. Directories that belong to a later phase are listed here but do
+not exist yet, marked `planned` with the phase of
+[the terminal UI plan](../plans/plan-terminal-ui.md) that adds them; see
 [Status](#status) for what is built.
 
 ```
@@ -152,16 +162,21 @@ HiveMe/
                                   # Messages, TopicTree, MessageView, Composer, Config, About
     lib/                          # store.tsx, service.ts, protocol.ts, constants.ts, format.ts, types.ts, message.ts
     generated/                    # config.ts, message.ts generated from schemas/ (committed)
-    i18n/                         # index.ts, locales/*.json (nine locales)
+    i18n/                         # index.ts, locales/*.json (nine locales; the files move to locales/ in phase 2, planned)
+  locales/                        # planned, phase 2: the nine catalogs shared by the frontend and hmc
   src-tauri/                      # Tauri 2 app, package `hmg`, lib `hmg_lib`, binary `hmg`
     Cargo.toml, tauri.conf.json, build.rs, capabilities/default.json, icons/
     tauri.windows.conf.json       # Windows only: the bundle entry that carries hmc
     src/                          # main.rs, lib.rs, controller.rs, protocol.rs, config.rs, constants.rs,
                                   # window.rs, mqtt.rs, notification.rs, storage.rs, update.rs
+                                  # (phase 1, planned: adapters over hiveme_core::session; config.rs and update.rs go)
   crates/
     hiveme-core/                  # config, message, topic, rules, mqtt, storage (feature), cloud (feature, later)
+      src/session/                # planned, phase 1: the shared backend of session.md
+      src/i18n/                   # planned, phase 2: locale resolution, catalogs, plural rules, formatting
     hmc/                          # CLI binary `hmc`
       build.rs, icons/            # the Windows executable icon and version information
+      src/tui/                    # planned, phases 3 to 5: the terminal UI of tui.md
   xtask/                          # `cargo xtask schema`, `cargo xtask check-spec`
   schemas/                        # broker-init, config, message .schema.json (generated, committed), README.md
   scripts/
@@ -169,8 +184,8 @@ HiveMe/
                                   # check-license-headers.ts, check-spec-sync.ts, gen-types.ts
     license-header.txt
   docs/
-    specs/                        # app.md, config.md, message.md, cli.md, gui.md, hivemq-cloud.md
-    plans/                        # plan-initialization.md
+    specs/                        # app.md, config.md, message.md, cli.md, gui.md, tui.md, session.md, hivemq-cloud.md
+    plans/                        # plan-initialization.md, plan-terminal-ui.md
     installation.md, development.md, release_notes.md, screenshots.md, todos.md
   .github/workflows/              # linux_build.yml, macos_build.yml, windows_build.yml
   .config/                        # gitignored: broker.json, the setup string of a real cluster for the opt-in tests
@@ -192,6 +207,7 @@ rather than rely on memory.
 | 6 | `scripts/ts/check-spec-sync.ts` fails when the config, message, MQTT, CLI, or IPC code changes without a matching change under `docs/specs/`, and when `protocol.rs` changes without `protocol.ts` | `scripts/ts/` |
 | 7 | The status table below records what is built | this file |
 | 8 | Definition of done for every step: code, tests, spec update, regenerated schemas, a status table row, and a release note for user visible changes | the plan |
+| 9 | The same script maps the shared session (`crates/hiveme-core/src/session/`) to [session.md](session.md), and the terminal UI (`crates/hmc/src/tui/`) and the Rust catalogs (`crates/hiveme-core/src/i18n/`) to [tui.md](tui.md); the rest of `crates/hmc/src/` still maps to [cli.md](cli.md). The rules exist ahead of the directories, so the first code in them needs its spec | `scripts/ts/` |
 
 Bypass the pairing check with the `spec-sync-exempt` pull request label when a change
 is a pure refactor.
@@ -242,6 +258,20 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Encryption | [message.md](message.md#encryption) | `hiveme-core::crypto` | 6 | designed, types and parsing in place |
 | REST API client | [hivemq-cloud.md](hivemq-cloud.md#rest-api) | `hiveme-core::cloud` | 6 | designed |
 | Frontend localization in nine languages | [gui.md](gui.md#languages) | `src/i18n`, `src/components`, `src/lib/format.ts` | 6 | done |
+
+The rows below are the phases of [the terminal UI plan](../plans/plan-terminal-ui.md).
+Their phase numbers are that plan's, not the initialization plan's.
+
+| Feature | Spec | Module | Phase | Status |
+|---------|------|--------|-------|--------|
+| Terminal UI and shared session specified | [tui.md](tui.md), [session.md](session.md) | `docs/specs` | TUI 0 | done |
+| Shared session: `hmg` on `hiveme_core::session`, `Role::Tui`, the `Toaster` split | [session.md](session.md) | `hiveme-core::session`, `src-tauri` | TUI 1 | planned |
+| Setup string carries the language; `hmc --init` applies it | [config.md](config.md#the-setup-string), [cli.md](cli.md#setting-up) | `hiveme-core::config::init`, `crates/hmc` | TUI 2 | planned |
+| Shared catalogs in `locales/`, `hiveme_core::i18n`, translated `hmc` lines and help | [tui.md](tui.md#languages), [gui.md](gui.md#languages) | `locales`, `hiveme-core::i18n`, `crates/hmc`, `src/i18n` | TUI 2 | planned |
+| Terminal UI shell: trigger, toolbar, tabs, footer, snackbar, help, theme, keys, OS notifications, update notice | [tui.md](tui.md), [cli.md](cli.md#interactive-mode) | `crates/hmc/src/tui` | TUI 3 | planned |
+| Terminal UI Messages tab: topic tree, message view, composer | [tui.md](tui.md#topic-tree) | `crates/hmc/src/tui/messages` | TUI 4 | planned |
+| Terminal UI Settings and About tabs | [tui.md](tui.md#settings) | `crates/hmc/src/tui/settings`, `crates/hmc/src/tui/about.rs` | TUI 5 | planned |
+| Terminal UI end-to-end test, hardening, onboarding | [tui.md](tui.md#tests) | `crates/hmc/tests/tui.rs`, `docs`, `README.md` | TUI 6 | planned |
 
 ## Build and release
 

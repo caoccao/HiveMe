@@ -29,7 +29,7 @@ Its layout and architecture deliberately mirror the sibling project
 | `src/lib/message.ts` | The reader that renders the parse tiers |
 | `src/lib/format.ts` | Times, sizes, and the hex preview |
 | `src/lib/constants.ts` | Names, links, and the layout constants |
-| `src/i18n/` | react-i18next with nine locales; see [Languages](#languages) |
+| `src/i18n/` | react-i18next with nine locales; see [Languages](#languages). The catalogs themselves move to `locales/` in phase 2 of [the terminal UI plan](../plans/plan-terminal-ui.md), shared with `hmc` |
 
 ## Layout
 
@@ -262,6 +262,13 @@ catalogs.
 Catalog tests check key coverage, interpolation variables, and plural forms in every
 locale, including keys selected dynamically by connection state, theme, and severity.
 
+From phase 2 of [the terminal UI plan](../plans/plan-terminal-ui.md) the nine catalogs
+live in `locales/` at the repository root, one set for both applications: the frontend
+imports them from there, and `hiveme_core::i18n` embeds the same files for `hmc`. The
+keys the terminal UI and the CLI add sit in the same files under the `tui`, `cli`, and
+`help` namespaces, so the catalog test above covers them as well. Which strings `hmc`
+translates is in [tui.md](tui.md#languages).
+
 ## Theme
 
 `App.tsx` creates the MUI theme from `gui.displayMode` and `gui.theme`.
@@ -286,6 +293,12 @@ written and no component has to say so itself. Components use theme values throu
 ## Notifications
 
 A rule matches an MQTT topic filter and a payload log level to an OS notification.
+The rules below are the shared rules: from phase 1 of
+[the terminal UI plan](../plans/plan-terminal-ui.md) their evaluation, the rate
+limiter, and the pause toggle live in the session of
+[session.md](session.md#notifications), and each application supplies only the final
+call that shows the toast. Interactive `hmc` raises the same notifications from phase
+3, see [tui.md](tui.md#notifications).
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
@@ -393,7 +406,11 @@ CREATE INDEX messages_received_ts ON messages(received_ts)
 ```
 
 The module is `hiveme_core::storage`, behind the `storage` feature so that `hmc` never
-links SQLite. The database runs in WAL mode.
+links SQLite. The database runs in WAL mode. From phase 1 of
+[the terminal UI plan](../plans/plan-terminal-ui.md) `hmc` links it after all, because
+the shared session needs the history, and interactive `hmc` opens this same file; the
+rules for two processes on one database are in
+[session.md](session.md#two-processes-one-installation).
 
 - `schema_version` holds the version of the layout above. Version 0 means a database
   this build has not stamped, whether it is brand new or older than the table itself,
@@ -440,6 +457,12 @@ schemas into `src/generated/` and re-exported from `protocol.ts`.
 
 Every command answers `Result<T, String>`, and the error is the one line the snackbar
 shows.
+
+This section is the IPC surface of `hmg`. What each command does behind it is, from
+phase 1 of [the terminal UI plan](../plans/plan-terminal-ui.md), the shared session of
+[session.md](session.md), which the terminal UI of `hmc` drives without any IPC; the
+commands, their request and response shapes, and the events below do not change when
+that phase lands.
 
 ### Commands
 
@@ -624,6 +647,10 @@ applications cannot disagree about the format. The frontend wraps that JSON in t
 command before writing it to the clipboard. Copy CLI setup first flushes pending
 settings and waits for the write to finish, so the copied string uses the current
 credentials. A failed save prevents copying an older setup string.
+
+From phase 2 of [the terminal UI plan](../plans/plan-terminal-ui.md) the string also
+carries `gui.language`, so that the `hmc` it initializes speaks the language this
+window is in. See [config.md](config.md#the-setup-string).
 
 ## Window
 

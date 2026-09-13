@@ -1,7 +1,24 @@
 # TODOs
 
-Tracked work lives in [the initialization plan](plans/plan-initialization.md). This
-page collects what the plan deliberately left open.
+Tracked work lives in [the initialization plan](plans/plan-initialization.md), whose
+phases 0 to 5 are done, and in [the terminal UI plan](plans/plan-terminal-ui.md),
+which builds the interactive mode of `hmc` and the shared session. This page collects
+what the plans deliberately left open.
+
+## Open items from the terminal UI plan
+
+* Whether `tui-textarea` and `tui-tree-widget` support the ratatui release in use
+  when phase 3 starts; if not, `crates/hmc/src/tui/widgets/` keeps in-house ones.
+* Whether the kitty keyboard protocol is enabled on Windows Terminal by default, or
+  only when detected.
+* Whether the two applications should watch the config file for changes the other
+  made. Today each keeps the config in memory and sees the other's change at its next
+  start. If a watcher is wanted, it belongs to the session and lands in a later plan.
+* Whether a non-interactive tail of a topic filter, an option the initialization plan
+  left to its phase 6, is still wanted now that interactive mode tails every
+  configured subscription. It would be an option, never a subcommand: a bare word is
+  a message.
+* The ASCII fallbacks for the glyphs the terminal UI uses on terminals without them.
 
 ## Open questions from the plan
 
@@ -14,11 +31,14 @@ page collects what the plan deliberately left open.
 
 ## Deferred to phase 6
 
-* Message encryption: `A256GCM`, `hmc key generate`, and the `Opportunistic` and
-  `Required` modes.
+* Message encryption: `A256GCM`, an option that generates a key, and the
+  `Opportunistic` and `Required` modes.
 * The HiveMQ Cloud REST client and the GUI Cluster tab, which need the Starter plan.
 * OS keychain storage for the broker password, the encryption secrets, and the REST
   token.
 * Named broker profiles.
 * Payload based notification rule matching.
-* The `hmc sub` and `hmc config` subcommands.
+* Options that show the config, print its path, and store the password in the OS
+  keychain. `hmc` has no subcommands, because `hmc config` is the message `config`;
+  the non-interactive tail is superseded by the interactive mode of the terminal UI
+  plan, see above.

@@ -43,8 +43,8 @@ What that means in practice:
 - MQTT 3.1, 3.1.1, and 5.0 are supported. HiveMe uses MQTT 5.
 - Serverless limits: 100 concurrent connections, 10 GB traffic per month, shared
   infrastructure, no uptime SLA.
-- Every MQTT connection needs a unique client identifier, so `hmc` and `hmg` on the
-  same device must not share one.
+- Every MQTT connection needs a unique client identifier, so no two HiveMe processes
+  on the same device may share one: `hmc` runs, interactive `hmc`, and `hmg`.
 
 ## Authentication and authorization
 
@@ -68,20 +68,25 @@ message from the `hmg` composer is indistinguishable from one `hmc` sent.
 
 ### Role
 
-The only difference between the two applications is the role they connect as.
+The only difference between the applications is the role they connect as.
 
-| Concern | `hmc` (`Role::Cli`) | `hmg` (`Role::Gui`) |
-|---------|---------------------|---------------------|
-| Client id | `<prefix>-hmc-<8 of device.id>-<8 random>` | `<prefix>-hmg-<8 of device.id>` |
-| Clean start | yes | no |
-| Session expiry | 0 | `broker.sessionExpirySecs` during network interruptions; discarded on explicit disconnect or quit |
-| Reconnect | none; the first drop ends the connection | exponential backoff with jitter |
-| Subscriptions | none | `topics.subscriptions` |
+| Concern | one-shot `hmc` (`Role::Cli`) | `hmg` (`Role::Gui`) | interactive `hmc` (`Role::Tui`) |
+|---------|------------------------------|---------------------|---------------------------------|
+| Client id | `<prefix>-hmc-<8 of device.id>-<8 random>` | `<prefix>-hmg-<8 of device.id>` | `<prefix>-hmc-<8 of device.id>-<8 random>` |
+| Clean start | yes | no | yes; the identifier is new, so there is no session to resume |
+| Session expiry | 0 | `broker.sessionExpirySecs` during network interruptions; discarded on explicit disconnect or quit | as `hmg`, for the life of the process |
+| Reconnect | none; the first drop ends the connection | exponential backoff with jitter | as `hmg` |
+| Subscriptions | none | `topics.subscriptions` | `topics.subscriptions` |
 
 `<prefix>` is `broker.clientIdPrefix`, `hiveme` by default. The device segment is the
 first eight alphanumeric characters of `device.id`. Every `hmc` run adds a random
 suffix, because a broker disconnects the older of two connections that share an
 identifier and `hmc` runs overlap with each other and with a running `hmg`.
+
+`Role::Tui` is added in phase 1 of [the terminal UI plan](../plans/plan-terminal-ui.md)
+and used by the terminal UI of [tui.md](tui.md) from phase 3; it is not built yet. It
+keeps the random suffix so that several interactive `hmc` processes on one device do
+not collide, and takes everything else from the GUI role.
 
 ### Transport and TLS
 
@@ -173,7 +178,8 @@ five seconds or `broker.connectTimeoutSecs`, whichever is shorter. A timeout sto
 reconnection and fails pending requests instead of leaving background work running.
 The CLI uses a zero-expiry session, so this also releases its session.
 
-The GUI uses `end_session` on quit, explicit disconnect, and connection replacement.
+The GUI, and interactive `hmc` from phase 3 of the terminal UI plan, uses
+`end_session` on quit, explicit disconnect, and connection replacement.
 It closes the live connection and discards the broker's subscriptions and queued
 session messages. Retained topic messages and local history are unaffected. The
 configured session expiry still applies to unexpected network interruptions.
@@ -222,8 +228,9 @@ would stop the keep alive and cost the connection.
   out the keep alive.
 * Credentials take up to a minute to become active, which is why a
   `BadUserNamePassword` refusal says so.
-* There is no way to raise the connection limit, so the client identifiers of the two
-  applications must differ; they do, by construction.
+* There is no way to raise the connection limit, so the client identifiers of the
+  applications, and of their concurrent processes, must differ; they do, by
+  construction.
 
 ### Tested against
 

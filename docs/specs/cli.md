@@ -1,7 +1,10 @@
 # HiveMe CLI (`hmc`)
 
 `hmc` publishes one message to the MQTT broker and exits. It is the scripting entry
-point for HiveMe and shares its config with the GUI.
+point for HiveMe and shares its config with the GUI. Run with no arguments on a
+terminal, it opens the terminal UI of [tui.md](tui.md) instead, which has every
+feature of `hmg`; that mode is specified but not built yet, see
+[Interactive mode](#interactive-mode).
 
 ## Usage
 
@@ -32,10 +35,16 @@ Options:
   -V, --version        Print version
 ```
 
+Phase 3 of [the terminal UI plan](../plans/plan-terminal-ui.md) adds `--tui` and a
+sentence about the interactive mode to this block, and phase 2 renders the whole of
+it in the config language; `cli_help_matches_spec` keeps comparing the `en-US`
+rendering. Until those phases land the block above is the help text as built.
+
 ## Examples
 
 ```sh
 hmc --init '{"v":1,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"hiveme-sam","password":"s3cret"}'
+hmc                                   # open the terminal UI (phase 3, see tui.md)
 hmc "Build finished"                  # publish to hiveme
 hmc --level success "Build succeeded" # success payload on hiveme
 hmc --level error "Disk full"         # error payload on the default topic
@@ -70,6 +79,13 @@ The format is in [config.md](config.md#the-setup-string) and is generated into
 - When there is no file, it creates the full shared config, including defaults for
   fields the CLI does not use, and prints `Config has been created: <path>`.
 - It never connects, so a setup string can be applied while the cluster is unreachable.
+- From phase 2 of [the terminal UI plan](../plans/plan-terminal-ui.md) the string also
+  carries the language of the `hmg` that copied it, as an optional `language` field.
+  `--init` writes it into `gui.language` when it creates the file and updates a
+  `gui.language` that differs, so the two applications stay in the same language. A
+  string without the field leaves an existing language alone and means `en-US` on a
+  fresh file. The outcomes keep their meaning: a language that already matches
+  changes nothing.
 - A string that is not usable is a usage error and nothing is written.
 - An unreadable config or a change to a newer-version config is a config error and
   the existing file is preserved. Unrelated existing settings are validated before
@@ -86,8 +102,14 @@ authority, which the operating system already trusts. See
 
 ### The body
 
+- There are no subcommands. `hmc [OPTIONS] [MESSAGE]` is the whole grammar, so a bare
+  word is the message: `hmc config` publishes the body `config`. Every mode is an
+  option, as `--init` is and `--tui` will be.
 - Exactly one of `MESSAGE` or stdin supplies the body. When the argument is absent
-  and stdin is a terminal, `hmc` exits 2 with usage.
+  and stdin is a terminal, `hmc` exits 2 with usage. From phase 3 of
+  [the terminal UI plan](../plans/plan-terminal-ui.md) that invocation opens the
+  terminal UI instead, provided no publish option was given either; see
+  [Interactive mode](#interactive-mode). Piped stdin keeps publishing.
 - Trailing whitespace is dropped, because the everyday way to reach `hmc` is
   `echo hi | hmc` and the newline `echo` adds is not part of what the user wrote.
   Leading whitespace is kept.
@@ -153,6 +175,42 @@ authority, which the operating system already trusts. See
   `--verbose` adds the connection details, and `RUST_LOG` overrides both.
 - On Windows `hmc` is a console application, so it never opens a window.
 
+### Languages
+
+*Phase 2 of [the terminal UI plan](../plans/plan-terminal-ui.md); not built yet.*
+
+`hmc` speaks the nine languages of `hmg`, from the same catalogs, which move to
+`locales/` at the repository root. The language is `gui.language` of the config that
+was loaded, `en-US` when there is no config, and the `language` of the setup string
+when `--init` is given one. What is translated: the help, the publish confirmation,
+the init outcomes, and the usage errors `hmc` itself authors. What is not: the
+`hmc: <category>:` prefix and the exit codes, which scripts read; diagnostics authored
+by `hiveme-core`, such as a broker refusal or a validation message, which stay English
+as they do in `hmg`; and topic names, JSON, paths, and identifiers. The full rules are
+in [tui.md](tui.md#languages).
+
+## Interactive mode
+
+*Phase 3 of [the terminal UI plan](../plans/plan-terminal-ui.md); not built yet.*
+
+- `hmc` with no message argument, no publish option, and a terminal on stdin opens the
+  terminal UI of [tui.md](tui.md). `--config` and `--verbose` still apply.
+- `--tui` opens it regardless of stdin. It conflicts with every publish and init
+  option, so an option that would be ignored is refused instead, as `--init` already
+  is.
+- `--tui` on a stdout that is not a terminal is a usage error, exit 2, because there is
+  nothing to draw on.
+- With no config file, interactive mode writes the default config with a fresh
+  `device.id` and `en-US`, opens on the Settings tab's Broker category, and stays
+  disconnected until a broker is entered, as `hmg` does on a fresh install. Publish
+  mode keeps its exit 3, see [First run](#first-run).
+- While the terminal UI is up nothing is written to stderr; `--verbose` and `RUST_LOG`
+  log to `hmc.log` beside the config file instead. See [tui.md](tui.md#logging).
+- Interactive `hmc` opens `HiveMe.db` beside the config, the same history `hmg` keeps,
+  and connects as `Role::Tui`, see [Client identifier](#client-identifier). Both
+  applications may run at once; the rules are in
+  [session.md](session.md#two-processes-one-installation).
+
 ## Appearance
 
 `hmc` has an icon of its own: the same honey colored hive cell as `hmg`, holding a
@@ -177,13 +235,21 @@ characters>`. The random suffix keeps concurrent `hmc` invocations, and a runnin
 `hmg` uses the same shape without the suffix to resume its session after a network
 interruption. A normal quit ends that session.
 
+Interactive `hmc` (phase 1 of [the terminal UI plan](../plans/plan-terminal-ui.md)
+adds the role, phase 3 uses it) connects as `Role::Tui`: the suffixed shape above with
+`hmg`'s connection behavior, reconnecting with backoff, resubscribing when the broker
+has forgotten the session, keeping `broker.sessionExpirySecs` for the life of the
+process, and ending the session on quit. Several interactive `hmc` processes and a
+running `hmg` therefore never collide. The role table is in
+[hivemq-cloud.md](hivemq-cloud.md#role).
+
 ## Exit codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
 | 1 | Unexpected error |
-| 2 | Usage error, including `--json` with input that is not JSON and `--init` with a setup string that is not usable |
+| 2 | Usage error, including `--json` with input that is not JSON, `--init` with a setup string that is not usable, and, from phase 3, `--tui` on a stdout that is not a terminal |
 | 3 | Config error, including a missing config file and an unimplemented encryption mode |
 | 4 | Connection or authentication error |
 | 5 | Publish timeout |
@@ -198,8 +264,24 @@ generated `device.id`, prints the path on stderr, and exits 3. The user then run
 `--init`, or fills in the `broker` block by hand. See
 [config.md](config.md#location-and-precedence).
 
-## Out of scope for phase 1
+Interactive mode, from phase 3 of the terminal UI plan, writes the same default config
+and opens on the Settings tab instead of exiting, so the broker can be entered there.
+See [Interactive mode](#interactive-mode).
 
-`hmc sub` (tail a topic filter), `hmc config` (show, path, set-password), and
-`hmc key generate` are designed in the plan and land in phase 6. `hmc --init` covers
-what `hmc config init` was going to.
+## Later phases
+
+- The terminal UI is built by [the terminal UI plan](../plans/plan-terminal-ui.md):
+  the shared session in phase 1, the setup string language and the catalogs in phase
+  2, the shell in phase 3, the Messages tab in phase 4, Settings and About in phase 5,
+  the end-to-end test in phase 6. The status table in [app.md](app.md#status) says
+  what has landed.
+- There are no subcommands, now or later: a bare word is a message, see
+  [The body](#the-body). Every later mode is an option.
+- The config and keychain helpers (showing the config, printing its path, storing the
+  password in the OS keychain) and the key generation for encryption are designed in
+  [the initialization plan](../plans/plan-initialization.md) as options for its phase
+  6; their names are settled when they are built. `hmc --init` covers what a config
+  initializer was going to.
+- A non-interactive tail of a topic filter is superseded by interactive mode, which
+  tails every configured subscription; whether an option for it is still wanted is an
+  open item in [todos.md](../todos.md).

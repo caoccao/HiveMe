@@ -8,6 +8,9 @@ schema, defaults, path resolution, loading, and atomic writes. Compatibility fol
 BetterMediaInfo's nested `Default` and `#[serde(default)]` pattern: present values
 are retained and missing sections or children receive their defaults in memory.
 The CLI uses the full shared schema, including GUI-only fields and their defaults.
+From phase 3 of [the terminal UI plan](../plans/plan-terminal-ui.md) the `gui` block
+is read by the interactive mode of `hmc` as well as by `hmg`; it keeps its name
+because renaming it would break every existing file for a word.
 
 The machine readable schema is [`schemas/config.schema.json`](../../schemas/config.schema.json),
 generated from the `hiveme-core::config` types with `cargo xtask schema`. The schema,
@@ -34,7 +37,10 @@ The config path is resolved in this order:
 | Windows, portable | next to the executable |
 
 The SQLite database `HiveMe.db` sits in the same directory as the config file. The
-directory is created on first launch.
+directory is created on first launch. `hmg` opens the database today; interactive
+`hmc` opens the same file from phase 3 of
+[the terminal UI plan](../plans/plan-terminal-ui.md), and the two may run at once, see
+[session.md](session.md#two-processes-one-installation).
 
 On first run either application writes a default config with a freshly generated
 `device.id` and the hostname as `device.name`, then reports the path it used. A config
@@ -140,14 +146,14 @@ value the applications use when the key is absent.
 | `broker.username` | string | yes | none | HiveMQ Cloud credential username. |
 | `broker.password` | string | yes | none | May be empty when `passwordRef` is set. |
 | `broker.passwordRef` | object or null | no | null | `{ "type": "Env", "name": "<VARIABLE>" }` is implemented. `{ "type": "Keychain", "service": "HiveMe", "account": "<username>" }` is reserved for phase 6 and reports that it is not implemented rather than failing silently. |
-| `broker.clientIdPrefix` | string | no | `hiveme` | Client id is `<prefix>-<app>-<first 8 hex of device.id>` plus a random suffix for `hmc`. |
+| `broker.clientIdPrefix` | string | no | `hiveme` | Client id is `<prefix>-<app>-<first 8 hex of device.id>` plus a random suffix for `hmc`, in both of its modes. |
 | `broker.keepAliveSecs` | integer | no | 30 | MQTT keep alive. |
-| `broker.sessionExpirySecs` | integer | no | 3600 | `hmg` session retention during network interruptions; explicit disconnect and quit discard the session. `hmc` always uses 0. |
+| `broker.sessionExpirySecs` | integer | no | 3600 | `hmg` session retention during network interruptions; explicit disconnect and quit discard the session. One-shot `hmc` always uses 0; interactive `hmc` uses this value from phase 3 of the terminal UI plan. |
 | `broker.connectTimeoutSecs` | integer | no | 10 | |
 | `broker.tls.verifyServer` | boolean | no | true | `false` is honored only for hosts outside `hivemq.cloud` and logs a warning. |
 | `broker.tls.caFile` | path or null | no | null | Extra PEM roots appended to the native trust store. |
 | `broker.reconnect.initialDelayMs` | integer | no | 1000 | |
-| `broker.reconnect.maxDelayMs` | integer | no | 30000 | Exponential backoff with jitter, `hmg` only. |
+| `broker.reconnect.maxDelayMs` | integer | no | 30000 | Exponential backoff with jitter, `hmg` and interactive `hmc` only. |
 | `topics.subscriptions` | (string or object)[] | no | `["#"]` | Filters relative to `hiveme`. A filter starting with `$`, or written as `{ "filter": "...", "absolute": true }`, is used verbatim. |
 | `publish.qos` | 0, 1, 2 | no | 1 | |
 | `publish.retain` | boolean | no | false | |
@@ -155,13 +161,13 @@ value the applications use when the key is absent.
 | `notifications.enabled` | boolean | no | true | Master switch. |
 | `notifications.notifyOwnMessages` | boolean | no | false | When false, messages whose `sender.id` equals `device.id` never notify. |
 | `notifications.rules[]` | object[] | no | the three built-ins | See [gui.md](gui.md#notifications). |
-| `gui.displayMode` | `Auto`, `Light`, `Dark` | no | `Auto` | `Auto` follows `prefers-color-scheme`. |
-| `gui.theme` | theme name | no | `Ocean` | One of the twenty palette names listed in [gui.md](gui.md#theme). |
-| `gui.language` | BCP 47 tag | no | `en-US` | Supports `de`, `en-US`, `es`, `fr`, `it`, `ja`, `zh-CN`, `zh-HK`, and `zh-TW`. Regional tags resolve to a bundled locale; unsupported tags fall back to English. See [GUI languages](gui.md#languages). |
-| `gui.history.maxMessagesPerTopic` | integer | no | 1000 | Older rows beyond this count are deleted per topic. 0 keeps everything. |
+| `gui.displayMode` | `Auto`, `Light`, `Dark` | no | `Auto` | `Auto` follows `prefers-color-scheme` in `hmg` and the terminal's own colors in interactive `hmc`; see [tui.md](tui.md#theme). |
+| `gui.theme` | theme name | no | `Ocean` | One of the twenty palette names listed in [gui.md](gui.md#theme). Honored by both applications. |
+| `gui.language` | BCP 47 tag | no | `en-US` | Supports `de`, `en-US`, `es`, `fr`, `it`, `ja`, `zh-CN`, `zh-HK`, and `zh-TW`. Regional tags resolve to a bundled locale; unsupported tags fall back to English. Read by `hmg`, and by `hmc` from phase 2 of the terminal UI plan. See [GUI languages](gui.md#languages) and [tui.md](tui.md#languages). |
+| `gui.history.maxMessagesPerTopic` | integer | no | 1000 | Older rows beyond this count are deleted per topic. 0 keeps everything. Pruning runs in whichever application holds the database. |
 | `gui.history.retentionDays` | integer | no | 30 | 0 disables time based pruning. |
-| `gui.window.position` | `{ x, y }` | no | `-1, -1` | Negative means "center the window". |
-| `gui.window.size` | `{ width, height }` | no | `1200 x 900` | Minimum 600 x 450. |
+| `gui.window.position` | `{ x, y }` | no | `-1, -1` | Negative means "center the window". `hmg` only. |
+| `gui.window.size` | `{ width, height }` | no | `1200 x 900` | Minimum 600 x 450. `hmg` only. |
 | `update.checkInterval` | `Daily`, `Weekly`, `Monthly` | no | `Weekly` | |
 | `update.lastChecked` | integer | no | 0 | Unix seconds. |
 | `update.lastVersion` | string | no | `""` | Latest version seen on GitHub. |
@@ -262,9 +268,12 @@ and runs it to initialize the shared config.
 | `url` | `broker.url` | Must be `mqtts` for a `hivemq.cloud` host, which accepts TLS only. Naming no scheme means `mqtts`, so the URL the console shows can be pasted in as it stands. |
 | `username` | `broker.username` | Required. |
 | `password` | `broker.password` | Required, plain text, because the CONNECT packet needs it in plain text. |
+| `language` | `gui.language` | Optional; phase 2 of [the terminal UI plan](../plans/plan-terminal-ui.md), not built yet. `hmg` fills it from `gui.language` so that `hmc` speaks the same language. `hmc --init` writes it on create and updates a `gui.language` that differs; absent means `en-US` on a fresh file and no change to an existing one. An unsupported tag is kept as written and resolves to English, as `gui.language` already does. Adding it does not bump `v`: an optional field with a default is a compatible change. |
 
 The schema is generated from the Rust type into `schemas/broker-init.schema.json`, and
-the example above is validated against it by `cargo xtask check-spec`.
+the example above is validated against it by `cargo xtask check-spec`. The example
+gains `"language": "en-US"` in phase 2, when the type carries the field; until then
+the checked example is the one above.
 
 `ConfigFile::initialize` owns setup application in the shared Rust library. The CLI
 only parses its arguments, resolves the shared path, calls the initializer, and prints

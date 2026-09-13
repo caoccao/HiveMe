@@ -75,9 +75,25 @@ const SPEC_RULES: SpecRule[] = [
     spec: "docs/specs/hivemq-cloud.md",
   },
   {
+    label: "The shared session",
+    code: /^crates\/hiveme-core\/src\/session(\.rs|\/)/,
+    spec: "docs/specs/session.md",
+  },
+  {
+    label: "The Rust catalogs",
+    code: /^crates\/hiveme-core\/src\/i18n(\.rs|\/)/,
+    spec: "docs/specs/tui.md",
+  },
+  {
     label: "The CLI",
-    code: /^crates\/hmc\/src\//,
+    // The terminal UI has a specification of its own, below.
+    code: /^crates\/hmc\/src\/(?!tui\/)/,
     spec: "docs/specs/cli.md",
+  },
+  {
+    label: "The terminal UI",
+    code: /^crates\/hmc\/src\/tui\//,
+    spec: "docs/specs/tui.md",
   },
   {
     label: "The GUI backend interface",
