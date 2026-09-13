@@ -23,7 +23,7 @@
 use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
-use hiveme_core::config::{BrokerInit, Config, EncryptionMode};
+use hiveme_core::config::{BrokerInit, Config, ConfigFile, EncryptionMode, Theme};
 use predicates::prelude::*;
 
 /// A `hmc` invocation with the developer's own environment kept out of it.
@@ -250,8 +250,7 @@ fn init_writes_a_config_from_the_setup_string() {
     .args(["--init", &setup_string()])
     .assert()
     .success()
-    // The path is the one thing hmc puts on stdout, so a user knows what to edit next.
-    .stdout(predicate::str::contains(path.display().to_string()));
+    .stdout(format!("Config has been created: {}\n", path.display()));
 
   let written: Config = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
   assert_eq!(written.broker.url, "mqtts://abc123.s1.eu.hivemq.cloud:8883");
@@ -279,17 +278,50 @@ fn a_second_init_keeps_the_identity_and_the_settings_around_it() {
   let mut edited = first.clone();
   edited.publish.qos = 2;
   write(&path, &edited);
+  let before = std::fs::read(&path).unwrap();
+  let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
 
   hmc()
     .arg("--config")
     .arg(&path)
     .args(["--init", &setup_string()])
     .assert()
-    .success();
+    .success()
+    .stdout(format!("Config is not changed: {}\n", path.display()));
 
+  assert_eq!(std::fs::read(&path).unwrap(), before);
+  assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), modified);
   let second: Config = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
   assert_eq!(second.device.id, first.device.id, "the device identity must not change");
   assert_eq!(second.publish.qos, 2, "an unrelated setting must survive");
+}
+
+#[test]
+fn init_updates_only_different_values_in_the_shared_gui_config() {
+  let (_directory, path) = scratch();
+  // Use the same loader and writer as hmg, including its GUI-only settings.
+  let (mut gui, _) = ConfigFile::load_or_create(&path).unwrap();
+  let mut setup = BrokerInit::parse(&setup_string()).unwrap();
+  setup.apply_to(gui.config_mut());
+  gui.config_mut().gui.theme = Theme::Forest;
+  gui.config_mut().gui.language = "ja".to_owned();
+  gui.config_mut().gui.window.size.width = 1400;
+  gui.config_mut().publish.qos = 2;
+  gui.save().unwrap();
+  let mut expected = gui.config().clone();
+  setup.password = "updated-password".to_owned();
+  expected.broker.password = setup.password.clone();
+
+  hmc()
+    .arg("--config")
+    .arg(&path)
+    .args(["--init", &setup.to_json()])
+    .assert()
+    .success()
+    .stdout(format!("Config has been updated: {}\n", path.display()));
+
+  let reread = ConfigFile::load(&path).unwrap();
+  assert_eq!(reread.config(), &expected);
 }
 
 #[test]

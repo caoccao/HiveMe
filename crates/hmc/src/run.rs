@@ -21,7 +21,7 @@
 //! useful to `hmg` lives in `hiveme-core`, so this file only decides what the command
 //! line asked for.
 
-use hiveme_core::config::{BrokerInit, Config, ConfigFile, config_path};
+use hiveme_core::config::{BrokerInit, Config, ConfigFile, InitOutcome, config_path};
 use hiveme_core::message::{CONTENT_TYPE, Level, Message, MessageProperties, Sender};
 use hiveme_core::mqtt::{MqttClient, Qos, Role};
 use hiveme_core::rules::RuleEngine;
@@ -117,28 +117,13 @@ fn init(cli: &Cli, setup: &str) -> Result<()> {
   log::debug!("read a setup string for {}", setup.redacted().url);
 
   let path = config_path(cli.config.as_deref())?;
-  // load_or_create rather than a fresh default, so that a `hmc` that has been in use
-  // keeps its device identity and anything else already in the file.
-  let (mut file, created) = ConfigFile::load_or_create(&path)?;
-  if file.is_read_only() {
-    return Err(Failure::Config(format!(
-      "{} was written by a newer version of HiveMe and will not be overwritten",
-      file.path().display()
-    )));
-  }
-
-  let mut config = file.config().clone();
-  setup.apply_to(&mut config);
-  config.validate()?;
-  file.set_config(config);
-  file.save()?;
-
-  // The one thing hmc puts on stdout, because a setup command that says nothing leaves
-  // the user wondering which file to edit next.
-  println!("{}", file.path().display());
-  if created {
-    log::debug!("created {}", file.path().display());
-  }
+  let (file, outcome) = ConfigFile::initialize(&path, &setup)?;
+  let message = match outcome {
+    InitOutcome::Unchanged => "Config is not changed",
+    InitOutcome::Updated => "Config has been updated",
+    InitOutcome::Created => "Config has been created",
+  };
+  println!("{message}: {}", file.path().display());
   Ok(())
 }
 

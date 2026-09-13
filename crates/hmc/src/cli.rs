@@ -38,7 +38,7 @@ pub struct Cli {
   /// Message body. Read from stdin when omitted.
   pub message: Option<String>,
 
-  /// Write the config from the setup string hmg shows, then exit
+  /// Initialize the shared config from a setup string, then exit
   #[arg(long, value_name = "JSON", conflicts_with_all = ["message", "topic", "absolute_topic", "json", "title", "level", "qos", "retain"])]
   pub init: Option<String>,
 

@@ -76,9 +76,13 @@ In that same Broker section, press **Copy CLI setup**, paste the copied command 
 your terminal, and run it. The clipboard already contains `hmc --init` and the quoted
 JSON, so there is nothing to add.
 
-That writes the CLI's config, which is the same file the GUI just wrote. The string
-carries the password in plain text, so paste it and do not commit it or leave it in a
-shared shell history.
+Both applications share the same config file and Rust config implementation. The
+command reports whether the config was unchanged, updated, or created. Matching
+settings leave the file untouched; updates preserve all other values. A new file gets
+the complete shared defaults, including GUI settings.
+
+The string carries the password in plain text, so paste it and do not commit it or
+leave it in a shared shell history.
 
 Installing HiveMe installed `hmc` too, beside `hmg`. On Linux that is `/usr/bin/hmc`
 and a shell finds it already; elsewhere it is in the install folder, and

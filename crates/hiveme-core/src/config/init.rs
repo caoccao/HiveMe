@@ -31,8 +31,10 @@
 //! `docs/specs/cli.md` says so where a user will read it.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::path::Path;
 
-use super::{Config, REDACTED};
+use super::{Config, ConfigFile, REDACTED};
 use crate::error::{Error, Result};
 
 /// The version of the setup string this build writes.
@@ -40,6 +42,85 @@ use crate::error::{Error, Result};
 /// A reader refuses a version it does not know rather than guessing at fields, because
 /// a half understood broker is worse than a clear error.
 pub const BROKER_INIT_VERSION: u32 = 1;
+
+/// What applying a setup string did to the shared config file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitOutcome {
+  Unchanged,
+  Updated,
+  Created,
+}
+
+impl ConfigFile {
+  /// Applies setup values through the shared config model and writer.
+  ///
+  /// Existing files receive serde defaults in memory without writing them back.
+  /// Matching values leave the file untouched; updates preserve all other JSON values.
+  pub fn initialize(path: &Path, setup: &BrokerInit) -> Result<(Self, InitOutcome)> {
+    setup.validate()?;
+    let (mut file, created) = match Self::load(path) {
+      Ok(file) => (file, false),
+      Err(Error::ConfigNotFound(_)) => (Self::new(path), true),
+      Err(error) => return Err(error),
+    };
+    let mut config = file.config.clone();
+    setup.apply_to(&mut config);
+    if !created && config == file.config {
+      return Ok((file, InitOutcome::Unchanged));
+    }
+    if file.is_read_only() {
+      return Err(Error::ConfigMigrate {
+        path: path.to_path_buf(),
+        reason: "the existing config is newer and will not be overwritten".to_owned(),
+      });
+    }
+
+    if created {
+      config.validate()?;
+      file.set_config(config);
+      file.save()?;
+      return Ok((file, InitOutcome::Created));
+    }
+
+    // Compare the same shared model on both sides, then patch only changed fields.
+    // Untouched fields retain their original JSON, including unknown enum values
+    // and extra keys inside arrays. Existing unrelated settings are not validated
+    // here; both apps validate the complete config before connecting.
+    let typed = |config: &Config| {
+      serde_json::to_value(config).map_err(|source| Error::ConfigParse {
+        path: path.to_path_buf(),
+        source,
+      })
+    };
+    let mut document = file.document.clone();
+    merge_changes(&mut document, &typed(&file.config)?, typed(&config)?);
+    file.write_document(document)?;
+    file.set_config(config);
+    Ok((file, InitOutcome::Updated))
+  }
+}
+
+/// Replaces only values that changed in the typed config, leaving other JSON intact.
+fn merge_changes(target: &mut Value, before: &Value, after: Value) {
+  if before == &after {
+    return;
+  }
+  match (before, after) {
+    (Value::Object(before), Value::Object(after)) => {
+      if !target.is_object() {
+        *target = Value::Object(serde_json::Map::new());
+      }
+      let target = target.as_object_mut().expect("the target is an object");
+      for (key, value) in after {
+        let previous = before.get(&key).unwrap_or(&Value::Null);
+        if previous != &value {
+          merge_changes(target.entry(key).or_insert(Value::Null), previous, value);
+        }
+      }
+    }
+    (_, after) => *target = after,
+  }
+}
 
 /// Everything `hmc` needs to reach the cluster `hmg` is already talking to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -218,6 +299,112 @@ mod tests {
       password: "s3cret".to_owned(),
       prefix: Some("hiveme".to_owned()),
     }
+  }
+
+  #[test]
+  fn initialization_creates_the_complete_shared_config_with_defaults() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("nested/HiveMe.json");
+    let setup = cloud();
+    let (created, outcome) = ConfigFile::initialize(&path, &setup).unwrap();
+    assert_eq!(outcome, InitOutcome::Created);
+
+    let (gui, written) = ConfigFile::load_or_create(&path).unwrap();
+    assert!(!written);
+    assert_eq!(created.config(), gui.config());
+    let mut expected = Config::new_for_this_device();
+    expected.device = gui.config().device.clone();
+    setup.apply_to(&mut expected);
+    assert_eq!(gui.config(), &expected);
+    assert!(!expected.device.id.is_empty());
+    let document: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(document, serde_json::to_value(expected).unwrap());
+  }
+
+  #[test]
+  fn matching_setup_leaves_sparse_existing_config_and_metadata_untouched() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("HiveMe.json");
+    let original = r#"{ "broker": { "url": "mqtts://abc123.s1.eu.hivemq.cloud:8883", "username": "hiveme-sam", "password": "s3cret" }, "gui": { "theme": "FutureTheme" } }"#;
+    std::fs::write(&path, original).unwrap();
+    // Missing version, device, and topic fields must not cause an automatic write.
+    let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+    let (_, outcome) = ConfigFile::initialize(&path, &cloud()).unwrap();
+    assert_eq!(outcome, InitOutcome::Unchanged);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+    assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), modified);
+  }
+
+  #[test]
+  fn initialization_changes_only_supplied_values_that_differ() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("HiveMe.json");
+    let mut document = serde_json::json!({
+      "broker": { "url": "mqtts://abc123.s1.eu.hivemq.cloud:8883", "username": "hiveme-sam", "password": "old", "extra": 42 },
+      "device": { "id": "kept", "name": "custom name", "extra": "kept" },
+      "gui": { "theme": "FutureTheme", "displayMode": "Dark", "language": "ja" },
+      "notifications": { "rules": [{ "id": "custom", "topic": "#", "extra": "kept" }] },
+      "publish": { "qos": 2 },
+      "future": { "kept": true }
+    });
+    std::fs::write(&path, serde_json::to_string(&document).unwrap()).unwrap();
+    let mut setup = cloud();
+    setup.prefix = Some("team".to_owned());
+    let (file, outcome) = ConfigFile::initialize(&path, &setup).unwrap();
+    assert_eq!(outcome, InitOutcome::Updated);
+    document["broker"]["password"] = Value::from("s3cret");
+    document["topics"] = serde_json::json!({ "prefix": "team" });
+    let written: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(
+      written, document,
+      "unrelated values and omitted defaults must stay intact"
+    );
+    assert_eq!(file.config().topics.prefix, "team");
+    assert_eq!(file.config().publish.qos, 2);
+
+    // Older setup strings omit the prefix, so a different password must not reset it.
+    setup.prefix = None;
+    setup.password = "changed again".to_owned();
+    let (file, outcome) = ConfigFile::initialize(&path, &setup).unwrap();
+    assert_eq!(outcome, InitOutcome::Updated);
+    assert_eq!(file.config().topics.prefix, "team");
+    document["broker"]["password"] = Value::from("changed again");
+    let written: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(written, document);
+  }
+
+  #[test]
+  fn invalid_setup_does_not_create_or_modify_a_config() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("HiveMe.json");
+    let mut setup = cloud();
+    setup.password.clear();
+    assert!(ConfigFile::initialize(&path, &setup).is_err());
+    assert!(!path.exists());
+    let original = r#"{ "version": 1, "gui": { "language": "ja" } }"#;
+    std::fs::write(&path, original).unwrap();
+    assert!(ConfigFile::initialize(&path, &setup).is_err());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+  }
+
+  #[test]
+  fn unreadable_and_newer_configs_are_not_overwritten() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("HiveMe.json");
+    for original in ["{ broken", r#"{ "version": 99 }"#] {
+      std::fs::write(&path, original).unwrap();
+      assert!(ConfigFile::initialize(&path, &cloud()).is_err());
+      assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+    }
+    let (mut gui, _) = ConfigFile::load_or_create(&directory.path().join("gui.json")).unwrap();
+    cloud().apply_to(gui.config_mut());
+    let mut document = serde_json::to_value(gui.config()).unwrap();
+    document["version"] = Value::from(99);
+    let original = serde_json::to_string(&document).unwrap();
+    std::fs::write(&path, &original).unwrap();
+    let (_, outcome) = ConfigFile::initialize(&path, &cloud()).unwrap();
+    assert_eq!(outcome, InitOutcome::Unchanged);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
   }
 
   #[test]

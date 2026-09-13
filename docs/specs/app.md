@@ -204,6 +204,7 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Workspace, conventions, toolchain | [app.md](#repository-layout) | root | 0.2 | done |
 | Build workflows | [app.md](#build-and-release) | `.github/workflows` | 0.3 | done |
 | Config load, save, migrate | [config.md](config.md) | `hiveme-core::config` | 1.1 | done |
+| Shared config initialization with unchanged, updated, and created outcomes | [config.md](config.md#the-setup-string), [cli.md](cli.md#setting-up) | `hiveme-core::config::ConfigFile::initialize`, `crates/hmc` | 3.1 | done |
 | Message envelope and parser | [message.md](message.md) | `hiveme-core::message` | 1.2 | done |
 | Topic resolution and filters | [config.md](config.md#topic-resolution) | `hiveme-core::topic` | 1.3 | done |
 | Notification rule engine | [gui.md](gui.md#notifications) | `hiveme-core::rules` | 1.3 | done |

@@ -3,6 +3,12 @@
 `hmc` and `hmg` share one JSON config file. This document is the reference for its
 location, its fields, and its compatibility rules.
 
+Both applications use `hiveme-core::config::Config` and `ConfigFile` for the complete
+schema, defaults, path resolution, loading, and atomic writes. Compatibility follows
+BetterMediaInfo's nested `Default` and `#[serde(default)]` pattern: present values
+are retained and missing sections or children receive their defaults in memory.
+The CLI uses the full shared schema, including GUI-only fields and their defaults.
+
 The machine readable schema is [`schemas/config.schema.json`](../../schemas/config.schema.json),
 generated from the `hiveme-core::config` types with `cargo xtask schema`. The schema,
 not this document, is what the code validates against; this document explains it.
@@ -34,6 +40,10 @@ On first run either application writes a default config with a freshly generated
 `device.id` and the hostname as `device.name`, then reports the path it used. A config
 that exists but has no `device.id` is given one and written back, so that a hand
 written file still gets an identity.
+
+`hmc --init` uses `ConfigFile::initialize` instead of the startup loader. It checks an
+existing file with the shared defaults applied in memory, so matching setup values
+do not cause an identity repair or any other write.
 
 Writes go through a temporary file in the same directory and are then renamed, so an
 interrupted write cannot leave a half finished config. On Unix the file is created with
@@ -232,7 +242,7 @@ A cluster is set up in `hmg`, which is where a user has the HiveMQ Cloud console
 and can paste a URL and credentials into fields. `hmc` has no such place, so the
 Settings tab includes those values as one line of JSON in a complete
 `hmc --init '<json>'` command. The user copies the command, pastes it into a terminal,
-and runs it to create the CLI config.
+and runs it to initialize the shared config.
 
 ```json hiveme:broker-init
 {
@@ -257,10 +267,26 @@ and runs it to create the CLI config.
 The schema is generated from the Rust type into `schemas/broker-init.schema.json`, and
 the example above is validated against it by `cargo xtask check-spec`.
 
-Applying a string touches only those fields. A `hmc` that has been in use keeps its
-`device.id`, its rules, and any key a newer build wrote, because the config writer
-merges into the document it read. Reading one tolerates surrounding whitespace and a
-single pair of wrapping quotes, since the string crosses a clipboard and a shell.
+`ConfigFile::initialize` owns setup application in the shared Rust library. The CLI
+only parses its arguments, resolves the shared path, calls the initializer, and prints
+the outcome with the path:
+
+| Existing file | Behavior | Outcome |
+|---------------|----------|---------|
+| All supplied setup values match | Do not write; file contents and modification time stay unchanged | `Unchanged` |
+| At least one supplied value differs | Merge only changed fields into the existing JSON and write atomically | `Updated` |
+| Missing | Create the complete shared config with a new device identity, shared defaults, and the supplied setup values in one atomic write | `Created` |
+
+An update preserves `device.id`, GUI preferences, rules, unknown keys, and all other
+values, including unknown enum values and extra keys inside unchanged arrays. It does
+not fill in unrelated omitted defaults. An omitted setup `prefix` keeps the existing
+prefix. Setup values are validated before any write; existing unrelated settings are
+left alone and the complete config is validated before connecting. An unreadable file
+is never replaced, and a newer-version file may be reported unchanged but cannot be
+updated. Failed initialization does not leave an intermediate default config behind.
+
+Reading a setup string tolerates surrounding whitespace and a single pair of wrapping
+quotes, since the string crosses a clipboard and a shell.
 
 The string is a credential. It carries the broker password in plain text, so it should
 be pasted rather than committed, and `.config/` is gitignored for exactly that reason.

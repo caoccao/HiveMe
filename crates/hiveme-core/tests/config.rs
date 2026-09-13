@@ -63,6 +63,47 @@ fn the_defaults_survive_a_round_trip_through_json() {
   assert_eq!(parsed, config);
 }
 
+// Follow BetterMediaInfo's compatibility tests: defaults fill only missing nodes
+// and children, while explicit values (including false and zero) survive.
+#[test]
+fn config_deserialization_preserves_present_nodes_while_filling_missing_children() {
+  let config: Config = serde_json::from_str(
+    r#"{
+      "broker": { "keepAliveSecs": 60, "tls": { "verifyServer": false }, "reconnect": { "initialDelayMs": 500 } },
+      "topics": { "prefix": "team" },
+      "publish": { "retain": true },
+      "notifications": { "enabled": false },
+      "gui": {
+        "theme": "Forest", "language": "ja",
+        "history": { "retentionDays": 0 },
+        "window": { "position": { "x": 10 }, "size": { "width": 1400 } }
+      },
+      "update": {},
+      "encryption": {}
+    }"#,
+  )
+  .unwrap();
+  let mut expected = Config::default();
+  expected.broker.keep_alive_secs = 60;
+  expected.broker.tls.verify_server = false;
+  expected.broker.reconnect.initial_delay_ms = 500;
+  expected.topics.prefix = "team".to_owned();
+  expected.publish.retain = true;
+  expected.notifications.enabled = false;
+  expected.gui.theme = Theme::Forest;
+  expected.gui.language = "ja".to_owned();
+  expected.gui.history.retention_days = 0;
+  expected.gui.window.position.x = 10;
+  expected.gui.window.size.width = 1400;
+  assert_eq!(config, expected);
+}
+
+#[test]
+fn config_deserialization_uses_defaults_for_missing_nodes() {
+  let config: Config = serde_json::from_str("{}").unwrap();
+  assert_eq!(config, Config::default());
+}
+
 #[test]
 fn the_documented_defaults_are_the_real_defaults() {
   let config = Config::default();

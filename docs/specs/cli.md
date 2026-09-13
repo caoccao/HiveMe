@@ -19,7 +19,7 @@ Arguments:
   [MESSAGE]  Message body. Read from stdin when omitted
 
 Options:
-      --init <JSON>     Write the config from the setup string hmg shows, then exit
+      --init <JSON>     Initialize the shared config from a setup string, then exit
   -t, --topic <TOPIC>   Topic relative to topics.prefix [default: topics.default]
   -T, --absolute-topic  Treat --topic as an absolute topic
       --json            Publish MESSAGE (or stdin) as a raw JSON payload without the envelope
@@ -59,12 +59,21 @@ The format is in [config.md](config.md#the-setup-string) and is generated into
 
 - `--init` is a mode of its own. Everything that shapes a message conflicts with it,
   so an option that would be ignored is refused instead.
-- It writes `broker.url`, `broker.username`, `broker.password`, and `topics.prefix`,
-  and leaves the rest of the file alone. A `hmc` that has been in use keeps its
-  `device.id`, its rules, and any key a newer build wrote.
-- It creates the config when there is none, and prints the path it wrote on stdout.
+- It uses `hiveme-core::config::ConfigFile::initialize`, sharing the complete config
+  schema, defaults, loader, and atomic writer with `hmg`.
+- It compares `broker.url`, `broker.username`, `broker.password`, and an optional
+  `topics.prefix` with the existing config. Matching values leave the file untouched
+  and print `Config is not changed: <path>` on stdout.
+- Different values update only those fields and print `Config has been updated: <path>`.
+  All other values, including GUI preferences, device identity, unknown keys, and
+  omitted fields, remain intact. An omitted setup prefix keeps the existing one.
+- When there is no file, it creates the full shared config, including defaults for
+  fields the CLI does not use, and prints `Config has been created: <path>`.
 - It never connects, so a setup string can be applied while the cluster is unreachable.
 - A string that is not usable is a usage error and nothing is written.
+- An unreadable config or a change to a newer-version config is a config error and
+  the existing file is preserved. Unrelated existing settings are validated before
+  connecting, so initialization never resets them to make them pass validation.
 - **The string carries the broker password in plain text.** It is a credential: paste
   it, do not commit it, and do not put it in a shell history that is shared.
 
@@ -124,8 +133,8 @@ authority, which the operating system already trusts. See
 
 ### Output
 
-- `hmc` writes to stdout only for `--init`, where the line is the path of the config it
-  wrote. A publish prints nothing there.
+- `hmc` writes to stdout only for `--init`, reporting whether the config was unchanged,
+  updated, or created, followed by the path. A publish prints nothing there.
 - Errors go to stderr as a single line: `hmc: <category>: <detail>`, where the category
   is `usage`, `config`, `connection`, `timeout`, or `error`, matching the exit codes
   below. A config with several problems is folded onto that one line.

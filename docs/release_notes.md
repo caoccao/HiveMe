@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+* Moved CLI config initialization into the shared Rust config library. Matching
+  setup values leave the existing file untouched; changed values update only those
+  fields and preserve other settings. New files include the complete shared defaults.
+  The CLI reports whether the config was unchanged, updated, or created.
 * Copy CLI setup now copies the complete `hmc --init` command with quoted JSON,
   ready to paste and run. Apostrophes in credentials are preserved with JSON escapes.
 * Made Appearance the first and default settings category. Copied BetterMediaInfo's

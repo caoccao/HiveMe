@@ -40,7 +40,7 @@ use serde_json::Value;
 use crate::error::{Error, Result};
 use crate::message::Level;
 
-pub use init::{BROKER_INIT_VERSION, BrokerInit};
+pub use init::{BROKER_INIT_VERSION, BrokerInit, InitOutcome};
 pub use migrate::{CONFIG_VERSION, MigrationOutcome};
 pub use paths::{
   APP_NAME, CONFIG_FILE_NAME, CONFIG_PATH_VARIABLE, DATABASE_FILE_NAME, Os, PathEnv, config_dir_with, config_path,
@@ -893,6 +893,16 @@ pub struct ConfigFile {
 }
 
 impl ConfigFile {
+  /// A complete default config in memory, using the same defaults for both applications.
+  fn new(path: &Path) -> Self {
+    Self {
+      path: path.to_path_buf(),
+      config: Config::new_for_this_device(),
+      document: Value::Object(serde_json::Map::new()),
+      outcome: MigrationOutcome::AlreadyCurrent,
+    }
+  }
+
   /// Reads the config at `path`.
   pub fn load(path: &Path) -> Result<Self> {
     let text = match std::fs::read_to_string(path) {
@@ -944,12 +954,7 @@ impl ConfigFile {
         Ok((file, false))
       }
       Err(Error::ConfigNotFound(_)) => {
-        let mut file = Self {
-          path: path.to_path_buf(),
-          config: Config::new_for_this_device(),
-          document: Value::Object(serde_json::Map::new()),
-          outcome: MigrationOutcome::AlreadyCurrent,
-        };
+        let mut file = Self::new(path);
         file.save()?;
         Ok((file, true))
       }
@@ -1005,13 +1010,21 @@ impl ConfigFile {
       path: self.path.clone(),
       source,
     })?;
-    merge(&mut self.document, typed);
-    let mut text = serde_json::to_string_pretty(&self.document).map_err(|source| Error::ConfigParse {
+    let mut document = self.document.clone();
+    merge(&mut document, typed);
+    self.write_document(document)
+  }
+
+  /// Persists through the shared atomic writer before replacing the in-memory document.
+  fn write_document(&mut self, document: Value) -> Result<()> {
+    let mut text = serde_json::to_string_pretty(&document).map_err(|source| Error::ConfigParse {
       path: self.path.clone(),
       source,
     })?;
     text.push('\n');
-    write_atomically(&self.path, &text)
+    write_atomically(&self.path, &text)?;
+    self.document = document;
+    Ok(())
   }
 }
 
