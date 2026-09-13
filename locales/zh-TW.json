@@ -246,6 +246,10 @@
     "tooSmall": "請將終端機放大至至少 {{columns}} × {{rows}}。",
     "quitting": "正在結束，正在終止代理伺服器工作階段…",
     "settingsLater": "此類別將在之後的版本加入終端機介面。在此之前，請在 hmg 或設定檔中修改。",
+    "composer": {
+      "placeholder": "輸入訊息。按 Enter 傳送，按 Alt+Enter 換行。",
+      "placeholderJson": "輸入 JSON 酬載。按 Enter 傳送，按 Alt+Enter 換行。"
+    },
     "help": {
       "title": "按鍵",
       "close": "關閉",
@@ -263,7 +267,14 @@
       "help": "顯示或隱藏此說明",
       "escape": "關閉最上層的浮動介面，或返回",
       "focus": "移動焦點",
-      "activate": "開啟取得焦點的項目",
+      "filter": "篩選主題",
+      "browse": "移動、摺疊或展開",
+      "toggle": "切換分支或選項",
+      "select": "選擇、開啟或傳送",
+      "page": "逐頁瀏覽訊息",
+      "copy": "複製內文或原始酬載",
+      "newline": "在訊息中換行",
+      "divider": "移動分隔線",
       "category": "選擇類別",
       "field": "在欄位之間移動",
       "password": "顯示或隱藏密碼",

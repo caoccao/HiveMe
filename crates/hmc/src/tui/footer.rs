@@ -114,7 +114,7 @@ pub fn render<S: Service>(app: &mut App<S>, frame: &mut Frame, area: Rect) {
     let x = right.saturating_sub(cells).max(area.x);
     let rect = Rect::new(x, area.y, cells.min(area.right() - x), 1);
     let mut style = Style::new().fg(theme.error).add_modifier(Modifier::UNDERLINED);
-    if app.footer_focus == Some(entry) {
+    if app.footer_focus() == Some(entry) {
       style = style.add_modifier(Modifier::REVERSED);
     }
     frame.render_widget(Line::from(Span::styled(text, style)), rect);

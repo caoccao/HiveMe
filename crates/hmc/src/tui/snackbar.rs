@@ -16,7 +16,8 @@
 */
 
 //! The snackbar, `NotificationSnackbar.tsx`: one row at the top center, over whatever
-//! is there, until its time is up or a key is pressed.
+//! is there, until its time is up or a key is pressed. A confirmation is drawn in the
+//! success color and a failure in the error color, as the GUI's filled `Alert` is.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
@@ -49,7 +50,16 @@ pub fn render<S: Service>(app: &mut App<S>, frame: &mut Frame, area: Rect) {
   let row = Rect::new(area.x, area.y, area.width, 1).centered_horizontally(Constraint::Length(cells));
   frame.render_widget(Clear, row);
   frame.render_widget(
-    Line::styled(text, Style::new().bg(app.theme.error).fg(Color::Rgb(255, 255, 255))),
+    Line::styled(
+      text,
+      Style::new()
+        .bg(if snackbar.error {
+          app.theme.error
+        } else {
+          app.theme.success
+        })
+        .fg(Color::Rgb(255, 255, 255)),
+    ),
     row,
   );
   app.hits.push((row, Action::DismissSnackbar));

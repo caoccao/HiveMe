@@ -17,6 +17,8 @@ path = "src/main.rs"
 winresource = { workspace = true }
 
 [dependencies]
+# The copy actions of the chat view; OSC 52 covers a terminal with no native clipboard.
+arboard = { workspace = true }
 # `string` lets the help carry headings from the catalogs rather than only literals.
 clap = { workspace = true, features = ["string"] }
 crossterm = { workspace = true }
@@ -28,6 +30,8 @@ hiveme-core = { workspace = true, features = ["i18n", "session"] }
 log = { workspace = true }
 open = { workspace = true }
 ratatui = { workspace = true }
+# `serde` reads a payload into a JSON tree that keeps its keys in the order written.
+serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 # `signal`: closing the terminal and SIGTERM leave the terminal UI through its quit path.

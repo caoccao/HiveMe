@@ -27,7 +27,9 @@ use std::pin::Pin;
 
 use hiveme_core::Result;
 use hiveme_core::config::Config;
-use hiveme_core::session::{About, MessageRow, Session, SessionEvent, Status, UpdateCheckResult};
+use hiveme_core::session::{
+  About, MessageRow, PublishOptions, Session, SessionEvent, Status, TopicNode, UpdateCheckResult,
+};
 use tokio::sync::broadcast;
 
 /// An operation of the session that waits on the broker.
@@ -42,9 +44,11 @@ pub trait Service: Send + Sync + 'static {
   fn status(&self) -> Status;
   fn connect(&self) -> Pending<'_, Status>;
   fn disconnect(&self) -> Pending<'_, ()>;
+  fn topic_tree(&self) -> Result<Vec<TopicNode>>;
   fn messages(&self, topic: &str, before: Option<i64>, limit: u32) -> Result<Vec<MessageRow>>;
   fn mark_read(&self, topic: &str) -> Result<()>;
   fn clear_topic(&self, topic: &str) -> Result<u64>;
+  fn publish<'a>(&'a self, topic: &'a str, body: &'a str, options: PublishOptions) -> Pending<'a, MessageRow>;
   fn set_notifications_paused(&self, paused: bool) -> Status;
   fn update_result(&self) -> Option<UpdateCheckResult>;
   fn skip_version(&self, version: &str) -> Result<()>;
@@ -81,6 +85,10 @@ impl Service for Session {
     Box::pin(Session::disconnect(self))
   }
 
+  fn topic_tree(&self) -> Result<Vec<TopicNode>> {
+    Session::topic_tree(self)
+  }
+
   fn messages(&self, topic: &str, before: Option<i64>, limit: u32) -> Result<Vec<MessageRow>> {
     Session::messages(self, topic, before, limit)
   }
@@ -91,6 +99,10 @@ impl Service for Session {
 
   fn clear_topic(&self, topic: &str) -> Result<u64> {
     Session::clear_topic(self, topic)
+  }
+
+  fn publish<'a>(&'a self, topic: &'a str, body: &'a str, options: PublishOptions) -> Pending<'a, MessageRow> {
+    Box::pin(Session::publish(self, topic, body, options))
   }
 
   fn set_notifications_paused(&self, paused: bool) -> Status {

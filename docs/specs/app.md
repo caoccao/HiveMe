@@ -272,7 +272,7 @@ Their phase numbers are that plan's, not the initialization plan's.
 | Setup string carries the language; `hmc --init` applies it | [config.md](config.md#the-setup-string), [cli.md](cli.md#setting-up) | `hiveme-core::config::init`, `crates/hmc` | TUI 2 | done |
 | Shared catalogs in `locales/`, `hiveme_core::i18n`, translated `hmc` lines and help | [cli.md](cli.md#languages), [tui.md](tui.md#languages), [gui.md](gui.md#languages) | `locales`, `hiveme-core::i18n`, `crates/hmc`, `src/i18n` | TUI 2 | done |
 | Terminal UI shell: trigger, toolbar, tabs, footer, snackbar, help, theme, keys, OS notifications, update notice | [tui.md](tui.md), [cli.md](cli.md#interactive-mode) | `crates/hmc/src/tui` | TUI 3 | done |
-| Terminal UI Messages tab: topic tree, message view, composer | [tui.md](tui.md#topic-tree) | `crates/hmc/src/tui/messages` | TUI 4 | planned |
+| Terminal UI Messages tab: topic tree, message view, composer | [tui.md](tui.md#topic-tree) | `crates/hmc/src/tui/messages` | TUI 4 | done |
 | Terminal UI Settings and About tabs | [tui.md](tui.md#settings) | `crates/hmc/src/tui/settings`, `crates/hmc/src/tui/about.rs` | TUI 5 | planned |
 | Terminal UI end-to-end test, hardening, onboarding | [tui.md](tui.md#tests) | `crates/hmc/tests/tui.rs`, `docs`, `README.md` | TUI 6 | planned |
 
@@ -525,3 +525,37 @@ The entries below are against [the terminal UI plan](../plans/plan-terminal-ui.m
     chords; this answers the open item of section 10. The glyph fallbacks are chosen by
     `TERM=linux` and by a Windows console without `WT_SESSION`. `--tui` on a redirected
     stdout is refused before the config path is resolved, so it writes nothing.
+37. Phase 4: the topic tree is drawn by `messages/topic_tree.rs` itself rather than by
+    `tui-tree-widget`, and `widgets/` gains a multi-line editor and `wrap` rather than
+    `tui-textarea`, for the reason of entry 31. The JSON tree reads the payload again
+    into its own order-preserving `Json` type, because `serde_json::Value` sorts object
+    keys and the GUI shows them as written; `hmc` depends on `serde` for it. Turning on
+    `serde_json`'s `preserve_order` instead would have changed the key order of every
+    generated schema.
+38. Phase 4: the composer's placeholder is `tui.composer.placeholder` and
+    `tui.composer.placeholderJson`, the GUI's sentences with `Alt+Enter` in place of
+    `Shift+Enter`, which a terminal without the keyboard protocol never reports. The help
+    overlay's `tui.help.activate` is replaced by the keys of the Messages tab, and on a
+    terminal too short for the list the overlay drops its blank lines, then puts the
+    global keys beside the rest.
+39. Phase 4: the footer's error entries stay in the focus ring, at its end after the
+    composer, which replaces the interim of entry 35. Controls that cannot be used right
+    now are skipped by `Tab`, as the GUI's disabled controls are. `Space` does what a
+    click does on a button, a select, or a checkbox, which section 5.9 leaves unsaid for
+    the composer, and `Left` and `Right` pick the QoS radio. The wheel scrolls the pane
+    under the pointer rather than the focused one, and over the tree it moves the cursor,
+    which the tree keeps in view.
+40. Phase 4: the relative topic of the metadata row is muted, as gui.md's
+    `text.disabled`, rather than the secondary color section 5.5 names, and the row runs
+    on to the right of a bubble narrower than it instead of wrapping. A confirmation in
+    the snackbar is drawn in the success color, which is what the GUI's filled `Alert`
+    uses for anything but an error, rather than an info color. The detail view's cursor
+    takes `Enter` as well as `Space`.
+41. Phase 4: the plan's end-to-end test against the Docker broker is a unit test in
+    `crates/hmc/src/tui/tests/messages.rs` rather than a file under `crates/hmc/tests/`,
+    because it drives the application state, which an integration test of a binary
+    crate cannot reach, and it publishes through the one-shot mode's `run::run` in
+    process rather than as a child process. `tui/tests.rs` became `tui/tests/mod.rs`
+    beside `tui/tests/messages.rs`, and the scripted session keeps its rows in an
+    in-memory `Store`. `Service` gains `topic_tree` and `publish`. `arboard` is taken
+    without its default image support and with the Wayland clipboard.

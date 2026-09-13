@@ -250,6 +250,10 @@
     "tooSmall": "Das Terminal auf mindestens {{columns}} × {{rows}} vergrößern.",
     "quitting": "wird beendet, die Broker-Sitzung endet…",
     "settingsLater": "Diese Kategorie kommt in einer späteren Version in die Terminal-Oberfläche. Bis dahin in hmg oder in der Konfigurationsdatei ändern.",
+    "composer": {
+      "placeholder": "Nachricht schreiben. Eingabe sendet, Alt+Eingabe fügt einen Zeilenumbruch ein.",
+      "placeholderJson": "JSON-Nutzdaten eingeben. Eingabe sendet, Alt+Eingabe fügt einen Zeilenumbruch ein."
+    },
     "help": {
       "title": "Tasten",
       "close": "schließen",
@@ -267,7 +271,14 @@
       "help": "Diese Hilfe ein- oder ausblenden",
       "escape": "Das oberste Overlay schließen oder zurückgehen",
       "focus": "Den Fokus bewegen",
-      "activate": "Den fokussierten Eintrag öffnen",
+      "filter": "Topics filtern",
+      "browse": "Bewegen, einklappen oder ausklappen",
+      "toggle": "Einen Zweig oder eine Option umschalten",
+      "select": "Auswählen, öffnen oder senden",
+      "page": "Durch die Nachrichten blättern",
+      "copy": "Den Text oder die Rohdaten kopieren",
+      "newline": "Der Nachricht eine Zeile hinzufügen",
+      "divider": "Die Trennlinie verschieben",
       "category": "Eine Kategorie wählen",
       "field": "Zwischen den Feldern wechseln",
       "password": "Passwort anzeigen oder verbergen",

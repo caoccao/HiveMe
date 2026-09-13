@@ -254,6 +254,10 @@
     "tooSmall": "Ingrandisci il terminale ad almeno {{columns}} × {{rows}}.",
     "quitting": "uscita in corso, chiusura della sessione del broker…",
     "settingsLater": "Questa categoria arriverà nell’interfaccia da terminale in una versione successiva. Fino ad allora, modificala in hmg o nel file di configurazione.",
+    "composer": {
+      "placeholder": "Scrivi un messaggio. Invio invia, Alt+Invio aggiunge una riga.",
+      "placeholderJson": "Scrivi un payload JSON. Invio invia, Alt+Invio aggiunge una riga."
+    },
     "help": {
       "title": "Tasti",
       "close": "chiudi",
@@ -271,7 +275,14 @@
       "help": "Mostra o nascondi questo aiuto",
       "escape": "Chiudi il livello in primo piano, o torna indietro",
       "focus": "Sposta il focus",
-      "activate": "Apri la voce con il focus",
+      "filter": "Filtra argomenti",
+      "browse": "Spostati, comprimi o espandi",
+      "toggle": "Attiva o disattiva un ramo o un’opzione",
+      "select": "Seleziona, apri o invia",
+      "page": "Scorri i messaggi pagina per pagina",
+      "copy": "Copia il corpo o il payload grezzo",
+      "newline": "Aggiungi una riga al messaggio",
+      "divider": "Sposta il divisore",
       "category": "Scegli una categoria",
       "field": "Spostati tra i campi",
       "password": "Mostra o nascondi la password",

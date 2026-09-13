@@ -22,7 +22,7 @@
 
 use hiveme_core::i18n::{Locale, t};
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Rect};
+use ratatui::layout::{Constraint, Margin, Rect};
 use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
@@ -31,6 +31,7 @@ use unicode_width::UnicodeWidthStr;
 use super::app::{App, Tab};
 use super::keys::Action;
 use super::service::Service;
+use super::theme::Theme;
 
 /// A heading and its rows of keys and what they do, as catalog keys.
 pub type Section = (String, Vec<(&'static str, &'static str)>);
@@ -56,7 +57,17 @@ pub fn sections(locale: Locale, tab: Tab, notice: bool) -> Vec<Section> {
   match tab {
     Tab::Messages => sections.push((
       t(locale, "tabs.messages"),
-      vec![("Tab, Shift+Tab", "tui.help.focus"), ("Enter", "tui.help.activate")],
+      vec![
+        ("Tab, Shift+Tab", "tui.help.focus"),
+        ("/", "tui.help.filter"),
+        ("Up, Down, Left, Right", "tui.help.browse"),
+        ("Space", "tui.help.toggle"),
+        ("Enter", "tui.help.select"),
+        ("PageUp, PageDown, Home, End", "tui.help.page"),
+        ("c, r", "tui.help.copy"),
+        ("Alt+Enter, Ctrl+J", "tui.help.newline"),
+        ("Ctrl+Left, Ctrl+Right", "tui.help.divider"),
+      ],
     )),
     Tab::Settings => sections.push((
       t(locale, "tabs.settings"),
@@ -82,22 +93,19 @@ pub fn sections(locale: Locale, tab: Tab, notice: bool) -> Vec<Section> {
   sections
 }
 
-pub fn render<S: Service>(app: &mut App<S>, frame: &mut Frame, area: Rect) {
-  let locale = app.locale;
-  let theme = app.theme;
-  let sections = sections(locale, app.current_tab(), app.notice.is_some());
+/// The lines of a column of sections, with a blank line between sections when `spaced`.
+fn column(locale: Locale, theme: &Theme, sections: &[Section], spaced: bool) -> Vec<Line<'static>> {
   let key_width = sections
     .iter()
     .flat_map(|(_, rows)| rows.iter().map(|(keys, _)| keys.width()))
     .max()
     .unwrap_or(0);
-
   let mut lines = Vec::new();
-  for (index, (heading, rows)) in sections.into_iter().enumerate() {
-    if index > 0 {
+  for (index, (heading, rows)) in sections.iter().enumerate() {
+    if index > 0 && spaced {
       lines.push(Line::raw(""));
     }
-    lines.push(Line::styled(heading, theme.active()));
+    lines.push(Line::styled(heading.clone(), theme.active()));
     for (keys, action) in rows {
       lines.push(Line::from(vec![
         Span::styled(
@@ -108,9 +116,39 @@ pub fn render<S: Service>(app: &mut App<S>, frame: &mut Frame, area: Rect) {
       ]));
     }
   }
-  let width = lines.iter().map(Line::width).max().unwrap_or(0) as u16 + 4;
-  let height = lines.len() as u16 + 2;
-  let popup = area.centered(Constraint::Length(width), Constraint::Length(height));
+  lines
+}
+
+pub fn render<S: Service>(app: &mut App<S>, frame: &mut Frame, area: Rect) {
+  let locale = app.locale;
+  let theme = app.theme;
+  let sections = sections(locale, app.current_tab(), app.notice.is_some());
+  // One column with a blank line between sections; without the blank lines on a short
+  // terminal; and the keys that work everywhere beside the rest when even that is too
+  // tall.
+  let room = usize::from(area.height.saturating_sub(2));
+  let spaced = column(locale, &theme, &sections, true);
+  let compact = column(locale, &theme, &sections, false);
+  let columns = if spaced.len() <= room {
+    vec![spaced]
+  } else if compact.len() <= room || sections.len() < 2 {
+    vec![compact]
+  } else {
+    vec![
+      column(locale, &theme, &sections[..1], false),
+      column(locale, &theme, &sections[1..], false),
+    ]
+  };
+  let widths: Vec<u16> = columns
+    .iter()
+    .map(|lines| lines.iter().map(Line::width).max().unwrap_or(0) as u16)
+    .collect();
+  let width = widths.iter().sum::<u16>() + 3 * (columns.len() as u16 - 1) + 4;
+  let height = columns.iter().map(Vec::len).max().unwrap_or(0) as u16 + 2;
+  let popup = area.centered(
+    Constraint::Length(width.min(area.width)),
+    Constraint::Length(height.min(area.height)),
+  );
 
   let block = Block::bordered()
     .border_type(BorderType::Rounded)
@@ -118,11 +156,15 @@ pub fn render<S: Service>(app: &mut App<S>, frame: &mut Frame, area: Rect) {
     .title(format!(" {} ", t(locale, "tui.help.title")))
     .title_bottom(Line::from(format!(" Esc: {} ", t(locale, "tui.help.close"))).right_aligned())
     .style(theme.base());
+  let inner = block.inner(popup).inner(Margin::new(1, 0));
   frame.render_widget(Clear, popup);
-  frame.render_widget(
-    Paragraph::new(lines).block(block.padding(ratatui::widgets::Padding::horizontal(1))),
-    popup,
-  );
+  frame.render_widget(block, popup);
+  let mut x = inner.x;
+  for (lines, width) in columns.into_iter().zip(widths) {
+    let rect = Rect::new(x, inner.y, width.min(inner.right().saturating_sub(x)), inner.height);
+    frame.render_widget(Paragraph::new(lines), rect);
+    x = x.saturating_add(width + 3);
+  }
   // A click anywhere closes the overlay, as a key does.
   app.hits.push((area, Action::Help));
 }

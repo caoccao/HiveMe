@@ -246,6 +246,10 @@
     "tooSmall": "请将终端扩大到至少 {{columns}} × {{rows}}。",
     "quitting": "正在退出，正在结束代理服务器会话…",
     "settingsLater": "此类别将在以后的版本中加入终端界面。在此之前，请在 hmg 或配置文件中修改。",
+    "composer": {
+      "placeholder": "输入消息。按 Enter 发送，按 Alt+Enter 换行。",
+      "placeholderJson": "输入 JSON 载荷。按 Enter 发送，按 Alt+Enter 换行。"
+    },
     "help": {
       "title": "按键",
       "close": "关闭",
@@ -263,7 +267,14 @@
       "help": "显示或隐藏此帮助",
       "escape": "关闭最上层的浮层，或返回",
       "focus": "移动焦点",
-      "activate": "打开获得焦点的项目",
+      "filter": "筛选主题",
+      "browse": "移动、折叠或展开",
+      "toggle": "切换分支或选项",
+      "select": "选择、打开或发送",
+      "page": "按页浏览消息",
+      "copy": "复制正文或原始载荷",
+      "newline": "在消息中换行",
+      "divider": "移动分隔线",
       "category": "选择类别",
       "field": "在字段之间移动",
       "password": "显示或隐藏密码",

@@ -7,8 +7,9 @@ what the plans deliberately left open.
 
 ## Open items from the terminal UI plan
 
-* Whether `tui-tree-widget` supports ratatui 0.30 when phase 4 builds the topic tree.
-  `tui-textarea` 0.7 did not when phase 3 started, so the text controls are in-house.
+* Whether the in-house text controls and topic tree should give way to `tui-textarea`
+  and `tui-tree-widget` once those support ratatui 0.30. Neither did when phases 3 and 4
+  were built.
 * Whether the two applications should watch the config file for changes the other
   made. Today each keeps the config in memory and sees the other's change at its next
   start. If a watcher is wanted, it belongs to the session and lands in a later plan.
@@ -16,8 +17,8 @@ what the plans deliberately left open.
   left to its phase 6, is still wanted now that interactive mode tails every
   configured subscription. It would be an option, never a subcommand: a bare word is
   a message.
-* The ASCII fallbacks of the glyphs phases 4 and 5 add (`▾`, `▸`, the lock, the pin), in
-  the table phase 3 started in `crates/hmc/src/tui/theme.rs`.
+* The ASCII fallbacks of the glyphs phase 5 adds, in the table of
+  `crates/hmc/src/tui/theme.rs`.
 
 ## Open questions from the plan
 

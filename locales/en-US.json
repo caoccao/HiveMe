@@ -250,6 +250,10 @@
     "tooSmall": "Enlarge the terminal to at least {{columns}} × {{rows}}.",
     "quitting": "quitting, ending the broker session…",
     "settingsLater": "This category arrives in the terminal UI in a later version. Until then, change it in hmg or in the config file.",
+    "composer": {
+      "placeholder": "Write a message. Enter sends, Alt+Enter adds a line.",
+      "placeholderJson": "Write a JSON payload. Enter sends, Alt+Enter adds a line."
+    },
     "help": {
       "title": "Keys",
       "close": "close",
@@ -267,7 +271,14 @@
       "help": "Show or hide this help",
       "escape": "Close the topmost overlay, or go back",
       "focus": "Move the focus",
-      "activate": "Open the focused entry",
+      "filter": "Filter the topics",
+      "browse": "Move, collapse, or expand",
+      "toggle": "Toggle a branch or an option",
+      "select": "Select, open, or send",
+      "page": "Page through the messages",
+      "copy": "Copy the body or the raw payload",
+      "newline": "Add a line to the message",
+      "divider": "Move the divider",
       "category": "Choose a category",
       "field": "Move between the fields",
       "password": "Show or hide the password",

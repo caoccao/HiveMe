@@ -219,8 +219,11 @@ More detail lives in [specs/hivemq-cloud.md](specs/hivemq-cloud.md) and
   config. It writes nothing to stderr while it is up; add `-v` or set `RUST_LOG` and
   follow `hmc.log` beside the config file from another terminal. `Ctrl+Q` leaves it.
 * The terminal UI's screens are tested in process: `cargo test -p hmc --bin hmc tui`
-  renders them on ratatui's `TestBackend` against a scripted session, see
-  `crates/hmc/src/tui/tests.rs`.
+  renders them on ratatui's `TestBackend` against a scripted session whose rows live in
+  an in-memory store, see `crates/hmc/src/tui/tests/`. One of them,
+  `against_a_real_broker_the_composer_and_one_shot_hmc_meet_in_the_view`, starts the
+  HiveMQ CE container as `crates/hmc/tests/publish.rs` does and is skipped the same way
+  with `HIVEME_SKIP_DOCKER=1`.
 
 ## Config file location
 

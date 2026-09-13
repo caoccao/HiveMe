@@ -22,6 +22,7 @@
 //! foreground, because they are unknown; `Light` and `Dark` paint both.
 
 use hiveme_core::config::{DisplayMode, Gui, Theme as Palette};
+use hiveme_core::message::Level;
 use ratatui::style::{Color, Modifier, Style};
 
 /// The colors of one screen.
@@ -37,6 +38,8 @@ pub struct Theme {
   pub success: Color,
   pub warning: Color,
   pub error: Color,
+  /// Which fills can be drawn: none in `Auto`, whose background is unknown.
+  pub mode: DisplayMode,
 }
 
 impl Theme {
@@ -62,6 +65,7 @@ impl Theme {
       success: rgb(0x2e7d32),
       warning: rgb(0xed6c02),
       error: rgb(0xd32f2f),
+      mode: gui.display_mode,
     }
   }
 
@@ -95,6 +99,52 @@ impl Theme {
   pub fn disabled(&self) -> Style {
     Style::new().fg(self.muted).add_modifier(Modifier::DIM)
   }
+
+  /// The MUI palette color of a level: success, warning, or error, and none for `info`
+  /// and `debug`, which use the regular colors. `levelColor` in `src/lib/message.ts`.
+  pub fn severity(&self, level: &Level) -> Option<Color> {
+    match level {
+      Level::Success => Some(self.success),
+      Level::Warn => Some(self.warning),
+      Level::Error => Some(self.error),
+      _ => None,
+    }
+  }
+
+  /// The fill and the text of a bubble, as `MessageView.tsx` picks them.
+  ///
+  /// A severity tints the fill with 12 percent of its color on the light background and
+  /// 24 percent on the dark one; a regular outgoing bubble is black, or grey 800 in the
+  /// dark mode, with white text; a regular incoming bubble is the `action.hover` gray.
+  /// `Auto` draws no fill, since it cannot know what the fill would sit on.
+  pub fn bubble(&self, severity: Option<Color>, outgoing: bool) -> Style {
+    let white = Color::Rgb(255, 255, 255);
+    match (self.mode, severity, outgoing) {
+      (DisplayMode::Auto, _, _) => Style::new(),
+      (DisplayMode::Light, Some(color), _) => Style::new().bg(blend(color, 0xffffff, 0.12)).fg(Color::Rgb(0, 0, 0)),
+      (DisplayMode::Dark, Some(color), _) => Style::new().bg(blend(color, 0x121212, 0.24)).fg(white),
+      (DisplayMode::Light, None, true) => Style::new().bg(Color::Rgb(0, 0, 0)).fg(white),
+      (DisplayMode::Light, None, false) => Style::new()
+        .bg(blend(Color::Rgb(0, 0, 0), 0xffffff, 0.04))
+        .fg(Color::Rgb(0, 0, 0)),
+      (DisplayMode::Dark, None, true) => Style::new().bg(rgb(0x424242)).fg(white),
+      (DisplayMode::Dark, None, false) => Style::new().bg(blend(white, 0x121212, 0.08)).fg(white),
+    }
+  }
+}
+
+/// `color` at `alpha` over the solid `background`, which is what MUI's `alpha()` looks
+/// like once it is painted.
+fn blend(color: Color, background: u32, alpha: f32) -> Color {
+  let Color::Rgb(red, green, blue) = color else {
+    return color;
+  };
+  let mix = |over: u8, under: u8| (f32::from(over) * alpha + f32::from(under) * (1.0 - alpha)).round() as u8;
+  Color::Rgb(
+    mix(red, (background >> 16) as u8),
+    mix(green, (background >> 8) as u8),
+    mix(blue, background as u8),
+  )
 }
 
 /// The primary and secondary colors of a palette.
@@ -140,6 +190,16 @@ pub struct Glyphs {
   pub unchecked: &'static str,
   pub ellipsis: &'static str,
   pub separator: &'static str,
+  /// The marker of an open branch in the topic tree, the JSON tree, and More Options.
+  pub expanded: &'static str,
+  /// The marker of a closed branch.
+  pub collapsed: &'static str,
+  /// Before the placeholder of an encrypted message.
+  pub lock: &'static str,
+  /// The retained marker of the metadata row.
+  pub pin: &'static str,
+  pub radio_on: &'static str,
+  pub radio_off: &'static str,
 }
 
 impl Glyphs {
@@ -150,6 +210,12 @@ impl Glyphs {
     unchecked: "[ ]",
     ellipsis: "…",
     separator: "│",
+    expanded: "▾",
+    collapsed: "▸",
+    lock: "🔒",
+    pin: "📌",
+    radio_on: "(●)",
+    radio_off: "( )",
   };
 
   pub const ASCII: Self = Self {
@@ -159,6 +225,12 @@ impl Glyphs {
     unchecked: "[ ]",
     ellipsis: "...",
     separator: "|",
+    expanded: "v",
+    collapsed: ">",
+    lock: "[enc]",
+    pin: "[R]",
+    radio_on: "(*)",
+    radio_off: "( )",
   };
 
   /// The set this terminal can draw.
@@ -219,6 +291,29 @@ mod tests {
   }
 
   #[test]
+  fn a_bubble_is_filled_only_when_a_mode_is_forced() {
+    let mut gui = Gui::default();
+    let auto = Theme::from_gui(&gui);
+    assert_eq!(auto.bubble(Some(auto.error), true), Style::new());
+    assert_eq!(auto.severity(&Level::Other("catastrophe".to_owned())), None);
+
+    gui.display_mode = DisplayMode::Light;
+    let light = Theme::from_gui(&gui);
+    assert_eq!(light.bubble(None, true).bg, Some(Color::Rgb(0, 0, 0)));
+    assert_eq!(light.bubble(None, false).bg, Some(Color::Rgb(0xf5, 0xf5, 0xf5)));
+    // alpha(#d32f2f, 0.12) on white.
+    assert_eq!(
+      light.bubble(light.severity(&Level::Error), false).bg,
+      Some(Color::Rgb(0xfa, 0xe6, 0xe6))
+    );
+
+    gui.display_mode = DisplayMode::Dark;
+    let dark = Theme::from_gui(&gui);
+    assert_eq!(dark.bubble(None, true).bg, Some(Color::Rgb(0x42, 0x42, 0x42)));
+    assert_eq!(dark.bubble(None, true).fg, Some(Color::Rgb(255, 255, 255)));
+  }
+
+  #[test]
   fn the_ascii_glyphs_are_ascii() {
     let Glyphs {
       close,
@@ -227,8 +322,16 @@ mod tests {
       unchecked,
       ellipsis,
       separator,
+      expanded,
+      collapsed,
+      lock,
+      pin,
+      radio_on,
+      radio_off,
     } = Glyphs::ASCII;
-    for glyph in [close, dot, checked, unchecked, ellipsis, separator] {
+    for glyph in [
+      close, dot, checked, unchecked, ellipsis, separator, expanded, collapsed, lock, pin, radio_on, radio_off,
+    ] {
       assert!(glyph.is_ascii(), "{glyph}");
     }
   }

@@ -254,6 +254,10 @@
     "tooSmall": "Amplíe el terminal a al menos {{columns}} × {{rows}}.",
     "quitting": "saliendo, cerrando la sesión del bróker…",
     "settingsLater": "Esta categoría llegará a la interfaz de terminal en una versión posterior. Hasta entonces, cámbiela en hmg o en el archivo de configuración.",
+    "composer": {
+      "placeholder": "Escriba un mensaje. Intro envía; Alt+Intro añade una línea.",
+      "placeholderJson": "Escriba una carga útil JSON. Intro envía; Alt+Intro añade una línea."
+    },
     "help": {
       "title": "Teclas",
       "close": "cerrar",
@@ -271,7 +275,14 @@
       "help": "Mostrar u ocultar esta ayuda",
       "escape": "Cerrar la superposición superior o volver",
       "focus": "Mover el foco",
-      "activate": "Abrir la entrada con el foco",
+      "filter": "Filtrar temas",
+      "browse": "Moverse, contraer o expandir",
+      "toggle": "Alternar una rama o una opción",
+      "select": "Seleccionar, abrir o enviar",
+      "page": "Pasar las páginas de los mensajes",
+      "copy": "Copiar el cuerpo o la carga útil sin procesar",
+      "newline": "Añadir una línea al mensaje",
+      "divider": "Mover el divisor",
       "category": "Elegir una categoría",
       "field": "Moverse entre los campos",
       "password": "Mostrar u ocultar la contraseña",

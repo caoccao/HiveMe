@@ -28,6 +28,8 @@ use std::io;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags};
 
+use super::messages::{Control, Pane};
+
 /// What a key or a click asks the terminal UI to do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
@@ -55,6 +57,25 @@ pub enum Action {
   Activate,
   Up,
   Down,
+  Left,
+  Right,
+  PageUp,
+  PageDown,
+  Home,
+  End,
+  /// `Space`: toggle a branch, a checkbox, or every tree of a message.
+  Toggle,
+  /// `/`: focus the topic filter.
+  FocusFilter,
+  /// `c` on a message.
+  CopyBody,
+  /// `r` on a message.
+  CopyRaw,
+  /// `Alt+Enter`, `Ctrl+J`, or `Shift+Enter`: a new line in the composer.
+  Newline,
+  /// `Ctrl+Left` and `Ctrl+Right`: move the divider of the Messages tab.
+  SplitLeft,
+  SplitRight,
   TogglePassword,
   OpenReleases,
   ToggleSkipVersion,
@@ -68,6 +89,23 @@ pub enum Action {
   SettingsField(usize),
   /// Dismiss the snackbar.
   DismissSnackbar,
+  /// A click on a pane of the Messages tab, where nothing more specific was hit. The
+  /// wheel scrolls the pane it is over.
+  FocusPane(Pane),
+  /// A click on the marker of a topic, by node id.
+  ToggleTopic(String),
+  /// A click on the label of a topic, by node id.
+  SelectTopic(String),
+  /// A click on a message, by row id.
+  FocusMessage(i64),
+  /// A click on a control of the composer.
+  Composer(Control),
+  /// A click on a QoS radio: the config's, or 0, 1, or 2.
+  ComposerQos(Option<u8>),
+  /// A click on an entry of the open Level popup.
+  ComposerLevel(usize),
+  /// Pressing the divider of the Messages tab, which a drag then moves.
+  Divider,
   /// A key for the focused text field.
   Edit(KeyEvent),
 }
@@ -120,6 +158,11 @@ pub fn action(key: KeyEvent, context: Context) -> Option<Action> {
       KeyCode::Char(digit @ '1'..='9') => return Some(Action::SelectTab(tab_index(digit))),
       KeyCode::Tab => return Some(Action::NextTab),
       KeyCode::BackTab => return Some(Action::PreviousTab),
+      KeyCode::Left => return Some(Action::SplitLeft),
+      KeyCode::Right => return Some(Action::SplitRight),
+      // A plain terminal sends Ctrl+J as the line feed byte, which raw mode reports as
+      // itself rather than as Enter.
+      KeyCode::Char('j' | 'J') => return Some(Action::Newline),
       _ => {}
     }
   }
@@ -128,6 +171,7 @@ pub fn action(key: KeyEvent, context: Context) -> Option<Action> {
       KeyCode::Char(digit @ '1'..='9') => return Some(Action::SelectTab(tab_index(digit))),
       KeyCode::Left => return Some(Action::PreviousTab),
       KeyCode::Right => return Some(Action::NextTab),
+      KeyCode::Enter => return Some(Action::Newline),
       _ => {}
     }
   }
@@ -141,6 +185,8 @@ pub fn action(key: KeyEvent, context: Context) -> Option<Action> {
       KeyCode::Esc => return Some(Action::Escape),
       KeyCode::Tab => return Some(Action::FocusNext),
       KeyCode::BackTab => return Some(Action::FocusPrevious),
+      // Shift+Enter arrives as itself only under the keyboard protocol.
+      KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => return Some(Action::Newline),
       KeyCode::Enter => return Some(Action::Activate),
       // Up and Down leave a one-line field for its neighbor as well.
       KeyCode::Up => return Some(Action::Up),
@@ -159,6 +205,16 @@ pub fn action(key: KeyEvent, context: Context) -> Option<Action> {
     KeyCode::Char('o') if context.notice => Some(Action::OpenReleases),
     KeyCode::Char('s') if context.notice => Some(Action::ToggleSkipVersion),
     KeyCode::Char('x') if context.notice => Some(Action::CloseUpdateNotice),
+    KeyCode::Char('/') => Some(Action::FocusFilter),
+    KeyCode::Char('c') => Some(Action::CopyBody),
+    KeyCode::Char('r') => Some(Action::CopyRaw),
+    KeyCode::Char(' ') => Some(Action::Toggle),
+    KeyCode::Left => Some(Action::Left),
+    KeyCode::Right => Some(Action::Right),
+    KeyCode::PageUp => Some(Action::PageUp),
+    KeyCode::PageDown => Some(Action::PageDown),
+    KeyCode::Home => Some(Action::Home),
+    KeyCode::End => Some(Action::End),
     _ => None,
   }
 }
@@ -369,6 +425,60 @@ mod tests {
       assert_eq!(action(event, TYPING), Some(Action::Edit(event)), "Ctrl+{letter}");
     }
     assert_eq!(action(plain(KeyCode::Char('a')), BROWSING), None);
+  }
+
+  #[test]
+  fn the_messages_keys_outside_text_move_toggle_page_and_copy() {
+    for (code, expected) in [
+      (KeyCode::Char('/'), Action::FocusFilter),
+      (KeyCode::Char('c'), Action::CopyBody),
+      (KeyCode::Char('r'), Action::CopyRaw),
+      (KeyCode::Char(' '), Action::Toggle),
+      (KeyCode::Left, Action::Left),
+      (KeyCode::Right, Action::Right),
+      (KeyCode::PageUp, Action::PageUp),
+      (KeyCode::PageDown, Action::PageDown),
+      (KeyCode::Home, Action::Home),
+      (KeyCode::End, Action::End),
+    ] {
+      assert_eq!(action(plain(code), BROWSING), Some(expected), "{code:?}");
+      // In a text field every one of them is editing.
+      assert_eq!(action(plain(code), TYPING), Some(Action::Edit(plain(code))), "{code:?}");
+    }
+  }
+
+  #[test]
+  fn a_new_line_has_a_key_on_every_terminal() {
+    for context in [BROWSING, TYPING] {
+      assert_eq!(
+        action(key(KeyCode::Enter, KeyModifiers::ALT), context),
+        Some(Action::Newline)
+      );
+      assert_eq!(
+        action(key(KeyCode::Char('j'), KeyModifiers::CONTROL), context),
+        Some(Action::Newline)
+      );
+      // Reported under the keyboard protocol.
+      assert_eq!(
+        action(key(KeyCode::Enter, KeyModifiers::SHIFT), context),
+        Some(Action::Newline)
+      );
+      assert_eq!(action(plain(KeyCode::Enter), context), Some(Action::Activate));
+    }
+  }
+
+  #[test]
+  fn ctrl_arrows_move_the_divider_in_every_focus() {
+    for context in [BROWSING, TYPING] {
+      assert_eq!(
+        action(key(KeyCode::Left, KeyModifiers::CONTROL), context),
+        Some(Action::SplitLeft)
+      );
+      assert_eq!(
+        action(key(KeyCode::Right, KeyModifiers::CONTROL), context),
+        Some(Action::SplitRight)
+      );
+    }
   }
 
   #[test]

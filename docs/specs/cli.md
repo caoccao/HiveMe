@@ -303,8 +303,8 @@ See [Interactive mode](#interactive-mode).
 
 - The terminal UI is built by [the terminal UI plan](../plans/plan-terminal-ui.md):
   the shared session in phase 1, the setup string language and the catalogs in phase
-  2, and the shell in phase 3 are built; the Messages tab is phase 4, Settings and About
-  phase 5, the end-to-end test phase 6. The status table in [app.md](app.md#status) says
+  2, the shell in phase 3, and the Messages tab in phase 4 are built; Settings and About
+  are phase 5, the end-to-end test phase 6. The status table in [app.md](app.md#status) says
   what has landed.
 - There are no subcommands, now or later: a bare word is a message, see
   [The body](#the-body). Every later mode is an option.

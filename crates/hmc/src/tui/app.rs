@@ -30,15 +30,16 @@ use std::time::{Duration, Instant};
 use crossterm::event::{Event, KeyEvent, KeyEventKind, MouseButton, MouseEvent, MouseEventKind};
 use hiveme_core::config::Config;
 use hiveme_core::i18n::Locale;
-use hiveme_core::session::{GITHUB_URL, MessageRow, SessionEvent, Status};
+use hiveme_core::session::{GITHUB_URL, MessageRow, SessionEvent, Status, TopicNode};
 use ratatui::layout::{Position, Rect};
 use tokio::sync::{broadcast, mpsc};
 
 use super::keys::{self, Action, Context};
-use super::open;
+use super::messages::{Focus, MessagesState};
 use super::service::Service;
 use super::settings::SettingsState;
 use super::theme::{Glyphs, Theme};
+use super::{clipboard, open};
 
 /// The topic the Messages tab selects at startup, so a new installation is ready to
 /// compose. `STARTUP_TOPIC` in `src/lib/constants.ts`.
@@ -107,13 +108,12 @@ impl Tab {
   }
 }
 
-/// The transient line at the top, `NotificationSnackbar.tsx`.
-///
-/// Everything phase 3 reports there is a failure; the confirmations of the copy actions
-/// arrive with them in phase 4.
+/// The transient line at the top, `NotificationSnackbar.tsx`: a confirmation in the
+/// success color or a failure in the error color.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Snackbar {
   pub text: String,
+  pub error: bool,
   pub until: Instant,
 }
 
@@ -124,6 +124,14 @@ pub enum Outcome {
   Failed(String),
   Saved(Box<Config>),
   SaveFailed(String),
+  /// The broker acknowledged a message from the composer of `topic`, whose draft said
+  /// `body`.
+  Sent {
+    topic: String,
+    body: String,
+    row: Box<MessageRow>,
+  },
+  SendFailed(String),
 }
 
 /// The line above the tabs while a newer release exists.
@@ -150,6 +158,9 @@ pub struct Receivers {
 /// Opens a URL in the browser; replaced in tests.
 pub type Opener = fn(&str) -> Result<(), String>;
 
+/// Puts text on the clipboard; replaced in tests.
+pub type Copier = fn(&str) -> Result<(), String>;
+
 /// The whole state of the terminal UI.
 pub struct App<S: Service> {
   pub service: Arc<S>,
@@ -163,17 +174,22 @@ pub struct App<S: Service> {
   pub tabs: Vec<Tab>,
   pub tab: usize,
 
+  /// The session's topic tree, with `hiveme` merged in.
+  pub topics: Vec<TopicNode>,
   pub selected_topic: Option<String>,
   /// History per selected subtree, oldest first, merged by row id.
   pub messages: HashMap<String, Vec<MessageRow>>,
   loaded_topics: HashSet<String>,
+  /// False once a subtree has handed back every row it has.
+  pub has_older: HashMap<String, bool>,
+  /// The tree, the chat view, and the composer.
+  pub messages_tab: MessagesState,
 
   pub snackbar: Option<Snackbar>,
   pub help: bool,
   pub notice: Option<UpdateNotice>,
   update_answered: bool,
   pub settings: SettingsState,
-  pub footer_focus: Option<FooterEntry>,
   /// When the pending reconnect happens, for the footer's countdown.
   pub retry_deadline: Option<Instant>,
 
@@ -188,16 +204,17 @@ pub struct App<S: Service> {
   /// over earlier ones, so they win.
   pub hits: Vec<(Rect, Action)>,
 
-  outcomes: mpsc::UnboundedSender<Outcome>,
+  pub(super) outcomes: mpsc::UnboundedSender<Outcome>,
   /// The newest edited config and when to save it.
   pending_save: Option<(Config, Instant)>,
   saving: bool,
   opener: Opener,
+  pub(super) copier: Copier,
 }
 
 impl<S: Service> App<S> {
-  /// The application as it opens: `hiveme` selected, and on a first run the Settings
-  /// tab on the Broker category with the URL focused.
+  /// The application as it opens: `hiveme` selected with the tree focused, and on a
+  /// first run the Settings tab on the Broker category with the URL focused.
   pub fn new(service: Arc<S>, glyphs: Glyphs, enhanced: bool, first_run: bool) -> (Self, Receivers) {
     let (sender, outcomes) = mpsc::unbounded_channel();
     let events = service.subscribe();
@@ -213,14 +230,16 @@ impl<S: Service> App<S> {
       service,
       tabs: vec![Tab::Messages],
       tab: 0,
+      topics: Vec::new(),
       selected_topic: None,
       messages: HashMap::new(),
       loaded_topics: HashSet::new(),
+      has_older: HashMap::new(),
+      messages_tab: MessagesState::default(),
       snackbar: None,
       help: false,
       notice: None,
       update_answered: false,
-      footer_focus: None,
       retry_deadline: None,
       enhanced,
       quit: None,
@@ -230,9 +249,11 @@ impl<S: Service> App<S> {
       pending_save: None,
       saving: false,
       opener: open::open_url,
+      copier: clipboard::copy_text,
     };
     let now = Instant::now();
     app.retry_deadline = app.status.retry_in_ms.map(|ms| now + Duration::from_millis(ms));
+    // Selecting reads the topic tree as well.
     app.select_topic(STARTUP_TOPIC, now);
     if first_run {
       app.open_tab(Tab::Settings);
@@ -248,14 +269,26 @@ impl<S: Service> App<S> {
     self
   }
 
+  /// Replaces the clipboard, so a test never touches the real one.
+  #[cfg(test)]
+  pub fn with_copier(mut self, copier: Copier) -> Self {
+    self.copier = copier;
+    self
+  }
+
   pub fn current_tab(&self) -> Tab {
     self.tabs[self.tab]
   }
 
   /// How keys are read right now.
   pub fn key_context(&self) -> Context {
+    let typing = match self.current_tab() {
+      Tab::Messages => self.messages_typing(),
+      Tab::Settings => self.settings.is_typing(),
+      Tab::About => false,
+    };
     Context {
-      typing: !self.help && self.current_tab() == Tab::Settings && self.settings.is_typing(),
+      typing: !self.help && typing,
       notice: self.notice.is_some(),
       enhanced: self.enhanced,
     }
@@ -302,10 +335,21 @@ impl<S: Service> App<S> {
   }
 
   fn on_mouse(&mut self, mouse: MouseEvent, now: Instant) {
-    if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
-      return;
-    }
     let position = Position::new(mouse.column, mouse.row);
+    match mouse.kind {
+      MouseEventKind::Down(MouseButton::Left) => {}
+      MouseEventKind::Drag(MouseButton::Left) if self.messages_tab.dragging => {
+        return self.drag_divider(mouse.column);
+      }
+      MouseEventKind::Up(MouseButton::Left) => {
+        self.messages_tab.dragging = false;
+        return;
+      }
+      MouseEventKind::ScrollUp | MouseEventKind::ScrollDown if !self.help && self.current_tab() == Tab::Messages => {
+        return self.wheel_messages(position, mouse.kind == MouseEventKind::ScrollUp, now);
+      }
+      _ => return,
+    }
     let Some(action) = self
       .hits
       .iter()
@@ -322,11 +366,17 @@ impl<S: Service> App<S> {
   }
 
   fn on_paste(&mut self, text: &str, now: Instant) {
-    if self.help || self.current_tab() != Tab::Settings {
+    if self.help {
       return;
     }
-    if self.settings.paste(text) {
-      self.save_broker_form(now);
+    match self.current_tab() {
+      Tab::Messages => self.paste_messages(text),
+      Tab::Settings => {
+        if self.settings.paste(text) {
+          self.save_broker_form(now);
+        }
+      }
+      Tab::About => {}
     }
   }
 
@@ -372,12 +422,33 @@ impl<S: Service> App<S> {
       | Action::FocusPrevious
       | Action::Up
       | Action::Down
+      | Action::Left
+      | Action::Right
+      | Action::PageUp
+      | Action::PageDown
+      | Action::Home
+      | Action::End
+      | Action::Toggle
+      | Action::FocusFilter
+      | Action::CopyBody
+      | Action::CopyRaw
+      | Action::Newline
+      | Action::SplitLeft
+      | Action::SplitRight
+      | Action::FocusPane(_)
+      | Action::ToggleTopic(_)
+      | Action::SelectTopic(_)
+      | Action::FocusMessage(_)
+      | Action::Composer(_)
+      | Action::ComposerQos(_)
+      | Action::ComposerLevel(_)
+      | Action::Divider
       | Action::Activate
       | Action::TogglePassword
       | Action::SettingsCategory(_)
       | Action::SettingsField(_)
       | Action::Edit(_) => match self.current_tab() {
-        Tab::Messages => self.move_footer_focus(&action, now),
+        Tab::Messages => self.perform_messages(action, now),
         Tab::Settings => {
           let flush = action == Action::Activate && self.settings.is_last_field();
           if self.settings.perform(&action) {
@@ -393,27 +464,11 @@ impl<S: Service> App<S> {
     }
   }
 
-  /// A key in the Messages tab. Until the tree and the chat view arrive, what takes
-  /// the focus there is the footer's error entries.
-  fn move_footer_focus(&mut self, action: &Action, now: Instant) {
-    let entries = self.footer_entries();
-    match action {
-      Action::FocusNext | Action::FocusPrevious => {
-        let order: Vec<Option<FooterEntry>> = std::iter::once(None).chain(entries.into_iter().map(Some)).collect();
-        let current = order.iter().position(|entry| *entry == self.footer_focus).unwrap_or(0);
-        let next = if *action == Action::FocusNext {
-          (current + 1) % order.len()
-        } else {
-          (current + order.len() - 1) % order.len()
-        };
-        self.footer_focus = order[next];
-      }
-      Action::Activate => match self.footer_focus {
-        Some(FooterEntry::ConfigError) => self.perform(Action::ShowConfigError, now),
-        Some(FooterEntry::LastError) => self.perform(Action::ShowLastError, now),
-        None => {}
-      },
-      _ => {}
+  /// The footer entry that has the focus, which only the Messages tab gives it.
+  pub fn footer_focus(&self) -> Option<FooterEntry> {
+    match self.messages_tab.focus {
+      Focus::Footer(entry) if self.current_tab() == Tab::Messages => Some(entry),
+      _ => None,
     }
   }
 
@@ -430,10 +485,13 @@ impl<S: Service> App<S> {
   }
 
   fn escape(&mut self) {
-    if self.current_tab() == Tab::Settings && self.settings.escape() {
-      return;
+    match self.current_tab() {
+      Tab::Messages => self.escape_messages(),
+      Tab::Settings => {
+        self.settings.escape();
+      }
+      Tab::About => {}
     }
-    self.footer_focus = None;
   }
 
   /// Opens a tab, or selects it when it is open.
@@ -493,10 +551,18 @@ impl<S: Service> App<S> {
 
   /// Selects a topic, loads its subtree once, and marks it read.
   pub fn select_topic(&mut self, topic: &str, now: Instant) {
+    if self.selected_topic.as_deref() != Some(topic) {
+      self.messages_tab.view.reset();
+      self.messages_tab.composer.popup = None;
+    }
     self.selected_topic = Some(topic.to_owned());
+    self.keep_composer_focus_visible();
     if !self.loaded_topics.contains(topic) {
       match self.service.messages(topic, None, MESSAGE_PAGE_SIZE) {
         Ok(page) => {
+          self
+            .has_older
+            .insert(topic.to_owned(), page.len() >= MESSAGE_PAGE_SIZE as usize);
           let rows = self.messages.remove(topic).unwrap_or_default();
           self.messages.insert(topic.to_owned(), merge(page, rows));
           self.loaded_topics.insert(topic.to_owned());
@@ -506,6 +572,38 @@ impl<S: Service> App<S> {
     }
     if let Err(error) = self.service.mark_read(topic) {
       self.notify_error(error.to_string(), now);
+    }
+    self.refresh_topics(now);
+  }
+
+  /// Loads the page before the oldest row of a subtree, as `loadOlderMessages` does.
+  /// Returns whether rows were added.
+  pub fn load_older_messages(&mut self, topic: &str, now: Instant) -> bool {
+    if self.has_older.get(topic) == Some(&false) {
+      return false;
+    }
+    let Some(oldest) = self
+      .messages
+      .get(topic)
+      .and_then(|rows| rows.first())
+      .map(|row| row.row_id)
+    else {
+      return false;
+    };
+    match self.service.messages(topic, Some(oldest), MESSAGE_PAGE_SIZE) {
+      Ok(page) => {
+        self
+          .has_older
+          .insert(topic.to_owned(), page.len() >= MESSAGE_PAGE_SIZE as usize);
+        let added = !page.is_empty();
+        let rows = self.messages.remove(topic).unwrap_or_default();
+        self.messages.insert(topic.to_owned(), merge(page, rows));
+        added
+      }
+      Err(error) => {
+        self.notify_error(error.to_string(), now);
+        false
+      }
     }
   }
 
@@ -528,11 +626,14 @@ impl<S: Service> App<S> {
     for root in roots {
       self.messages.remove(&root);
       self.loaded_topics.remove(&root);
+      self.has_older.remove(&root);
     }
-    if let Some(selected) = self.selected_topic.clone()
-      && belongs_to_topic(&topic, &selected)
-    {
-      self.select_topic(&selected, now);
+    match self.selected_topic.clone() {
+      Some(selected) if belongs_to_topic(&topic, &selected) => {
+        self.messages_tab.view.reset();
+        self.select_topic(&selected, now);
+      }
+      _ => self.refresh_topics(now),
     }
   }
 
@@ -565,10 +666,14 @@ impl<S: Service> App<S> {
   pub fn on_session_event(&mut self, event: SessionEvent, now: Instant) {
     match event {
       SessionEvent::Status(status) => self.set_status(status, now),
-      SessionEvent::Message(row) => self.receive_message(row),
-      // The topic tree of phase 4 listens to these. The OS notification was already
-      // shown by the session's notifier.
-      SessionEvent::TopicAdded { .. } | SessionEvent::NotificationFired { .. } => {}
+      // The tree's unread badges change with every row, as the GUI refreshes them.
+      SessionEvent::Message(row) => {
+        self.receive_message(row);
+        self.refresh_topics(now);
+      }
+      SessionEvent::TopicAdded { .. } => self.refresh_topics(now),
+      // The OS notification was already shown by the session's notifier.
+      SessionEvent::NotificationFired { .. } => {}
     }
   }
 
@@ -598,6 +703,15 @@ impl<S: Service> App<S> {
           self.notify_error(error, now);
         }
       }
+      Outcome::Sent { topic, body, row } => {
+        self.sent(&topic, &body);
+        self.receive_message(*row);
+        self.refresh_topics(now);
+      }
+      Outcome::SendFailed(error) => {
+        self.messages_tab.composer.sending = false;
+        self.notify_error(error, now);
+      }
     }
   }
 
@@ -606,9 +720,10 @@ impl<S: Service> App<S> {
       self.retry_deadline = status.retry_in_ms.map(|ms| now + Duration::from_millis(ms));
     }
     self.status = status;
-    let entries = self.footer_entries();
-    if self.footer_focus.is_some_and(|entry| !entries.contains(&entry)) {
-      self.footer_focus = None;
+    if let Focus::Footer(entry) = self.messages_tab.focus
+      && !self.footer_entries().contains(&entry)
+    {
+      self.messages_tab.focus = Focus::Tree;
     }
   }
 
@@ -668,6 +783,8 @@ impl<S: Service> App<S> {
     self.locale = Locale::resolve(&config.gui.language);
     self.theme = Theme::from_gui(&config.gui);
     self.config = config;
+    // Bubbles hold translated text, so every height is measured again.
+    self.messages_tab.view.invalidate();
   }
 
   fn open_releases(&mut self) {
@@ -690,6 +807,16 @@ impl<S: Service> App<S> {
   pub fn notify_error(&mut self, text: String, now: Instant) {
     self.snackbar = Some(Snackbar {
       text,
+      error: true,
+      until: now + SNACKBAR_DURATION,
+    });
+  }
+
+  /// A confirmation, such as a copy.
+  pub fn notify_info(&mut self, text: String, now: Instant) {
+    self.snackbar = Some(Snackbar {
+      text,
+      error: false,
       until: now + SNACKBAR_DURATION,
     });
   }

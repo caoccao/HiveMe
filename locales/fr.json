@@ -254,6 +254,10 @@
     "tooSmall": "Agrandissez le terminal à au moins {{columns}} × {{rows}}.",
     "quitting": "fermeture, fin de la session du courtier…",
     "settingsLater": "Cette catégorie arrivera dans l’interface terminal dans une version ultérieure. D’ici là, modifiez-la dans hmg ou dans le fichier de configuration.",
+    "composer": {
+      "placeholder": "Rédigez un message. Entrée envoie, Alt+Entrée ajoute une ligne.",
+      "placeholderJson": "Saisissez une charge utile JSON. Entrée envoie, Alt+Entrée ajoute une ligne."
+    },
     "help": {
       "title": "Touches",
       "close": "fermer",
@@ -271,7 +275,14 @@
       "help": "Afficher ou masquer cette aide",
       "escape": "Fermer la superposition du dessus, ou revenir",
       "focus": "Déplacer le focus",
-      "activate": "Ouvrir l’entrée qui a le focus",
+      "filter": "Filtrer les sujets",
+      "browse": "Se déplacer, replier ou déplier",
+      "toggle": "Basculer une branche ou une option",
+      "select": "Sélectionner, ouvrir ou envoyer",
+      "page": "Parcourir les messages page par page",
+      "copy": "Copier le corps ou la charge utile brute",
+      "newline": "Ajouter une ligne au message",
+      "divider": "Déplacer le séparateur",
       "category": "Choisir une catégorie",
       "field": "Passer d’un champ à l’autre",
       "password": "Afficher ou masquer le mot de passe",

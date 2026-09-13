@@ -19,7 +19,12 @@
 //!
 //! The screens are rendered on ratatui's `TestBackend` and read back as text; the keys,
 //! the clicks, the session events, and the ways out go through the same methods and the
-//! same event loop the real terminal uses.
+//! same event loop the real terminal uses. The scripted session keeps its rows in a real
+//! in-memory store, so the tree, the unread counts, and the paging are the store's own.
+//!
+//! This file holds the harness and the shell; `messages.rs` holds the Messages tab.
+
+mod messages;
 
 use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -31,8 +36,10 @@ use hiveme_core::config::Config;
 use hiveme_core::i18n::{Locale, t, t_count, t_with};
 use hiveme_core::message::{Level, Message, Sender};
 use hiveme_core::session::{
-  About, MessageRow, Notifier, SHUTDOWN_TIMEOUT, Session, SessionApp, SessionEvent, Status, Toaster, UpdateCheckResult,
+  About, MessageRow, Notifier, PublishOptions, SHUTDOWN_TIMEOUT, Session, SessionApp, SessionEvent, Status, Toaster,
+  TopicNode, UpdateCheckResult, build_tree,
 };
+use hiveme_core::storage::{NewMessage, Store};
 use hiveme_core::{Error, Result};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -64,7 +71,7 @@ struct Scripted {
   events: broadcast::Sender<SessionEvent>,
   config: Mutex<Config>,
   status: Mutex<Status>,
-  rows: Mutex<Vec<MessageRow>>,
+  store: Store,
   update: Mutex<Option<UpdateCheckResult>>,
   notifier: Notifier,
   toasts: Arc<Recorder>,
@@ -75,6 +82,10 @@ struct Scripted {
   saved: Mutex<Vec<Config>>,
   skipped: Mutex<Vec<String>>,
   cleared: Mutex<Vec<String>>,
+  /// Every publish asked for: the tree topic, the body, and the options.
+  published: Mutex<Vec<(String, String, PublishOptions)>>,
+  /// Why the broker refuses the next publishes, when it does.
+  publish_error: Mutex<Option<String>>,
 }
 
 impl Scripted {
@@ -85,7 +96,7 @@ impl Scripted {
       notifier: Notifier::new(&config, toasts.clone()),
       config: Mutex::new(config),
       status: Mutex::new(Status::disconnected()),
-      rows: Mutex::new(Vec::new()),
+      store: Store::in_memory().unwrap(),
       update: Mutex::new(None),
       toasts,
       connect_error: Mutex::new(None),
@@ -95,6 +106,8 @@ impl Scripted {
       saved: Mutex::new(Vec::new()),
       skipped: Mutex::new(Vec::new()),
       cleared: Mutex::new(Vec::new()),
+      published: Mutex::new(Vec::new()),
+      publish_error: Mutex::new(None),
     })
   }
 
@@ -121,6 +134,25 @@ impl Scripted {
     let _ = self.events.send(SessionEvent::Status(self.status()));
   }
 
+  /// A payload in the store, as if it had arrived before the terminal UI opened.
+  fn keep(&self, topic: &str, payload: &[u8], outgoing: bool) -> MessageRow {
+    let row = NewMessage::from_payload(topic, payload.to_vec(), 1, false, outgoing);
+    MessageRow::from(self.store.insert(&row).unwrap().message)
+  }
+
+  /// Stores a row and raises the events the session raises for it.
+  fn store_and_announce(&self, row: &NewMessage) -> MessageRow {
+    let insertion = self.store.insert(row).unwrap();
+    if insertion.topic_is_new {
+      let _ = self.events.send(SessionEvent::TopicAdded {
+        topic: row.topic.clone(),
+      });
+    }
+    let stored = MessageRow::from(insertion.message);
+    let _ = self.events.send(SessionEvent::Message(stored.clone()));
+    stored
+  }
+
   /// What the session's pump does with a message from the broker: the rules, the row,
   /// and the events.
   fn deliver(&self, topic: &str, message: &Message) {
@@ -133,9 +165,7 @@ impl Scripted {
         topic: topic.to_owned(),
       });
     }
-    let row = row(self.rows.lock().unwrap().len() as i64 + 1, topic);
-    self.rows.lock().unwrap().push(row.clone());
-    let _ = self.events.send(SessionEvent::Message(row));
+    self.store_and_announce(&NewMessage::from_payload(topic, bytes, 1, false, false));
     self.status.lock().unwrap().messages_received += 1;
     self.emit_status();
   }
@@ -194,29 +224,62 @@ impl Service for Scripted {
     })
   }
 
-  fn messages(&self, topic: &str, _before: Option<i64>, _limit: u32) -> Result<Vec<MessageRow>> {
-    Ok(
-      self
-        .rows
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|row| row.topic == topic || row.topic.starts_with(&format!("{topic}/")))
-        .cloned()
-        .collect(),
-    )
+  fn topic_tree(&self) -> Result<Vec<TopicNode>> {
+    Ok(build_tree(&self.store.topics()?))
   }
 
-  fn mark_read(&self, _topic: &str) -> Result<()> {
-    Ok(())
+  fn messages(&self, topic: &str, before: Option<i64>, limit: u32) -> Result<Vec<MessageRow>> {
+    let rows = self.store.messages(topic, before, limit)?;
+    Ok(rows.into_iter().map(MessageRow::from).collect())
+  }
+
+  fn mark_read(&self, topic: &str) -> Result<()> {
+    self.store.mark_read(topic)
   }
 
   fn clear_topic(&self, topic: &str) -> Result<u64> {
     self.cleared.lock().unwrap().push(topic.to_owned());
-    let mut rows = self.rows.lock().unwrap();
-    let before = rows.len();
-    rows.retain(|row| row.topic != topic);
-    Ok((before - rows.len()) as u64)
+    self.store.clear_topic(topic)
+  }
+
+  /// Publishes as the session does, with the broker's acknowledgement taken for granted
+  /// unless `publish_error` says otherwise.
+  fn publish<'a>(&'a self, topic: &'a str, body: &'a str, options: PublishOptions) -> Pending<'a, MessageRow> {
+    Box::pin(async move {
+      self
+        .published
+        .lock()
+        .unwrap()
+        .push((topic.to_owned(), body.to_owned(), options.clone()));
+      if let Some(reason) = self.publish_error.lock().unwrap().clone() {
+        return Err(Error::PublishRejected {
+          topic: topic.to_owned(),
+          reason,
+        });
+      }
+      let resolved = hiveme_core::topic::resolve_publish(topic, options.topic.as_deref().unwrap_or(""));
+      let payload = if options.json {
+        body.as_bytes().to_vec()
+      } else {
+        let sender = Sender::from_device(&self.config().device, "hmc");
+        let mut message = Message::new_text(sender, body);
+        if let Some(title) = options.title.clone() {
+          message = message.with_title(title);
+        }
+        if let Some(level) = options.level.as_deref() {
+          message = message.with_level(Level::parse(level));
+        }
+        message.to_bytes().unwrap()
+      };
+      let row = NewMessage::from_payload(
+        &resolved,
+        payload,
+        options.qos.unwrap_or(1),
+        options.retain.unwrap_or(false),
+        true,
+      );
+      Ok(self.store_and_announce(&row))
+    })
   }
 
   fn set_notifications_paused(&self, paused: bool) -> Status {
@@ -306,7 +369,11 @@ fn render<S: Service>(app: &mut App<S>, width: u16, height: u16) -> Vec<String> 
 }
 
 fn rows(terminal: &Terminal<TestBackend>) -> Vec<String> {
-  let buffer = terminal.backend().buffer();
+  buffer_rows(terminal.backend().buffer())
+}
+
+/// A buffer read back one string per row, a wide glyph counted once.
+fn buffer_rows(buffer: &ratatui::buffer::Buffer) -> Vec<String> {
   let mut rows = Vec::new();
   for y in 0..buffer.area.height {
     let mut row = String::new();
@@ -605,10 +672,14 @@ fn the_footer_errors_open_their_detail_by_key_and_by_click() {
   let footer = render(&mut app, 120, 40).pop().unwrap();
   assert!(footer.trim_end().ends_with("config error  last error"), "{footer}");
 
-  press(&mut app, key(KeyCode::Tab));
-  press(&mut app, key(KeyCode::Tab));
+  // The entries end the focus ring, so going backwards from the tree past the filter
+  // reaches the last one.
+  press(&mut app, chord(KeyCode::BackTab, KeyModifiers::SHIFT));
+  press(&mut app, chord(KeyCode::BackTab, KeyModifiers::SHIFT));
+  assert_eq!(app.footer_focus(), Some(super::app::FooterEntry::LastError));
   press(&mut app, key(KeyCode::Enter));
   assert_eq!(app.snackbar.as_ref().unwrap().text, "the broker refused the password");
+  assert!(app.snackbar.as_ref().unwrap().error);
 
   press(&mut app, key(KeyCode::Esc));
   render(&mut app, 120, 40);
@@ -689,6 +760,10 @@ fn the_help_lists_the_keys_of_the_scope_and_any_key_closes_it() {
     "Ctrl+Q, Ctrl+C",
     "Quit and end the broker session",
     "Tab, Shift+Tab",
+    "PageUp, PageDown, Home, End",
+    "Copy the body or the raw payload",
+    "Alt+Enter, Ctrl+J",
+    "Ctrl+Left, Ctrl+Right",
   ] {
     assert!(screen.contains(text), "{text}:\n{screen}");
   }
@@ -771,7 +846,7 @@ async fn a_first_run_opens_on_the_broker_url_and_saves_what_is_typed_once() {
 #[test]
 fn clearing_the_topic_reloads_it_and_an_echo_never_doubles_a_row() {
   let service = Scripted::in_language("en-US");
-  service.rows.lock().unwrap().push(row(1, "hiveme"));
+  service.keep("hiveme", b"hello", false);
   let (mut app, _receivers) = open_app(&service);
   assert_eq!(app.selected_topic.as_deref(), Some("hiveme"));
   assert_eq!(app.selected_messages().len(), 1);

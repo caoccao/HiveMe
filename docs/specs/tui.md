@@ -6,10 +6,10 @@ snackbar, OS notifications, and the update notice, rendered with
 [ratatui](https://ratatui.rs/) in the terminal, in all nine languages, on the same
 backend `hmg` uses. The one-shot publish mode of [cli.md](cli.md) is unchanged.
 
-**Status: the languages and the shell are built; the Messages tab, Settings, and
-About are specified.** [The terminal UI plan](../plans/plan-terminal-ui.md) builds it
-phase by phase. Every section below names the phase that builds it, and the status
-table in [app.md](app.md#status) records what has landed. Phases 1 to 3 are done; until
+**Status: the languages, the shell, and the Messages tab are built; Settings and About
+are specified.** [The terminal UI plan](../plans/plan-terminal-ui.md) builds it phase
+by phase. Every section below names the phase that builds it, and the status table in
+[app.md](app.md#status) records what has landed. Phases 1 to 4 are done; until
 a later section's phase is done, that section describes intent rather than code, the
 way [message.md](message.md#encryption) describes encryption.
 
@@ -55,66 +55,80 @@ applications.
 | `crates/hmc/src/tui/snackbar.rs` | The transient overlay for errors and confirmations |
 | `crates/hmc/src/tui/help.rs` | The key binding overlay |
 | `crates/hmc/src/tui/update_notice.rs` | The line above the tabs when a newer release exists |
-| `crates/hmc/src/tui/messages/mod.rs` | Tab 0: the split pane and its divider. Phase 3 draws the selected topic and `messages.empty` or `messages.selectTopic` |
-| `crates/hmc/src/tui/messages/topic_tree.rs` | The topic hierarchy and its filter |
-| `crates/hmc/src/tui/messages/message_view.rs` | The chat view, its bubbles, the virtual rows |
-| `crates/hmc/src/tui/messages/json_tree.rs` | The collapsible tree used by `data` and raw JSON |
+| `crates/hmc/src/tui/messages/mod.rs` | Tab 0: the split pane, its divider, the focus ring, and which pane a key goes to |
+| `crates/hmc/src/tui/messages/topic_tree.rs` | The topic hierarchy, its filter, and the unread badges |
+| `crates/hmc/src/tui/messages/message_view.rs` | The chat view: bubbles, virtual rows and their height cache, paging, the metadata row, the copy actions |
+| `crates/hmc/src/tui/messages/json_tree.rs` | The collapsible tree used by `data` and raw JSON, read in the key order of the payload |
 | `crates/hmc/src/tui/messages/detail.rs` | Per-node navigation of one message's trees |
-| `crates/hmc/src/tui/messages/composer.rs` | The input, the send action, the collapsible options |
+| `crates/hmc/src/tui/messages/composer.rs` | The message box, the Level select, More Options, Send, and the drafts per topic |
 | `crates/hmc/src/tui/settings/mod.rs` | The Settings tab: category strip and panel |
 | `crates/hmc/src/tui/settings/{appearance,broker,topics,notifications,history,update,advanced}.rs` | One panel per category. Phase 3 has `broker.rs` with the URL, username, and password |
 | `crates/hmc/src/tui/about.rs` | The About tab. Phase 3 draws it as text |
-| `crates/hmc/src/tui/widgets/` | Text input, multi-line editor, select popup, checkbox, radio row, number field, editable table. Phase 3 has the text input and `truncate` |
-| `crates/hmc/src/tui/clipboard.rs` | `arboard`, then the OSC 52 escape sequence. Phase 4, with the copy actions that use it |
+| `crates/hmc/src/tui/widgets/` | Text input, multi-line editor, select popup, checkbox, radio row, number field, editable table. Phase 3 has the text input and `truncate`; phase 4 adds the multi-line editor and `wrap` |
+| `crates/hmc/src/tui/clipboard.rs` | `arboard`, then the OSC 52 escape sequence |
 | `crates/hmc/src/tui/notify.rs` | The `Toaster` of [session.md](session.md#notifications): `notify-rust`, or the Windows toast crate |
 | `crates/hmc/src/tui/open.rs` | Opens URLs and the config directory |
 | `crates/hiveme-core/src/i18n/` | Locale resolution, the catalogs, plural rules, formatting; see [Languages](#languages). Built in phase 2 |
+| `crates/hmc/src/tui/tests/` | The in-process tests: `mod.rs` holds the scripted session and the shell, `messages.rs` the Messages tab |
 | `locales/*.json` | The nine catalogs, shared with the frontend |
 
 Third party ratatui widgets (`tui-textarea`, `tui-tree-widget`) are used only if they
 support the ratatui release in use. When phase 3 started, `tui-textarea` 0.7 still
-depended on ratatui 0.29, so `widgets/` holds in-house controls; the choice is recorded
-in the deviations of [app.md](app.md).
+depended on ratatui 0.29, so `widgets/` holds in-house controls, and the topic tree of
+phase 4 is drawn by `messages/topic_tree.rs` itself; the choices are recorded in the
+deviations of [app.md](app.md).
 
 ## Layout
 
-*Phase 3.*
+*Phase 3, with the split pane of the Messages tab in phase 4.*
 
 Rows, top to bottom: the toolbar (3), the update notice (0 or 1), the tabs (1), the
 content (the rest), the footer (1).
 
 ```
  HiveMe v0.1.0 ─────────────────────────────────────────────────────────────────
- [F2 Connect] [F3 Pause] [F4 Clear] [F10 Settings] [F1 About] [? Help] [^Q Quit]
+ [F2 Disconn…] [F3 Pause] [F4 Clear] [F10 Settin…] [F1 About] [? Help] [^Q Quit]
 ────────────────────────────────────────────────────────────────────────────────
  Messages │ Settings ✕ │ About ✕
-┌ Filter topics ──────────┐┌ hiveme ────────────────────────────────────────────┐
-│ >                       ││  sams-macbook                                       │
-│ ▾ hiveme (2)            ││  ╭────────────────────────────╮                    │
-│   ▾ build (2)           ││  │ CI                         │                    │
-│       ci (2)            ││  │ Nightly build 482 finished │                    │
-│     deploy              ││  ╰────────────────────────────╯                    │
-│                         ││  build/ci  Info  QoS 1  09:41                      │
-│                         ││                    ╭────────────────────────────╮  │
-│                         ││                    │ Deployed hiveme to staging │  │
-│                         ││                    ╰────────────────────────────╯  │
-│                         │├────────────────────────────────────────────────────┤
-│                         ││ Write a message. Enter sends, Alt+Enter adds a line│
-│                         ││                                                    │
-│                         ││                        [Info ▾] [More Options ▸] [Send]│
-└─────────────────────────┘└────────────────────────────────────────────────────┘
- ● connected  abc123.s1.eu.hivemq.cloud:8883  1 subscription  128 messages this session  database 1.2 MB
+╭ Filter topics ─────╮╭ hiveme ────────────────────────────────────────────────╮
+│>                   ││ ╰───────────────────────────╯                          │
+│▾ hiveme (2)        ││                                                        │
+│  ▾ build (2)       ││   ci-runner                                            │
+│      ci (2)        ││ ╭────────────────────────────╮                         │
+│    deploy          ││ │ CI                         │                         │
+│                    ││ │ Nightly build 482 finished │                         │
+│                    ││ ╰────────────────────────────╯                         │
+│                    ││                                                        │
+│                    ││                         ╭────────────────────────────╮ │
+│                    ││                         │ Deployed hiveme to staging │ │
+│                    ││                         ╰────────────────────────────╯ │
+│                    ││                        deploy  Success  QoS 1  9:41 AM │
+│                    │├────────────────────────────────────────────────────────┤
+│                    ││ Write a message. Enter sends, Alt+Enter adds a line.   │
+│                    ││                                                        │
+│                    ││                                                        │
+│                    ││                       [Info ▾] [More Options ▸] [Send] │
+╰────────────────────╯╰────────────────────────────────────────────────────────╯
+ ● connected  abc123.s1.eu.hivemq.cloud:8883  1 subscription  128 messages this
 ```
 
-- The pane split starts at 28 percent of the width, is clamped to 15..60, and moves
-  with `Ctrl+Left` and `Ctrl+Right` or by dragging the divider with the mouse. It is
-  remembered for the process only, as the GUI remembers its divider in the window.
+- The frame above is an 80 by 24 terminal with the newest message focused, which is
+  why its metadata row shows and the older bubble at the top is cut.
+- The pane split starts at 28 percent of the width, is clamped to 15..60, and moves by
+  two percent with `Ctrl+Left` and `Ctrl+Right` or by dragging the divider with the
+  mouse. The divider is the two borders where the panes meet; while it is dragged the
+  message pane's border takes the secondary color. The split is remembered for the
+  process only, as the GUI remembers its divider in the window.
+- The topic pane is a rounded block titled `topics.filter`, the message pane a rounded
+  block titled with the selected topic, and the pane with the focus has its border in
+  the primary color. In the message pane, the chat view takes the rows above the
+  composer, which is separated from it by a rule joined to the pane's borders and takes
+  the rows it needs, at most 70 percent of the pane.
 - Below 80 columns by 24 rows the whole frame is replaced by one centered line,
   `tui.tooSmall`, the way `hmg` enforces its 600 x 450 minimum.
 - The Messages tab stays mounted while another tab is shown, so its scroll position,
   focus, and drafts survive a switch.
-- Until phase 4 the Messages tab is one rounded block titled with the selected topic,
-  `hiveme` at startup, holding `messages.empty` while that subtree has no stored rows
+- The chat view holds `messages.empty` while the selected subtree has no stored rows
   and `messages.selectTopic` when nothing is selected.
 
 ### Toolbar
@@ -163,84 +177,127 @@ on its `✕` closes it. Closing a tab selects the one that took its place.
 
 *Phase 4.*
 
-- A filter field sits on top. `/` focuses it from anywhere in the Messages tab and
-  `Esc` leaves it. Matching is on the whole path, case-insensitive, keeps a parent
-  whose child matches, and expands what it found. `hiveme` stays visible even when it
-  does not match, as in the GUI.
+- A filter field is the first row of the topic pane, after `> `. `/` focuses it from
+  anywhere in the Messages tab outside a text field, `Down` or `Enter` goes on to the
+  tree, and `Esc` leaves it. Matching is on the whole path, case-insensitive, keeps a
+  parent whose child matches, and opens what it found. `hiveme` stays visible even when
+  it does not match, and a filter that matches nothing says `topics.noMatch` below the
+  field, as in the GUI.
 - The tree is drawn with `▾` and `▸` markers and two-cell indentation. `hiveme` is
   always present, selected, and highlighted at startup, even with an empty database.
   Every nonempty path is selectable, including a parent such as `hiveme/build` whose
-  messages are all on `hiveme/build/ci`; an empty leading segment is an italic group in
+  messages are all on `hiveme/build/ci`; an empty leading segment is an italic `/` in
   the secondary color and cannot be selected. Nodes follow the stored MQTT paths
   split on `/`; levels are never synthetic nodes.
-- `Up` and `Down` move, `Right` expands, `Left` collapses or moves to the parent,
-  `Space` toggles, `Enter` selects. Selecting loads the subtree from the store and
-  marks it read, and is independent of expansion, as clicking a label in the GUI is. A
-  mouse click on the marker toggles, on the label selects.
+- A cursor, drawn reversed while the tree has the focus, is what the keys move. `Up` and
+  `Down` move it, `PageUp`, `PageDown`, `Home`, and `End` jump, `Right` opens a node or
+  moves into an open one, `Left` closes a node or moves to its parent, `Space` toggles,
+  and `Enter` selects. Selecting loads the subtree from the store, marks it read, and
+  asks the session for the tree again, and is independent of expansion, as clicking a
+  label in the GUI is. A mouse click on the marker toggles, on the label selects, and
+  the wheel over the tree moves the cursor three rows.
 - The unread badge is ` (N)` after the label in the primary color, rolled up from the
-  descendants, capped at `999+`. The selected label is bold in the primary color.
-- The first tree a user sees is fully expanded until the user changes the expansion,
-  as `TopicTree.tsx` does.
+  descendants, grouped as the selected language groups digits, and capped at `999+`.
+  The selected label is bold in the primary color.
+- The first tree a user sees is fully open until the user opens or closes a node, after
+  which new topics arrive closed, as `TopicTree.tsx` does. The tree is read again from
+  the session whenever a row is stored or a topic is added.
 
 ### Message view
 
 *Phase 4.*
 
-- The header line is the selected topic. Below it, the rows of the selected topic and
-  all its recursive descendants, oldest at the top, newest at the bottom, following new
-  messages unless the user has scrolled up. `PageUp` at the top asks the store for the
-  previous page of 200 rows, the `before` cursor being the oldest row on screen, as
-  `get_messages` pages. Only the rows in view are laid out, and heights are cached per
-  row and wrap width.
-- A bubble is a rounded block, at most 80 percent of the pane wide and at least 18
-  cells, aligned left for incoming rows and right for outgoing rows. An incoming bubble
-  is preceded by the sender's name, falling back to the sender id, never the
-  application name; outgoing and senderless rows have no header.
+- The message pane's title is the selected topic. Below it, the rows of the selected
+  topic and all its recursive descendants, oldest at the top, newest at the bottom,
+  following new messages unless the user has scrolled away from the newest. Where the
+  view is when it does not follow is a row id and how many of its lines are above the
+  view, so a page of older rows loading above never moves what is being read. `PageUp`
+  at the top, `Up` on the oldest row, or the wheel at the top asks the store for the
+  previous page of 200 rows, the `before` cursor being the oldest row loaded, until a
+  page comes back short, as `get_messages` pages. Only the rows in view are laid out,
+  and heights are cached per row, width, and expansion.
+- A bubble is a rounded block, at most 80 percent of the list wide and at least 18
+  cells, aligned left for incoming rows and right for outgoing rows, one cell from the
+  pane's border. An incoming bubble is preceded by the sender's name in bold, falling
+  back to the sender id, never the application name; outgoing and senderless rows have
+  no header.
 - Tiers render as [gui.md](gui.md#message-view) lists them: an envelope shows a bold
-  title, the body, and a collapsed `data` tree; raw JSON is a tree; raw text is shown
-  as text; bytes show `N bytes` and grouped hex; an encrypted message shows a lock
-  glyph and `encrypted (key <kid>)`, with `[enc]` where the glyph is unavailable; a
-  newer `v` gets the `newer version` chip.
+  title, the body, and its `data` tree; raw JSON is a tree; raw text is shown as text;
+  bytes show `N bytes` and the hex, sixteen pairs to a line; an encrypted message shows
+  `🔒 encrypted (key <kid>)`, with `[enc]` where the glyph is unavailable; a newer `v`
+  gets the `newer version` chip. A tree opens its top level and closes every branch
+  below it, as `JsonTree` does, and lists the keys in the order the payload wrote them.
+  Text wraps at spaces, and inside a word only when the word is wider than the bubble.
 - Colors follow `payload.level`, independently of the topic or direction. `info` and
-  `debug` use the regular fill; `success`, `warn`, and `error` use the MUI palette
-  values (`#2e7d32`, `#ed6c02`, `#d32f2f`) for the border and the badge, with a tinted
-  fill only when a display mode is forced, because a tint needs a known background. An
-  unknown level renders as `info` while the badge shows the raw name with the fallback
-  in parentheses. See [Theme](#theme).
-- The metadata row below a bubble, aligned to its right edge, holds the topic path
-  relative to the selected tree topic (secondary color, empty for a row on the selected
-  topic itself), the level badge, `QoS n`, a retained marker, the newer-version chip,
-  and the time in the selected language. It is drawn only for the focused row, and its
-  one-row space is reserved for every row so focusing does not move its neighbors. This
-  is the GUI's hover row without a pointer.
-- A centered secondary-color line separates rows on different days.
-- With a row focused: `c` copies the body, `r` copies the raw payload, `Space` expands
-  or collapses every tree in the bubble, `Enter` opens the detail view in which `Up` and
-  `Down` move between tree nodes, `Space` toggles one node, and `Esc` returns. The
-  snackbar confirms a copy or reports why it failed.
+  `debug` use the regular fill and a muted border; `success`, `warn`, and `error` use
+  the MUI palette values (`#2e7d32`, `#ed6c02`, `#d32f2f`) for the border and the badge,
+  with a tinted fill only when a display mode is forced, because a tint needs a known
+  background. An unknown level renders as `info` while the badge shows the raw name
+  with the fallback in parentheses. See [Theme](#theme).
+- The metadata row below a bubble, aligned to its right edge and running on to the
+  right when the bubble is narrower than the row, holds the topic path relative to the
+  selected tree topic (muted, as the GUI's `text.disabled`; empty for a row on the
+  selected topic itself), the level badge in the level's color, `QoS n`, the retained
+  marker `📌` (`[R]`), the newer-version chip, and the time in the selected language. It
+  is drawn only for the focused row while the list has the focus, and its one-row space
+  is reserved for every row so focusing does not move its neighbors. This is the GUI's
+  hover row without a pointer. The focused bubble's border is bold, and in the primary
+  color when the level gives it none.
+- A centered muted line with the day in the selected language separates rows on
+  different days.
+- While the list has the focus, `Up` and `Down` move the focus from row to row, starting
+  from the newest, and scroll just enough to show it; `PageUp` and `PageDown` scroll a
+  page and focus the first or the last row fully shown; `Home` goes to the oldest loaded
+  row and `End` to the newest, following again. A click focuses a row, and the wheel
+  scrolls three lines without moving the focus.
+- With a row focused: `c` copies the body, `r` copies the raw payload, `Space` opens
+  every tree in the bubble or closes them all when all are open, and `Enter` opens the
+  detail view. The snackbar confirms a copy or reports why it failed. The copy goes to
+  the native clipboard through `arboard`; where none is reachable, as over SSH, the text
+  is handed to the terminal in the OSC 52 escape sequence, which most terminals put on
+  the system clipboard.
+- The detail view takes the list's place: a rounded block titled with the row's full
+  topic, with its date and time on the bottom border, the metadata line, and the
+  content the width of the pane. A reversed cursor moves from tree node to tree node
+  with `Up` and `Down`, `Space` or `Enter` opens or closes the node under it, `PageUp`
+  and `PageDown` scroll, `c` and `r` copy, and `Esc` returns to the list. What is opened
+  there stays open in the bubble.
 
 ### Composer
 
 *Phase 4.*
 
-- A bordered editor at the bottom of the message pane, three rows minimum, growing to
-  six, with `composer.placeholder` or `composer.placeholderJson` as its placeholder.
-  Below it, right-aligned: the Level select, More Options with `▸` or `▾`, and Send.
-- `Enter` sends from every composer control. `Alt+Enter` and `Ctrl+J` insert a
-  newline, and so does `Shift+Enter` where the terminal reports it. Inside an open
-  Level popup `Enter` picks the highlighted level without sending. `Tab` and
-  `Shift+Tab` move between the editor and its controls.
+- The message box sits below the rule, three rows minimum, growing to six, and the rule
+  takes the primary color while the box has the focus. Its placeholder is
+  `tui.composer.placeholder` or `tui.composer.placeholderJson`: the GUI's sentences with
+  the newline key every terminal delivers, `Alt+Enter`, in place of `Shift+Enter`. Below
+  it, right-aligned, `[Info ▾] [More Options ▸] [Send]`: the Level select in its level's
+  color, More Options with `▸` or `▾`, and Send in the primary color. The focused control
+  is drawn reversed and a disabled one dimmed; the More Options label gives up letters
+  first when the row does not fit.
+- `Enter` sends from every composer control without also activating it. `Alt+Enter` and
+  `Ctrl+J` insert a newline, and so does `Shift+Enter` where the terminal reports it.
+  `Space` does what a click does: it opens the Level popup, opens or closes More
+  Options, sends from Send, and checks a checkbox; `Left` and `Right` pick the QoS
+  radio. The Level popup is drawn above its button: `Up` and `Down` move, `Enter` or
+  `Space` picks the highlighted level without sending, and `Esc` or a click elsewhere
+  closes it. `Tab` and `Shift+Tab` move between the message box and the controls that
+  can be used right now, as part of the tab's focus ring.
 - The Level select offers Info, Error, Success, and Warn in that order, Info by
   default, colored as the GUI colors them, disabled in raw JSON mode while keeping its
   value.
-- More Options shows Topic (relative to the selected tree topic, leading slashes
-  stripped as typed), Title (disabled in raw JSON mode), and the QoS row with the
-  Config, 0, 1, and 2 radios, Retain Message, and As Raw JSON. Collapsing hides the
-  controls and keeps every value in effect.
+- More Options shows Topic and Title as underlined one-line fields with their labels
+  right-aligned: Topic relative to the selected tree topic, leading slashes stripped as
+  typed, and Title disabled in raw JSON mode. Then the QoS row, `(●) Config ( ) 0 ( ) 1
+  ( ) 2` followed by `[ ] Retain Message` and `[ ] As Raw JSON`, which wrap onto the next
+  row when the pane is too narrow. Collapsing hides the controls and keeps every value
+  in effect.
 - The draft, level, options, and expansion state are kept per selected tree topic in
-  process memory. Success clears only the originating topic's text; failure keeps it
-  and goes to the snackbar. The composer is disabled while not connected or without a
-  selection, and the reason is shown as its placeholder.
+  process memory. Success clears only the originating topic's text, even when the
+  selection moved while the message was on its way, and nothing else is sent until the
+  broker has answered; failure keeps the text and goes to the snackbar. The composer is
+  disabled while not connected or without a selection, and the reason is shown as its
+  placeholder.
 - Sending calls the session's publish, the same path `hmg` and one-shot `hmc` use. The
   bubble appears once the broker has acknowledged, and the copy the broker echoes back
   collapses into it by row id.
@@ -315,25 +372,24 @@ open the snackbar with the detail on `Enter` or click. The state words come from
 
 The state is drawn as `● <state>`, green while connected, orange while connecting or
 reconnecting, and muted otherwise. The error entries sit at the right edge, underlined
-in the error color. Until the tree and the chat view take the focus in phase 4, `Tab`
-and `Shift+Tab` in the Messages tab move the focus through them, drawn reversed, and
-`Enter` opens the focused one. While the quit path waits for the broker, `tui.quitting`
-comes first.
+in the error color. They end the focus ring of the Messages tab, after the composer's
+controls, so `Tab` and `Shift+Tab` reach them, drawn reversed, and `Enter` opens the
+focused one. While the quit path waits for the broker, `tui.quitting` comes first.
 
 ### Snackbar
 
 *Phase 3.*
 
-A top-center overlay one row high, info or error colored, shown for four seconds or
+A top-center overlay one row high, success or error colored, shown for four seconds or
 until a key is pressed, one at a time. It is driven by the same `notifyInfo` and
 `notifyError` calls the GUI store has: command errors, copy confirmations, save
 failures. It is in-app feedback and unrelated to OS notifications.
 
-It is drawn on the top row, over the toolbar's title, white on the error color, at most
-80 percent of the width, with a detail of several lines folded onto one. The key that
-dismisses it still does its work, except `Esc`, which only dismisses it, and a click on
-it dismisses it too. Phase 3 reports only failures; the info color arrives with the
-copy confirmations of phase 4.
+It is drawn on the top row, over the toolbar's title, white on the error color for a
+failure and on the success color for a confirmation, the two severities the GUI's filled
+`Alert` uses, at most 80 percent of the width, with a detail of several lines folded
+onto one. The key that dismisses it still does its work, except `Esc`, which only
+dismisses it, and a click on it dismisses it too.
 
 ### Update notice
 
@@ -357,7 +413,9 @@ A centered popup listing the key map below for the current scope. `Esc` or any
 listed key closes it.
 
 It lists the keys that work everywhere, then those of the open tab, then those of the
-update notice while it is shown. The key names are written as keyboards print them in
+update notice while it is shown. On a terminal too short for the list the blank lines
+between the sections go, and when it is still too tall the keys that work everywhere
+are drawn beside the rest. The key names are written as keyboards print them in
 every language; what they do comes from `tui.help.*`. `?`, `Ctrl+/`, and `Esc` only
 close it, a key that does something else closes it and does it, and a click anywhere
 closes it.
@@ -379,11 +437,12 @@ GUI's bindings are accepted in addition where the terminal reports them.
 | Global | `Ctrl+W` | Close the current closable tab |
 | Global | `Ctrl+/`, `?` outside text | Help overlay |
 | Global | `Esc` | Close the topmost overlay, popup, or detail view; otherwise back to the pane list |
-| Messages | `Tab`, `Shift+Tab` | Cycle focus: topic filter, tree, message list, composer |
+| Messages | `Tab`, `Shift+Tab` | Cycle focus: topic filter, tree, message list, composer, footer errors |
 | Messages | `Ctrl+Left`, `Ctrl+Right` | Move the pane divider |
-| Tree | `Up`, `Down`, `Left`, `Right`, `Space`, `Enter`, `/` | Move, collapse or expand, toggle, select, focus the filter |
+| Tree | `Up`, `Down`, `PageUp`, `PageDown`, `Home`, `End`, `Left`, `Right`, `Space`, `Enter`, `/` | Move, jump, collapse or expand, toggle, select, focus the filter |
 | Message list | `Up`, `Down`, `PageUp`, `PageDown`, `Home`, `End`, `c`, `r`, `Space`, `Enter` | Move focus, page, jump, copy body, copy raw, toggle trees, detail view |
-| Composer | `Enter`; `Alt+Enter`, `Ctrl+J`, `Shift+Enter`; `Tab` | Send; newline; next control |
+| Detail view | `Up`, `Down`, `Space`, `Enter`, `PageUp`, `PageDown`, `c`, `r`, `Esc` | Move between nodes, toggle a node, scroll, copy, back to the list |
+| Composer | `Enter`; `Alt+Enter`, `Ctrl+J`, `Shift+Enter`; `Space`; `Left`, `Right`; `Tab` | Send; newline; what a click does; QoS; next control |
 | Settings | `Up`, `Down`, `Tab`, `Shift+Tab`, `Enter`, `Space`, `Ctrl+H` | Category, field, open a select, toggle, show or hide the password |
 | Mouse | click, wheel, drag | Select tabs, tools (Quit included), topics, rows, and controls; scroll the focused list; move the divider |
 
@@ -398,8 +457,13 @@ line breaks.
   as `Ctrl+7`, so `Ctrl+7` opens the help there; under the protocol it selects tab 7.
 - `Up` and `Down` move between the fields of a form, and `Ctrl+H` toggles the password
   from any Settings field.
-- `Ctrl+Left`, `Ctrl+Right`, the wheel, and dragging arrive with the split pane in
-  phase 4.
+- `Ctrl+Left` and `Ctrl+Right` move the divider in every focus of the Messages tab,
+  text fields included, and a drag on the divider moves it too.
+- The wheel scrolls the pane under the pointer: the list by three lines, the tree by
+  moving its cursor three rows.
+- `/`, `c`, `r`, and `Space` are keys only outside a text field; in one they are text.
+- A plain terminal sends `Ctrl+J` as the line feed byte, which raw mode reports as
+  `Ctrl+J` rather than as `Enter`, so it is a newline key every terminal has.
 
 ## Theme
 
@@ -411,7 +475,7 @@ the Appearance settings mean the same thing in both.
 - The twenty palettes of [gui.md](gui.md#theme) map their primary and secondary hex
   colors to `Color::Rgb`. The primary color marks the selected topic, the active
   toolbar button, badges, and the focused control; the secondary color marks the
-  filter matches and the divider while dragging.
+  empty leading segment of an absolute topic and the divider while it is dragged.
 - `Auto` keeps the terminal's own background and foreground and draws no fills, since
   the terminal's colors are unknown. `Light` and `Dark` set the background and the
   foreground and draw the bubble fills of the GUI: in `Light` an outgoing bubble is
@@ -421,10 +485,10 @@ the Appearance settings mean the same thing in both.
   design never relies on a fill or a tint alone to convey a meaning: the badge text
   carries the level.
 - Text is never transformed. Labels read as they are written in the catalogs.
-- The glyphs `✕`, `●`, `✓`, `…`, and `│` fall back to `x`, `*`, `x`, `...`, and `|` on
-  the Linux console (`TERM=linux`) and on a Windows console that is not Windows
-  Terminal (no `WT_SESSION`), whose fonts lack them. The choice is made once for the
-  whole screen.
+- The glyphs `✕`, `●`, `✓`, `…`, `│`, `▾`, `▸`, `🔒`, `📌`, and `(●)` fall back to
+  `x`, `*`, `x`, `...`, `|`, `v`, `>`, `[enc]`, `[R]`, and `(*)` on the Linux console
+  (`TERM=linux`) and on a Windows console that is not Windows Terminal (no
+  `WT_SESSION`), whose fonts lack them. The choice is made once for the whole screen.
 
 ## Languages
 
@@ -623,13 +687,29 @@ bundles: every installer already carries `hmc` beside `hmg`.
   message fixture of `crates/hiveme-core/tests/fixtures/message/` as a bubble in both
   directions, the tree with a filter, the composer's key handling and drafts, every
   settings category, and the save timing with a fake clock.
-- Built in phase 3, in `crates/hmc/src/tui/tests.rs` and beside each module: the frame
+- Built in phase 3, in `crates/hmc/src/tui/tests/mod.rs` and beside each module: the frame
   in every connection state, size, and one of the four languages, and the too small
   line; the key map row by row; the tabs, the tools by key and by click, the pause
   toggle holding back a scripted notifier's toasts, connect and disconnect with a
   failure in the snackbar, the footer errors, the update notice, the help overlay, the
   first run's Broker fields and their one delayed save, clearing the topic, About, and
   a real `Session` on a scratch directory.
+- Built in phase 4, in `crates/hmc/src/tui/tests/messages.rs` and beside each module:
+  every fixture of `crates/hiveme-core/tests/fixtures/message/` as a bubble in both
+  directions and both forced modes, asserting the side, the fill, the level's border,
+  the bold title, the collapsed tree, the relative topic, the level badge, the encrypted
+  placeholder, the newer-version chip, the hex of bytes, and the sender header; a `data`
+  tree opened with `Space` and node by node in the detail view; the tree's rolled-up
+  badges, label and marker clicks, keys, and filter; a live message raising a badge until
+  its topic is selected; `Enter` from every composer control, the newline keys, the focus
+  ring, drafts per topic across a tab switch and a reconnect, raw JSON, the Level popup,
+  the relative topic and the options, and a send that finishes after the selection
+  moved; paging through 450 rows on three topics; the copy actions and their snackbar;
+  the divider; and the tab in German, Japanese, and Chinese at 80 x 24. The scripted
+  session keeps its rows in an in-memory store. One test runs against the Docker broker
+  of `publish.rs` and is skipped the same way: a message sent from the composer is
+  acknowledged, stored once, and shown once after its echo, and a message published by
+  the one-shot mode appears live and raises the badge until its topic is selected.
 - `assert_cmd` proves the trigger: no arguments with piped stdin publishes; `--tui`
   with a redirected stdout exits 2; `--tui` conflicts with the publish and init
   options.

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+* The terminal UI of `hmc` has its Messages tab: the topic tree with its filter and
+  unread badges, the chat view with the bubbles, levels, and data trees of `hmg`, and the
+  composer with the Level select and More Options. `Enter` sends, `Alt+Enter` or
+  `Ctrl+J` adds a line, `PageUp` at the top loads older messages, `c` and `r` copy a
+  message, and `Enter` on a message opens it to browse its data node by node. The divider
+  moves with `Ctrl+Left` and `Ctrl+Right` or the mouse. Copying works over SSH too, in
+  terminals that accept the OSC 52 clipboard sequence.
+
 * `hmc` run with no arguments in a terminal opens a terminal UI, and `hmc --tui` opens
   it on purpose. It connects to the cluster of the shared config, raises the same OS
   notifications as `hmg`, and has the toolbar (connect, pause notifications, clear the
@@ -9,7 +17,7 @@
   and a key help on `?`. A fresh install opens on the broker URL, username, and password
   so the cluster can be entered without leaving the terminal. `Ctrl+Q`, `Ctrl+C`, the
   Quit tool, and closing the terminal all end the broker session before `hmc` exits.
-  The messages view and the rest of Settings follow in later versions. `echo hi | hmc`
+  The rest of Settings follows in a later version. `echo hi | hmc`
   and every publish option work as before.
 
 * `hmc` speaks the language of the config in all nine languages: `--help`, the publish

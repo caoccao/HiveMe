@@ -18,12 +18,14 @@
 //! The form controls ratatui does not have.
 //!
 //! `tui-textarea` has not caught up with ratatui 0.30, so the controls are written
-//! here; see the deviations in `docs/specs/app.md`. Phase 3 needs the one-line text
-//! field; the editor, the select popup, and the rest arrive with the tabs that use
-//! them.
+//! here; see the deviations in `docs/specs/app.md`. The one-line text field came with
+//! the shell, the multi-line editor with the composer; the select popup and the rest
+//! arrive with the Settings panels that use them.
 
+mod editor;
 mod text_input;
 
+pub use editor::Editor;
 pub use text_input::TextInput;
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -53,6 +55,59 @@ pub fn truncate(text: &str, width: usize, ellipsis: &str) -> String {
   out
 }
 
+/// Splits `text` into lines no wider than `width` cells.
+///
+/// Every line break of the text starts a new line. A line that is too wide is broken
+/// after its last space, or anywhere when a word alone is wider than the line, as
+/// `overflow-wrap: anywhere` breaks a bubble in the GUI. Tabs become four spaces and
+/// carriage returns are dropped, since a cell cannot hold either.
+pub fn wrap(text: &str, width: usize) -> Vec<String> {
+  let width = width.max(1);
+  let mut lines = Vec::new();
+  for source in text.split('\n') {
+    let mut line = String::new();
+    let mut used = 0;
+    // Where the last space of `line` is, in bytes.
+    let mut space: Option<usize> = None;
+    for character in source.chars() {
+      let (character, repeat) = match character {
+        '\r' => continue,
+        '\t' => (' ', 4),
+        other => (other, 1),
+      };
+      for _ in 0..repeat {
+        let cells = character.width().unwrap_or(0);
+        if used + cells > width && used > 0 {
+          let breaks_here = character == ' ';
+          match space.take() {
+            Some(index) if !breaks_here => {
+              let rest = line.split_off(index + 1);
+              line.pop();
+              lines.push(std::mem::replace(&mut line, rest));
+              used = line.width();
+            }
+            _ => {
+              lines.push(std::mem::take(&mut line));
+              used = 0;
+            }
+          }
+          // The space that overflows is the break itself.
+          if breaks_here {
+            continue;
+          }
+        }
+        if character == ' ' {
+          space = Some(line.len());
+        }
+        line.push(character);
+        used += cells;
+      }
+    }
+    lines.push(line);
+  }
+  lines
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -70,5 +125,20 @@ mod tests {
     assert_eq!(truncate("設定画面", 5, "…"), "設定…");
     assert_eq!(truncate("Connect", 5, "..."), "Co...");
     assert_eq!(truncate("Connect", 2, "..."), "..");
+  }
+
+  #[test]
+  fn wrapping_breaks_at_spaces_and_inside_words_only_when_it_must() {
+    assert_eq!(
+      wrap("Nightly build 482 finished", 14),
+      ["Nightly build", "482 finished"]
+    );
+    assert_eq!(wrap("abcdefghij", 4), ["abcd", "efgh", "ij"]);
+    assert_eq!(wrap("first\r\n\nthird", 10), ["first", "", "third"]);
+    assert_eq!(wrap("", 10), [""]);
+    assert_eq!(wrap("設定画面", 5), ["設定", "画面"]);
+    for line in wrap("a long sentence that wraps over several narrow lines of text", 7) {
+      assert!(line.width() <= 7, "{line}");
+    }
   }
 }

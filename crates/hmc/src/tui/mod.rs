@@ -25,6 +25,7 @@
 
 mod about;
 mod app;
+mod clipboard;
 mod footer;
 mod help;
 mod keys;
