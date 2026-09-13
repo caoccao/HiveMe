@@ -41,6 +41,7 @@ pub trait Service: Send + Sync + 'static {
   fn about(&self) -> About;
   fn config(&self) -> Config;
   fn set_config(&self, config: Config) -> Pending<'_, Config>;
+  fn broker_init(&self) -> Result<String>;
   fn status(&self) -> Status;
   fn connect(&self) -> Pending<'_, Status>;
   fn disconnect(&self) -> Pending<'_, ()>;
@@ -71,6 +72,10 @@ impl Service for Session {
 
   fn set_config(&self, config: Config) -> Pending<'_, Config> {
     Box::pin(Session::set_config(self, config))
+  }
+
+  fn broker_init(&self) -> Result<String> {
+    Session::broker_init(self)
   }
 
   fn status(&self) -> Status {

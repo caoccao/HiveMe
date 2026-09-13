@@ -20,6 +20,11 @@
 //! HiveMe accepts the handful of schemes listed in `docs/specs/config.md`, and a URL
 //! that names none, so a small parser is enough and the crate stays free of a URL
 //! dependency.
+//!
+//! [`BrokerUrlParts`] is the other half: the scheme taken off the front of the URL for
+//! a settings form and put back afterward, which is `src/lib/brokerUrl.ts` in Rust, so
+//! that the Broker panels of `hmg` and of the terminal UI read a pasted URL the same way.
+//! `tests/fixtures/broker_url.json` holds the cases both ports are tested against.
 
 use std::fmt;
 
@@ -47,6 +52,20 @@ pub enum Scheme {
 }
 
 impl Scheme {
+  /// Every transport, in the order a protocol list offers them.
+  pub const ALL: [Self; 4] = [Self::Mqtts, Self::Mqtt, Self::Wss, Self::Ws];
+
+  /// Reads a scheme and the spellings the parser also accepts, in any case.
+  pub fn from_alias(raw: &str) -> Option<Self> {
+    match raw.to_ascii_lowercase().as_str() {
+      "mqtts" | "ssl" | "mqtt+ssl" => Some(Self::Mqtts),
+      "mqtt" | "tcp" => Some(Self::Mqtt),
+      "wss" => Some(Self::Wss),
+      "ws" => Some(Self::Ws),
+      _ => None,
+    }
+  }
+
   pub fn as_str(&self) -> &'static str {
     match self {
       Self::Mqtts => "mqtts",
@@ -103,20 +122,15 @@ impl BrokerUrl {
     // front of what was copied. A scheme that is written is still the one that is used.
     let (scheme, rest) = match raw.split_once("://") {
       None => (DEFAULT_SCHEME, raw),
-      Some((scheme, rest)) => {
-        let scheme = match scheme.to_ascii_lowercase().as_str() {
-          "mqtts" | "ssl" | "mqtt+ssl" => Scheme::Mqtts,
-          "mqtt" | "tcp" => Scheme::Mqtt,
-          "wss" => Scheme::Wss,
-          "ws" => Scheme::Ws,
-          other => {
-            return Err(format!(
-              "'{other}' is not a broker scheme HiveMe speaks, expected one of mqtts, mqtt, wss, ws"
-            ));
-          }
-        };
-        (scheme, rest)
-      }
+      Some((scheme, rest)) => match Scheme::from_alias(scheme) {
+        Some(scheme) => (scheme, rest),
+        None => {
+          return Err(format!(
+            "'{}' is not a broker scheme HiveMe speaks, expected one of mqtts, mqtt, wss, ws",
+            scheme.to_ascii_lowercase()
+          ));
+        }
+      },
     };
 
     // Credentials in the URL are refused rather than silently ignored, because a user
@@ -170,6 +184,76 @@ impl BrokerUrl {
   /// Whether this points at a HiveMQ Cloud cluster, which is always TLS only.
   pub fn is_hivemq_cloud(&self) -> bool {
     self.host.eq_ignore_ascii_case("hivemq.cloud") || self.host.to_ascii_lowercase().ends_with(".hivemq.cloud")
+  }
+}
+
+/// A broker URL as a settings form holds it: a protocol, and the rest of the URL exactly
+/// as it was written.
+///
+/// The HiveMQ Cloud console shows a cluster as `host`, `host:8883`, or `host:8884/mqtt`,
+/// and all three are pasted in and saved as they are. Only the scheme is ever taken off
+/// the front; [`BrokerUrl::parse`] stays the one thing that reads a host, a port, and a
+/// path out of what is left.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BrokerUrlParts {
+  pub scheme: Scheme,
+  /// The host, with the port and the path if the URL carries them, as written.
+  pub address: String,
+}
+
+impl Default for BrokerUrlParts {
+  /// What a setting that was never filled in starts from: TLS MQTT and no address.
+  fn default() -> Self {
+    Self {
+      scheme: DEFAULT_SCHEME,
+      address: String::new(),
+    }
+  }
+}
+
+impl BrokerUrlParts {
+  /// Takes the scheme off a URL, and nothing else. `splitBrokerUrl` in the frontend.
+  ///
+  /// A URL without a scheme keeps `fallback`, the protocol already selected. One with a
+  /// scheme moves the protocol to it, so pasting a whole URL does not leave `mqtts://`
+  /// in the box; a scheme HiveMe does not know is still taken off and leaves the
+  /// protocol on `fallback`, because the alternative is a URL with two schemes in it.
+  pub fn split(raw: &str, fallback: Scheme) -> Self {
+    let text = raw.trim();
+    match text.split_once("://") {
+      None => Self {
+        scheme: fallback,
+        address: text.to_owned(),
+      },
+      Some((scheme, address)) => Self {
+        scheme: Scheme::from_alias(scheme).unwrap_or(fallback),
+        address: address.to_owned(),
+      },
+    }
+  }
+
+  /// Writes the scheme back on. Empty while there is no address, so an empty form saves
+  /// as empty. `joinBrokerUrl` in the frontend.
+  pub fn join(&self) -> String {
+    let address = self.address.trim();
+    if address.is_empty() {
+      String::new()
+    } else {
+      format!("{}://{address}", self.scheme)
+    }
+  }
+
+  /// The port the connection will use, for the line under the box that says so: the one
+  /// the address carries, or the protocol's own. `effectivePort` in the frontend.
+  pub fn effective_port(&self) -> u16 {
+    let authority = self.address.split('/').next().unwrap_or_default();
+    authority
+      .rsplit_once(':')
+      .map(|(_, written)| written)
+      .filter(|written| !written.is_empty() && written.bytes().all(|byte| byte.is_ascii_digit()))
+      .filter(|written| !written.starts_with('0'))
+      .and_then(|written| written.parse::<u16>().ok())
+      .unwrap_or_else(|| self.scheme.default_port())
   }
 }
 
@@ -262,6 +346,28 @@ mod tests {
     ] {
       assert!(BrokerUrl::parse(raw).is_err(), "{raw} should not parse");
     }
+  }
+
+  #[test]
+  fn every_scheme_and_alias_is_read_in_any_case() {
+    assert_eq!(Scheme::from_alias("MQTT+SSL"), Some(Scheme::Mqtts));
+    assert_eq!(Scheme::from_alias("tcp"), Some(Scheme::Mqtt));
+    assert_eq!(Scheme::from_alias("http"), None);
+    for scheme in Scheme::ALL {
+      assert_eq!(Scheme::from_alias(scheme.as_str()), Some(scheme));
+    }
+  }
+
+  #[test]
+  fn the_parts_round_trip_every_protocol() {
+    for scheme in Scheme::ALL {
+      let parts = BrokerUrlParts {
+        scheme,
+        address: "abc123.s1.eu.hivemq.cloud:8883".to_owned(),
+      };
+      assert_eq!(BrokerUrlParts::split(&parts.join(), Scheme::Ws), parts);
+    }
+    assert_eq!(BrokerUrlParts::split("", Scheme::Mqtts), BrokerUrlParts::default());
   }
 
   #[test]

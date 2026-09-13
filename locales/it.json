@@ -253,7 +253,6 @@
     },
     "tooSmall": "Ingrandisci il terminale ad almeno {{columns}} × {{rows}}.",
     "quitting": "uscita in corso, chiusura della sessione del broker…",
-    "settingsLater": "Questa categoria arriverà nell’interfaccia da terminale in una versione successiva. Fino ad allora, modificala in hmg o nel file di configurazione.",
     "composer": {
       "placeholder": "Scrivi un messaggio. Invio invia, Alt+Invio aggiunge una riga.",
       "placeholderJson": "Scrivi un payload JSON. Invio invia, Alt+Invio aggiunge una riga."
@@ -287,6 +286,10 @@
       "field": "Spostati tra i campi",
       "password": "Mostra o nascondi la password",
       "edit": "Vai all’inizio o alla fine, cancella prima del cursore",
+      "choose": "Aprire un elenco, attivare o premere un pulsante",
+      "option": "Scegliere l’opzione precedente o successiva",
+      "scroll": "Scorrere il pannello",
+      "open": "Aprire il link",
       "releases": "Apri la pagina delle versioni",
       "dismiss": "Chiudi l’avviso"
     }

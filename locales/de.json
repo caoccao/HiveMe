@@ -249,7 +249,6 @@
     },
     "tooSmall": "Das Terminal auf mindestens {{columns}} × {{rows}} vergrößern.",
     "quitting": "wird beendet, die Broker-Sitzung endet…",
-    "settingsLater": "Diese Kategorie kommt in einer späteren Version in die Terminal-Oberfläche. Bis dahin in hmg oder in der Konfigurationsdatei ändern.",
     "composer": {
       "placeholder": "Nachricht schreiben. Eingabe sendet, Alt+Eingabe fügt einen Zeilenumbruch ein.",
       "placeholderJson": "JSON-Nutzdaten eingeben. Eingabe sendet, Alt+Eingabe fügt einen Zeilenumbruch ein."
@@ -283,6 +282,10 @@
       "field": "Zwischen den Feldern wechseln",
       "password": "Passwort anzeigen oder verbergen",
       "edit": "An den Anfang oder das Ende springen, vor dem Cursor löschen",
+      "choose": "Liste öffnen, umschalten oder Schaltfläche drücken",
+      "option": "Vorherige oder nächste Option wählen",
+      "scroll": "Den Bereich scrollen",
+      "open": "Den Link öffnen",
       "releases": "Die Release-Seite öffnen",
       "dismiss": "Den Hinweis schließen"
     }

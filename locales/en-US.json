@@ -249,7 +249,6 @@
     },
     "tooSmall": "Enlarge the terminal to at least {{columns}} × {{rows}}.",
     "quitting": "quitting, ending the broker session…",
-    "settingsLater": "This category arrives in the terminal UI in a later version. Until then, change it in hmg or in the config file.",
     "composer": {
       "placeholder": "Write a message. Enter sends, Alt+Enter adds a line.",
       "placeholderJson": "Write a JSON payload. Enter sends, Alt+Enter adds a line."
@@ -283,6 +282,10 @@
       "field": "Move between the fields",
       "password": "Show or hide the password",
       "edit": "Jump to the start or the end, clear before the cursor",
+      "choose": "Open a list, toggle, or press a button",
+      "option": "Pick the previous or next option",
+      "scroll": "Scroll the panel",
+      "open": "Open the link",
       "releases": "Open the releases page",
       "dismiss": "Close the notice"
     }

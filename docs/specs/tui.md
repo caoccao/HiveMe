@@ -6,12 +6,12 @@ snackbar, OS notifications, and the update notice, rendered with
 [ratatui](https://ratatui.rs/) in the terminal, in all nine languages, on the same
 backend `hmg` uses. The one-shot publish mode of [cli.md](cli.md) is unchanged.
 
-**Status: the languages, the shell, and the Messages tab are built; Settings and About
-are specified.** [The terminal UI plan](../plans/plan-terminal-ui.md) builds it phase
-by phase. Every section below names the phase that builds it, and the status table in
-[app.md](app.md#status) records what has landed. Phases 1 to 4 are done; until
-a later section's phase is done, that section describes intent rather than code, the
-way [message.md](message.md#encryption) describes encryption.
+**Status: the languages, the shell, the Messages tab, Settings, and About are built;
+the end-to-end test is specified.** [The terminal UI plan](../plans/plan-terminal-ui.md)
+builds it phase by phase. Every section below names the phase that builds it, and the
+status table in [app.md](app.md#status) records what has landed. Phases 1 to 5 are done;
+until a later section's phase is done, that section describes intent rather than code,
+the way [message.md](message.md#encryption) describes encryption.
 
 The behaviors are those of [gui.md](gui.md), rendered in cells. Where the terminal
 cannot do what the GUI does, this document says what replaces it. The shared backend
@@ -61,15 +61,16 @@ applications.
 | `crates/hmc/src/tui/messages/json_tree.rs` | The collapsible tree used by `data` and raw JSON, read in the key order of the payload |
 | `crates/hmc/src/tui/messages/detail.rs` | Per-node navigation of one message's trees |
 | `crates/hmc/src/tui/messages/composer.rs` | The message box, the Level select, More Options, Send, and the drafts per topic |
-| `crates/hmc/src/tui/settings/mod.rs` | The Settings tab: category strip and panel |
-| `crates/hmc/src/tui/settings/{appearance,broker,topics,notifications,history,update,advanced}.rs` | One panel per category. Phase 3 has `broker.rs` with the URL, username, and password |
-| `crates/hmc/src/tui/about.rs` | The About tab. Phase 3 draws it as text |
-| `crates/hmc/src/tui/widgets/` | Text input, multi-line editor, select popup, checkbox, radio row, number field, editable table. Phase 3 has the text input and `truncate`; phase 4 adds the multi-line editor and `wrap` |
+| `crates/hmc/src/tui/settings/mod.rs` | The Settings tab: the category list, the panel with its scrolling and its select popup, the keys, and what an edit does to the config |
+| `crates/hmc/src/tui/settings/form.rs` | A panel as rows of labels and controls: text and number fields, selects, checkboxes, radio rows, buttons, table rows, headings, and hints, with their layout, drawing, and focus order |
+| `crates/hmc/src/tui/settings/{appearance,broker,topics,notifications,history,update,advanced}.rs` | One panel per category: its form, and how its controls read and write the config |
+| `crates/hmc/src/tui/about.rs` | The About tab: the gradient letters, the cards and the links, and the table |
+| `crates/hmc/src/tui/widgets/` | The one-line text input, the multi-line editor, `truncate`, and `wrap`. The select popup, checkbox, radio row, number field, and editable table are rows of `settings/form.rs`, the one place that uses them |
 | `crates/hmc/src/tui/clipboard.rs` | `arboard`, then the OSC 52 escape sequence |
 | `crates/hmc/src/tui/notify.rs` | The `Toaster` of [session.md](session.md#notifications): `notify-rust`, or the Windows toast crate |
 | `crates/hmc/src/tui/open.rs` | Opens URLs and the config directory |
 | `crates/hiveme-core/src/i18n/` | Locale resolution, the catalogs, plural rules, formatting; see [Languages](#languages). Built in phase 2 |
-| `crates/hmc/src/tui/tests/` | The in-process tests: `mod.rs` holds the scripted session and the shell, `messages.rs` the Messages tab |
+| `crates/hmc/src/tui/tests/` | The in-process tests: `mod.rs` holds the scripted session and the shell, `messages.rs` the Messages tab, `settings.rs` the Settings and About tabs |
 | `locales/*.json` | The nine catalogs, shared with the frontend |
 
 Third party ratatui widgets (`tui-textarea`, `tui-tree-widget`) are used only if they
@@ -304,60 +305,117 @@ on its `✕` closes it. Closing a tab selects the one that took its place.
 
 ### Settings
 
-*Phase 5, except the Broker fields a first run needs, which phase 3 provides.*
+*Phase 5, which replaced the Broker fields phase 3 built for a first run.*
 
-What phase 3 builds: the category list, in a rounded block beside the panel, with
-`Up` and `Down` and clicks; and the Broker panel with three text fields, URL, Username,
-and Password, each a rounded block titled with its label, the password shown as `*`
-until `Ctrl+H`, the `Ctrl+H` hint, and the TLS note. `Tab` or `Enter` on the list
-enters the Broker fields; `Tab`, `Down`, and `Enter` move to the next field and `Up`
-and `Shift+Tab` to the previous one, back to the list from the first; `Esc` returns
-to the list. The URL is saved trimmed and as typed, since a URL without a scheme is
-TLS MQTT to the core; the username and password are saved as typed. Edits are saved
-500 ms after the last one, one write at a time, and `Enter` on the password field saves
-at once. The other six categories show `tui.settingsLater` until phase 5.
+A vertical category list (Appearance, Broker, Topics, Notifications, History, Update,
+Advanced) and the panel of the selected category beside it, centered together with the
+panel 96 columns at most, as the GUI centers its sidebar and panel. Both are rounded
+blocks, and the one with the focus has its border in the primary color. The selected
+category is bold in the primary color, and reversed while the list has the focus.
+Appearance opens first; a first run opens on Broker with the URL focused.
 
-What phase 5 builds:
+Every panel is one description of rows, `settings/form.rs`, which gives its drawing, its
+focus order, and its scrolling alike. A labeled row has a label column as wide as the
+panel's longest label, at most two fifths of the panel, in the muted color, or bold in the
+primary color while one of its controls has the focus.
 
-- A vertical category list on the left (Appearance, Broker, Topics, Notifications,
-  History, Update, Advanced) and a panel on the right, 96 columns at most, centered.
-  Appearance opens first. `Up` and `Down` on the list change the category, `Tab`
-  enters the panel, `Esc` returns to the list.
-- Appearance: Mode as a three-way radio row (Auto Mode, Light Mode, Dark Mode), Theme
-  and Language as select popups. A change applies to the whole screen at once,
-  including the catalog swap, and is saved automatically.
-- Broker: the Protocol select and the URL box with the same split and join as
-  `src/lib/brokerUrl.ts`, ported into `hiveme_core::config::url` so both applications
-  read a pasted scheme the same way; the line under the box says the URL that will be
-  saved and the port; Username and Password, with `Ctrl+H` to show or hide the
-  password; the TLS note; **Copy CLI setup**, disabled until the broker fields validate,
-  which flushes a pending save and then copies the complete `hmc --init '<json>'`
-  command with the language and the apostrophe escaping of
-  [gui.md](gui.md#copy-cli-setup); the Connection and Reconnect groups with their
-  number fields.
-- Topics: the subscription rows, each a filter box and an Absolute checkbox, with Add
-  and Remove.
-- Notifications: the two switches and the rules table (Id, Topic filter, Level,
-  Enabled, Title template, Body template, Remove) with Add.
-- History, Update, Advanced: as [gui.md](gui.md#settings) lists them. Advanced is read
-  only text.
-- Saving follows the GUI store: 500 ms after the last edit, one writer at a time, the
-  newest snapshot after a write already in progress, silent on success, the snackbar on
-  failure with the edits kept on screen. The session validates, writes, recompiles the
-  rules, and reconnects only when broker or subscription fields changed.
+- A text field is an underlined row. It shows the start of its text without the focus
+  and follows the cursor with it. A number field is twelve cells wide and leaves the
+  config alone until its text is a whole number that fits, as the GUI's `NumberField`
+  does, keeping the text on screen meanwhile.
+- A select is drawn `[value ▾]`, reversed while focused, and opens a bordered popup of its
+  choices below it, or above it when there is more room there, scrolled to keep the
+  highlighted choice in view.
+- A checkbox, and a switch of the GUI, is `[✓] label`; a radio row is
+  `(●) choice  ( ) choice` and moves its choices to a second row when they do not fit; a
+  button is `[label]` in the primary color, and muted while it cannot be used.
+- A group after the first is a heading, `─ Title ───`, with its action, such as Add a
+  rule, at the right end. A hint sits under the controls when it fits there on one line
+  and wraps across the panel otherwise.
+- A panel taller than the screen scrolls, with a scrollbar on its right border: to keep
+  the focused control in view, with `PageUp` and `PageDown` outside a text field, and
+  with the wheel.
+
+| Category | Rows |
+|----------|------|
+| Appearance | Mode, a radio row of Auto Mode, Light Mode, and Dark Mode; Theme, a select listing each palette in its own primary color; Language, a select of the names of the languages in themselves, `LANGUAGE_LABELS` |
+| Broker | Protocol, a select of the four transports; URL; the line that says the URL that will be saved and its port, or `settings.urlHint` while the box is empty; Username; Password, masked until `Ctrl+H`, and the `Ctrl+H` hint; the TLS note; **Copy CLI setup** and `settings.copyCliSetupHint`, the GUI's tooltip; **Connection** with the client id prefix, keep alive, session expiry, and connect timeout; **Reconnect** with the first and the longest retry |
+| Topics | **Subscriptions** with Add at the right end, then a row per subscription: the filter, the Absolute checkbox, and `[✕]` to remove it |
+| Notifications | Raise OS notifications and Notify about messages this device sent as checkboxes; **Rules** with Add at the right end, a header row, and a row per rule: Id, Topic filter, Level as a select in the level's color, Enabled, Title template, Body template, and `[✕]` |
+| History | `settings.historyHint`, Messages per topic, and Retention (days) |
+| Update | Check for updates, a select of Daily, Weekly, and Monthly |
+| Advanced | `settings.advancedHint`, then **Encryption** and **Cloud API**, each saying `settings.notImplemented`. Nothing takes the focus |
+
+The Broker URL follows `src/lib/brokerUrl.ts` through its Rust twin,
+`hiveme_core::config::BrokerUrlParts`. The box holds the rest of the URL exactly as it was
+pasted and the protocol list holds the scheme; the config is saved with the scheme in
+front, `mqtts://abc123.s1.eu.hivemq.cloud:8883`, and empty while the box is. A scheme typed
+or pasted into the box moves the list and leaves the rest in the box, and a protocol
+chosen before a URL is typed stays chosen. Both ports are tested against the cases of
+`crates/hiveme-core/tests/fixtures/broker_url.json`.
+
+A subscription row is written back trimmed, as a bare string when it is relative and as
+`{ "filter", "absolute": true }` when it is not, and a cleared filter keeps its row. Add
+appends `#`, or the rule the GUI adds (`rule-<n>`, `info`, Info, enabled, and the default
+templates), and moves the focus to its first field. Remove deletes its row and leaves the
+focus on the Remove of the row that took its place, or on Add when no row is left.
+
+Keys:
+
+- On the list, `Up` and `Down` change the category; `Tab`, `Enter`, and `Right` enter the
+  panel at its first control and `Shift+Tab` at its last.
+- In the panel, `Tab` and `Down` move to the next control and `Shift+Tab` and `Up` to the
+  previous one. `Tab` from the last control, `Shift+Tab` or `Up` from the first, and `Esc`
+  from any go back to the list. A button that cannot be used is skipped.
+- `Enter` in a text field saves at once and moves to the next control. `Space` and `Enter`
+  on a select open its popup, on a checkbox toggle it, on a button press it, and on a
+  radio row move it to its next choice; `Left` and `Right` move a radio row either way.
+- In an open popup, `Up`, `Down`, `PageUp`, `PageDown`, `Home`, and `End` move the
+  highlight, `Enter` and `Space` pick, and `Esc` closes it and keeps the focus on its
+  select. Any other key or click closes it first.
+- `Ctrl+H` shows or hides the password anywhere in the Broker category.
+- A click focuses a control and does what `Space` does. A click on a radio choice or on a
+  popup entry picks it, and a click on the select whose popup is open only closes it.
+
+Saving follows the GUI store. An edit changes the config the screen is drawn from at
+once, so a language, a theme, or a display mode applies to the whole screen in the same
+frame, and the config goes to the session 500 ms after the last edit. Writes run one at a
+time: edits made during a write are written as soon as it finishes, with the newest
+values, and the answer to an older write never replaces a newer edit on screen. Success
+is silent. A refused config goes to the snackbar, the edits stay on screen, and the next
+edit retries the whole config. The session validates, writes, recompiles the rules, and
+reconnects only when broker or subscription fields changed.
+
+Copy CLI setup can be used while the URL, the username, and a password or a password
+reference are filled in, `isBrokerUsable` of the GUI. It first writes the pending edits
+and waits for the writes in progress, then, when the last write succeeded, asks the
+session for the setup string of [config.md](config.md#the-setup-string), writes its
+apostrophes and the quotes that look like one as JSON escapes, and copies
+`hmc --init '<json>'` through `arboard` or OSC 52, as the GUI escapes and copies it. The
+snackbar says `settings.cliSetupCopied`; a write that failed copies nothing.
 
 ### About
 
 *Phase 5.*
 
-`HiveMe` in large text with the amber to orange gradient of the GUI spread over the
-letters, the version chip, the tagline, the Author and GitHub cards that open their URL
-on `Enter` or click, the table of device, config file, history database, and license,
-and the copyright line. There is no icon image.
+`About.tsx` in cells, scrolled when it is taller than the screen:
 
-Phase 3 draws the same content as text in one rounded block: `HiveMe` bold in amber
-beside the version, the tagline, a table of the author, the repository, the device,
-the config file, the history database, and the license, and the copyright line.
+- `HiveMe` three rows high in block letters, colored column by column from `#ffb300` to
+  `#e65100`, the GUI's gradient, or one row of bold letters where the column is too
+  narrow.
+- The version chip, `(v<version>)`, and the tagline, centered.
+- The Author and GitHub cards, rounded blocks four rows high in a column of at most 72
+  cells, each with its caption and its value. The focused card has its border and its
+  value in the primary color.
+- The table of the device, the config file, the history database, and the license, whose
+  values wrap.
+- The copyright line: `about.copyright`, the author's name, and `caoccao.com`, the two
+  names underlined in the primary color, as the GUI's links are.
+
+`Tab`, `Shift+Tab`, and the arrows move the focus through the two cards and the two
+names; `Enter`, `Space`, or a click opens the page: the author's for the card and the
+name, the repository for the GitHub card, and `https://www.caoccao.com/`. `PageUp`,
+`PageDown`, `Home`, `End`, and the wheel scroll. There is no icon image.
 
 ### Footer
 
@@ -443,8 +501,9 @@ GUI's bindings are accepted in addition where the terminal reports them.
 | Message list | `Up`, `Down`, `PageUp`, `PageDown`, `Home`, `End`, `c`, `r`, `Space`, `Enter` | Move focus, page, jump, copy body, copy raw, toggle trees, detail view |
 | Detail view | `Up`, `Down`, `Space`, `Enter`, `PageUp`, `PageDown`, `c`, `r`, `Esc` | Move between nodes, toggle a node, scroll, copy, back to the list |
 | Composer | `Enter`; `Alt+Enter`, `Ctrl+J`, `Shift+Enter`; `Space`; `Left`, `Right`; `Tab` | Send; newline; what a click does; QoS; next control |
-| Settings | `Up`, `Down`, `Tab`, `Shift+Tab`, `Enter`, `Space`, `Ctrl+H` | Category, field, open a select, toggle, show or hide the password |
-| Mouse | click, wheel, drag | Select tabs, tools (Quit included), topics, rows, and controls; scroll the focused list; move the divider |
+| Settings | `Up`, `Down`, `Tab`, `Shift+Tab`, `Enter`, `Space`, `Left`, `Right`, `PageUp`, `PageDown`, `Ctrl+H` | Category or control, open a select, toggle, or press, a radio choice, scroll, show or hide the password |
+| About | `Tab`, `Shift+Tab`, the arrows, `Enter`, `Space`, `PageUp`, `PageDown`, `Home`, `End` | Move between the cards and the links, open one, scroll |
+| Mouse | click, wheel, drag | Select tabs, tools (Quit included), topics, rows, controls, choices, and links; scroll the pane under the pointer; move the divider |
 
 Every text field takes the usual editing keys (`Left`, `Right`, `Home`, `End`,
 `Backspace`, `Delete`, `Ctrl+U`, `Ctrl+A`, `Ctrl+E`), and a paste arrives through
@@ -455,8 +514,8 @@ line breaks.
   reports as well.
 - Without the keyboard protocol a terminal sends `Ctrl+/` as the byte crossterm reads
   as `Ctrl+7`, so `Ctrl+7` opens the help there; under the protocol it selects tab 7.
-- `Up` and `Down` move between the fields of a form, and `Ctrl+H` toggles the password
-  from any Settings field.
+- `Up` and `Down` move between the controls of a settings panel, and `Ctrl+H` shows or
+  hides the password anywhere in the Broker category.
 - `Ctrl+Left` and `Ctrl+Right` move the divider in every focus of the Messages tab,
   text fields included, and a drag on the divider moves it too.
 - The wheel scrolls the pane under the pointer: the list by three lines, the tree by
@@ -489,6 +548,8 @@ the Appearance settings mean the same thing in both.
   `x`, `*`, `x`, `...`, `|`, `v`, `>`, `[enc]`, `[R]`, and `(*)` on the Linux console
   (`TERM=linux`) and on a Windows console that is not Windows Terminal (no
   `WT_SESSION`), whose fonts lack them. The choice is made once for the whole screen.
+- The block letters of the About tab (`█`, `▀`, `▄`) and the scrollbar of a settings
+  panel (`│`, `┃`) are in the code pages those consoles draw, and have no fallback.
 
 ## Languages
 
@@ -710,6 +771,22 @@ bundles: every installer already carries `hmc` beside `hmg`.
   of `publish.rs` and is skipped the same way: a message sent from the composer is
   acknowledged, stored once, and shown once after its echo, and a message published by
   the one-shot mode appears live and raises the badge until its topic is selected.
+- Built in phase 5, in `crates/hmc/src/tui/tests/settings.rs` and beside each module,
+  mirroring `Config.test.tsx`: every category at both sizes in the four languages; the
+  focus ring of a panel; the Broker panel's split URL, masked password, and `Ctrl+H`; the
+  three URLs of the console saved with their protocol in front; a pasted scheme moving
+  the list; a protocol chosen before the URL; the save timing against given instants, two
+  edits and one write, an edit during a write written next with the newest values, and a
+  refused config kept on screen with the snackbar; Copy CLI setup writing the edits first,
+  copying the whole command with the language and the quotes escaped, copying nothing
+  after a failed write, and skipped while the broker is not usable; subscriptions written
+  back as strings or objects with Add and Remove; the switches, a rule's level, Add, and
+  Remove; number fields that leave the config alone; a language change re-rendering
+  every label in the same frame; a theme change recoloring the selected topic; the
+  display mode's radio row painting the screen; the select popup by key and by click;
+  the Advanced sections; scrolling; and the About tab's content and links at both sizes.
+  `crates/hiveme-core/tests/config.rs` and `src/lib/brokerUrl.test.ts` read the same
+  broker URL cases.
 - `assert_cmd` proves the trigger: no arguments with piped stdin publishes; `--tui`
   with a redirected stdout exits 2; `--tui` conflicts with the publish and init
   options.

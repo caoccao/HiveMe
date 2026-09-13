@@ -112,8 +112,9 @@ impl TextInput {
     true
   }
 
-  /// Draws the text in `area`, scrolled so the cursor stays in view, and places the
-  /// terminal cursor when the field has the focus.
+  /// Draws the text in `area` and places the terminal cursor when the field has the
+  /// focus. A focused field is scrolled so the cursor stays in view; any other shows the
+  /// start of its text, which is what tells one row of a table from the next.
   pub fn render(&self, frame: &mut Frame, area: Rect, style: Style, masked: bool, focused: bool) {
     if area.width == 0 || area.height == 0 {
       return;
@@ -127,7 +128,7 @@ impl TextInput {
     // Keep one cell after the cursor for the cursor itself.
     let room = usize::from(area.width).saturating_sub(1);
     let mut start = 0;
-    while start < self.cursor && cells(&shown[start..self.cursor]) > room {
+    while focused && start < self.cursor && cells(&shown[start..self.cursor]) > room {
       start += 1;
     }
     let visible: String = shown[start..].iter().collect();
@@ -218,6 +219,16 @@ mod tests {
       .unwrap();
     terminal.backend().assert_buffer_lines(["fghijkl "]);
     terminal.backend_mut().assert_cursor_position(Position::new(7, 0));
+  }
+
+  #[test]
+  fn a_field_without_the_focus_shows_the_start_of_its_text() {
+    let mut terminal = Terminal::new(TestBackend::new(8, 1)).unwrap();
+    let input = TextInput::new("abcdefghijkl");
+    terminal
+      .draw(|frame| input.render(frame, frame.area(), Style::new(), false, false))
+      .unwrap();
+    terminal.backend().assert_buffer_lines(["abcdefgh"]);
   }
 
   #[test]

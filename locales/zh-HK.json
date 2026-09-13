@@ -245,7 +245,6 @@
     },
     "tooSmall": "請將終端機擴大至最少 {{columns}} × {{rows}}。",
     "quitting": "正在結束，正在終止代理伺服器工作階段…",
-    "settingsLater": "此類別將於日後的版本加入終端機介面。在此之前，請在 hmg 或設定檔中修改。",
     "composer": {
       "placeholder": "輸入訊息。按 Enter 傳送，按 Alt+Enter 換行。",
       "placeholderJson": "輸入 JSON 負載。按 Enter 傳送，按 Alt+Enter 換行。"
@@ -279,6 +278,10 @@
       "field": "在欄位之間移動",
       "password": "顯示或隱藏密碼",
       "edit": "跳至開頭或結尾，清除游標前的內容",
+      "choose": "打開清單、切換或按下按鈕",
+      "option": "選擇上一個或下一個選項",
+      "scroll": "捲動面板",
+      "open": "打開連結",
       "releases": "開啟發佈頁面",
       "dismiss": "關閉通知"
     }

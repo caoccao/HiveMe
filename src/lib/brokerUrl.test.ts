@@ -25,6 +25,7 @@ import {
   joinBrokerUrl,
   splitBrokerUrl,
 } from './brokerUrl';
+import cases from '../../crates/hiveme-core/tests/fixtures/broker_url.json';
 
 // The three the console shows, which are the three that have to survive a paste.
 const CONSOLE = {
@@ -120,5 +121,16 @@ describe('the port a URL will use', () => {
     expect(effectivePort({ protocol: BrokerProtocol.Mqtts, address: 'host:' })).toBe(8883);
     expect(effectivePort({ protocol: BrokerProtocol.Mqtts, address: 'host:80ab' })).toBe(8883);
     expect(effectivePort({ protocol: BrokerProtocol.Mqtts, address: 'host:99999' })).toBe(8883);
+  });
+});
+
+// The cases `crates/hiveme-core/tests/config.rs` reads too, so that the Broker panels of
+// hmg and of the terminal UI take a pasted URL apart the same way.
+describe('the cases shared with hiveme_core::config::url', () => {
+  it.each(cases)('reads $raw with $fallback selected', ({ raw, fallback, protocol, address, url, port }) => {
+    const parts = splitBrokerUrl(raw, { protocol: fallback as BrokerProtocol, address: '' });
+    expect(parts).toEqual({ protocol, address });
+    expect(joinBrokerUrl(parts)).toBe(url);
+    expect(effectivePort(parts)).toBe(port);
   });
 });

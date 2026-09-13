@@ -20,8 +20,8 @@
 use std::path::{Path, PathBuf};
 
 use hiveme_core::config::{
-  CONFIG_VERSION, Config, ConfigFile, EncryptionMode, KeyEntry, KeyState, MigrationOutcome, PASSWORD_VARIABLE,
-  REDACTED, Rule, SecretRef, Subscription, Theme,
+  BrokerUrlParts, CONFIG_VERSION, Config, ConfigFile, EncryptionMode, KeyEntry, KeyState, MigrationOutcome,
+  PASSWORD_VARIABLE, REDACTED, Rule, Scheme, SecretRef, Subscription, Theme,
 };
 use hiveme_core::error::Error;
 use hiveme_core::message::Level;
@@ -620,6 +620,34 @@ fn a_rule_written_the_short_way_takes_the_documented_defaults() {
   assert_eq!(rule.title, hiveme_core::config::DEFAULT_RULE_TITLE);
   assert_eq!(rule.body, hiveme_core::config::DEFAULT_RULE_BODY);
   assert!(rule.matches.is_none());
+}
+
+/// The broker URL cases `src/lib/brokerUrl.test.ts` reads too, so that the Broker panels
+/// of `hmg` and of the terminal UI take a pasted URL apart the same way.
+#[test]
+fn the_broker_url_parts_agree_with_the_frontend() {
+  let text = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/broker_url.json"))
+    .expect("the shared cases");
+  let cases: Vec<serde_json::Value> = serde_json::from_str(&text).expect("the cases are JSON");
+  assert!(cases.len() >= 10);
+  for case in cases {
+    let field = |name: &str| {
+      case[name]
+        .as_str()
+        .unwrap_or_else(|| panic!("{name} in {case}"))
+        .to_owned()
+    };
+    let fallback = Scheme::from_alias(&field("fallback")).expect("a known fallback");
+    let parts = BrokerUrlParts::split(&field("raw"), fallback);
+    assert_eq!(parts.scheme.as_str(), field("protocol"), "{case}");
+    assert_eq!(parts.address, field("address"), "{case}");
+    assert_eq!(parts.join(), field("url"), "{case}");
+    assert_eq!(
+      u64::from(parts.effective_port()),
+      case["port"].as_u64().unwrap(),
+      "{case}"
+    );
+  }
 }
 
 /// Sets an environment variable for the duration of `body`.

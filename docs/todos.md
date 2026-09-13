@@ -17,8 +17,9 @@ what the plans deliberately left open.
   left to its phase 6, is still wanted now that interactive mode tails every
   configured subscription. It would be an option, never a subcommand: a bare word is
   a message.
-* The ASCII fallbacks of the glyphs phase 5 adds, in the table of
-  `crates/hmc/src/tui/theme.rs`.
+* Whether the block letters of the About tab and the scrollbar of a settings panel need
+  ASCII fallbacks on the Linux console and a Windows console outside Windows Terminal,
+  whose fonts phase 5 assumed draw them.
 
 ## Open questions from the plan
 

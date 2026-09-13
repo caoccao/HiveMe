@@ -15,172 +15,177 @@
 * limitations under the License.
 */
 
-//! The Broker panel: URL, username, and password.
+//! Broker: the protocol and the URL, the credentials, Copy CLI setup, and the
+//! Connection and Reconnect groups.
 //!
-//! The URL is saved as it is typed, which the core reads as TLS MQTT when it carries
-//! no scheme, the form the HiveMQ Cloud console shows. The protocol list, the port line,
-//! Copy CLI setup, and the connection numbers are phase 5.
+//! The protocol is a list and the URL box holds the rest of the URL exactly as it was
+//! pasted, split and joined by `hiveme_core::config::BrokerUrlParts` as `hmg` splits and
+//! joins it, so a URL saved by either application reads the same in the other.
 
-use hiveme_core::config::Config;
-use hiveme_core::i18n::t;
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Margin, Rect};
-use ratatui::widgets::{Block, BorderType, Paragraph, Wrap};
+use std::time::Instant;
 
-use super::Focus;
+use hiveme_core::config::{BrokerUrlParts, Config, Scheme};
+use hiveme_core::i18n::{t, t_with};
+use ratatui::style::Style;
+
+use super::history::NUMBER_WIDTH;
+use super::{Field, Form, Item, Row, Size, is_broker_usable, number};
 use crate::tui::app::App;
-use crate::tui::keys::Action;
 use crate::tui::service::Service;
-use crate::tui::widgets::TextInput;
 
-/// A field of the panel, in focus order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BrokerField {
-  Url,
-  Username,
-  Password,
-}
+/// How wide the client id prefix is.
+const PREFIX_WIDTH: u16 = 24;
 
-impl BrokerField {
-  pub const ALL: [Self; 3] = [Self::Url, Self::Username, Self::Password];
-
-  pub fn next(self) -> Option<Self> {
-    match self {
-      Self::Url => Some(Self::Username),
-      Self::Username => Some(Self::Password),
-      Self::Password => None,
-    }
-  }
-
-  pub fn previous(self) -> Option<Self> {
-    match self {
-      Self::Url => None,
-      Self::Username => Some(Self::Url),
-      Self::Password => Some(Self::Username),
-    }
-  }
-
-  fn label_key(self) -> &'static str {
-    match self {
-      Self::Url => "settings.url",
-      Self::Username => "settings.username",
-      Self::Password => "settings.password",
-    }
+/// The URL as the panel holds it: the selected protocol and the text of the box.
+fn parts<S: Service>(app: &App<S>) -> BrokerUrlParts {
+  match app.settings.input(Field::Url) {
+    Some(input) => BrokerUrlParts {
+      scheme: app.settings.protocol,
+      address: input.text().to_owned(),
+    },
+    None => BrokerUrlParts::split(&app.config.broker.url, app.settings.protocol),
   }
 }
 
-/// What the three fields hold.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BrokerForm {
-  pub url: TextInput,
-  pub username: TextInput,
-  pub password: TextInput,
-  pub show_password: bool,
-}
-
-impl BrokerForm {
-  pub fn from_config(config: &Config) -> Self {
-    Self {
-      url: TextInput::new(&config.broker.url),
-      username: TextInput::new(&config.broker.username),
-      password: TextInput::new(&config.broker.password),
-      show_password: false,
-    }
-  }
-
-  pub fn input_mut(&mut self, field: BrokerField) -> &mut TextInput {
-    match field {
-      BrokerField::Url => &mut self.url,
-      BrokerField::Username => &mut self.username,
-      BrokerField::Password => &mut self.password,
-    }
-  }
-
-  fn input(&self, field: BrokerField) -> &TextInput {
-    match field {
-      BrokerField::Url => &self.url,
-      BrokerField::Username => &self.username,
-      BrokerField::Password => &self.password,
-    }
-  }
-
-  /// Writes the fields into a config. The URL is trimmed as `joinBrokerUrl` trims it;
-  /// the username and password are the user's own and kept as typed.
-  pub fn apply(&self, config: &mut Config) {
-    config.broker.url = self.url.text().trim().to_owned();
-    config.broker.username = self.username.text().to_owned();
-    config.broker.password = self.password.text().to_owned();
-  }
-}
-
-/// Draws the three fields, the password hint, and the TLS note.
-pub fn render<S: Service>(app: &mut App<S>, frame: &mut Frame, area: Rect) {
+pub fn form<S: Service>(app: &App<S>) -> Form {
   let locale = app.locale;
-  let theme = app.theme;
-  let area = area.inner(Margin::new(1, 0));
-  let [url, username, password, hint, note] = area.layout(&Layout::vertical([
-    Constraint::Length(3),
-    Constraint::Length(3),
-    Constraint::Length(3),
-    Constraint::Length(1),
-    Constraint::Fill(1),
-  ]));
-
-  for (index, (field, slot)) in BrokerField::ALL.into_iter().zip([url, username, password]).enumerate() {
-    let focused = app.settings.focus == Focus::Field(field);
-    let block = Block::bordered()
-      .border_type(BorderType::Rounded)
-      .border_style(if focused { theme.focused() } else { theme.muted() })
-      .title(format!(" {} ", t(locale, field.label_key())));
-    let inner = block.inner(slot).inner(Margin::new(1, 0));
-    frame.render_widget(block, slot);
-    let masked = field == BrokerField::Password && !app.settings.broker.show_password;
-    app
-      .settings
-      .broker
-      .input(field)
-      .render(frame, inner, theme.base(), masked, focused);
-    app.hits.push((slot, Action::SettingsField(index)));
-  }
-
-  let toggle = if app.settings.broker.show_password {
+  let (protocols, protocol) = choices(app, Field::Protocol);
+  let url = parts(app);
+  let url_hint = if url.address.trim().is_empty() {
+    t(locale, "settings.urlHint")
+  } else {
+    t_with(
+      locale,
+      "settings.urlConnectsTo",
+      &[("url", &url.join()), ("port", &url.effective_port().to_string())],
+    )
+  };
+  let password_hint = if app.settings.show_password {
     "settings.hidePassword"
   } else {
     "settings.showPassword"
   };
-  frame.render_widget(
-    Paragraph::new(format!("Ctrl+H  {}", t(locale, toggle))).style(theme.muted()),
-    hint,
-  );
-  frame.render_widget(
-    Paragraph::new(t(locale, "settings.tlsIsAutomatic"))
-      .style(theme.muted())
-      .wrap(Wrap { trim: true }),
-    note.inner(Margin::new(0, 1)),
-  );
+  let number_line = |key: &str, field: Field| {
+    Row::line(
+      t(locale, key),
+      vec![Item::input(field, false, Size::Cells(NUMBER_WIDTH))],
+    )
+  };
+  Form {
+    rows: vec![
+      Row::line(
+        t(locale, "settings.protocol"),
+        vec![Item::select(
+          Field::Protocol,
+          protocols[protocol].0.clone(),
+          Style::new(),
+          Size::Fit,
+        )],
+      ),
+      Row::line(
+        t(locale, "settings.url"),
+        vec![Item::input(Field::Url, false, Size::Fill(1))],
+      ),
+      Row::hint(url_hint),
+      Row::line(
+        t(locale, "settings.username"),
+        vec![Item::input(Field::Username, false, Size::Fill(1))],
+      ),
+      Row::line(
+        t(locale, "settings.password"),
+        vec![Item::input(Field::Password, !app.settings.show_password, Size::Fill(1))],
+      ),
+      Row::hint(format!("Ctrl+H  {}", t(locale, password_hint))),
+      Row::note(t(locale, "settings.tlsIsAutomatic")),
+      Row::controls(vec![Item::button(
+        Field::CopyCliSetup,
+        t(locale, "settings.copyCliSetup"),
+        is_broker_usable(&app.config),
+        Size::Fit,
+      )]),
+      Row::note(t(locale, "settings.copyCliSetupHint")),
+      Row::Blank,
+      Row::heading(t(locale, "settings.connection")),
+      Row::line(
+        t(locale, "settings.clientIdPrefix"),
+        vec![Item::input(Field::ClientIdPrefix, false, Size::Cells(PREFIX_WIDTH))],
+      ),
+      number_line("settings.keepAliveSecs", Field::KeepAlive),
+      number_line("settings.sessionExpirySecs", Field::SessionExpiry),
+      number_line("settings.connectTimeoutSecs", Field::ConnectTimeout),
+      Row::Blank,
+      Row::heading(t(locale, "settings.reconnect")),
+      number_line("settings.initialDelayMs", Field::InitialDelay),
+      number_line("settings.maxDelayMs", Field::MaxDelay),
+    ],
+  }
 }
 
-#[cfg(test)]
-mod tests {
-  use super::*;
+pub fn text(config: &Config, field: Field) -> Option<String> {
+  let broker = &config.broker;
+  Some(match field {
+    Field::Username => broker.username.clone(),
+    Field::Password => broker.password.clone(),
+    Field::ClientIdPrefix => broker.client_id_prefix.clone(),
+    Field::KeepAlive => broker.keep_alive_secs.to_string(),
+    Field::SessionExpiry => broker.session_expiry_secs.to_string(),
+    Field::ConnectTimeout => broker.connect_timeout_secs.to_string(),
+    Field::InitialDelay => broker.reconnect.initial_delay_ms.to_string(),
+    Field::MaxDelay => broker.reconnect.max_delay_ms.to_string(),
+    _ => return None,
+  })
+}
 
-  #[test]
-  fn the_form_reads_and_writes_the_broker_block() {
-    let mut config = Config::default();
-    config.broker.url = "abc123.s1.eu.hivemq.cloud:8883".to_owned();
-    config.broker.username = "hiveme".to_owned();
-    let mut form = BrokerForm::from_config(&config);
-    assert_eq!(form.url.text(), "abc123.s1.eu.hivemq.cloud:8883");
+/// Writes a field. A number field that does not hold a number leaves the config alone.
+pub fn set_text(config: &mut Config, field: Field, text: &str) {
+  let broker = &mut config.broker;
+  match field {
+    Field::Username => broker.username = text.to_owned(),
+    Field::Password => broker.password = text.to_owned(),
+    Field::ClientIdPrefix => broker.client_id_prefix = text.to_owned(),
+    Field::KeepAlive => broker.keep_alive_secs = number(text).unwrap_or(broker.keep_alive_secs),
+    Field::SessionExpiry => broker.session_expiry_secs = number(text).unwrap_or(broker.session_expiry_secs),
+    Field::ConnectTimeout => broker.connect_timeout_secs = number(text).unwrap_or(broker.connect_timeout_secs),
+    Field::InitialDelay => {
+      broker.reconnect.initial_delay_ms = number(text).unwrap_or(broker.reconnect.initial_delay_ms);
+    }
+    Field::MaxDelay => broker.reconnect.max_delay_ms = number(text).unwrap_or(broker.reconnect.max_delay_ms),
+    _ => {}
+  }
+}
 
-    form.input_mut(BrokerField::Url).paste("  ");
-    form.input_mut(BrokerField::Password).paste(" s3cret ");
-    let mut written = Config::default();
-    form.apply(&mut written);
-    assert_eq!(
-      written.broker.url, "abc123.s1.eu.hivemq.cloud:8883",
-      "the URL is trimmed"
-    );
-    assert_eq!(written.broker.username, "hiveme");
-    assert_eq!(written.broker.password, " s3cret ", "a password is kept as typed");
+pub fn choices<S: Service>(app: &App<S>, field: Field) -> (Vec<(String, Style)>, usize) {
+  if field != Field::Protocol {
+    return (Vec::new(), 0);
+  }
+  (
+    Scheme::ALL
+      .iter()
+      .map(|scheme| {
+        (
+          t(app.locale, &format!("settings.protocols.{}", scheme.as_str())),
+          Style::new(),
+        )
+      })
+      .collect(),
+    Scheme::ALL
+      .iter()
+      .position(|scheme| *scheme == app.settings.protocol)
+      .unwrap_or(0),
+  )
+}
+
+/// A protocol from the list: the URL is written again with it in front.
+pub fn choose<S: Service>(app: &mut App<S>, field: Field, index: usize, now: Instant) {
+  if field != Field::Protocol {
+    return;
+  }
+  let mut url = parts(app);
+  url.scheme = Scheme::ALL[index.min(Scheme::ALL.len() - 1)];
+  app.settings.protocol = url.scheme;
+  let joined = url.join();
+  app.edit_config(now, |config| config.broker.url = joined.clone());
+  if let Some(synced) = app.settings.inputs.get_mut(&Field::Url) {
+    synced.value = joined;
   }
 }

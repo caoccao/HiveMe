@@ -245,7 +245,6 @@
     },
     "tooSmall": "请将终端扩大到至少 {{columns}} × {{rows}}。",
     "quitting": "正在退出，正在结束代理服务器会话…",
-    "settingsLater": "此类别将在以后的版本中加入终端界面。在此之前，请在 hmg 或配置文件中修改。",
     "composer": {
       "placeholder": "输入消息。按 Enter 发送，按 Alt+Enter 换行。",
       "placeholderJson": "输入 JSON 载荷。按 Enter 发送，按 Alt+Enter 换行。"
@@ -279,6 +278,10 @@
       "field": "在字段之间移动",
       "password": "显示或隐藏密码",
       "edit": "跳到开头或结尾，清除光标前的内容",
+      "choose": "打开列表、切换或按下按钮",
+      "option": "选择上一个或下一个选项",
+      "scroll": "滚动面板",
+      "open": "打开链接",
       "releases": "打开发布页面",
       "dismiss": "关闭通知"
     }

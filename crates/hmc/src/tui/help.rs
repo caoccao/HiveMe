@@ -73,12 +73,22 @@ pub fn sections(locale: Locale, tab: Tab, notice: bool) -> Vec<Section> {
       t(locale, "tabs.settings"),
       vec![
         ("Up, Down", "tui.help.category"),
-        ("Tab, Shift+Tab, Enter", "tui.help.field"),
+        ("Tab, Shift+Tab", "tui.help.field"),
+        ("Enter, Space", "tui.help.choose"),
+        ("Left, Right", "tui.help.option"),
+        ("PageUp, PageDown", "tui.help.scroll"),
         ("Ctrl+H", "tui.help.password"),
         ("Ctrl+A, Ctrl+E, Ctrl+U", "tui.help.edit"),
       ],
     )),
-    Tab::About => {}
+    Tab::About => sections.push((
+      t(locale, "tabs.about"),
+      vec![
+        ("Tab, Shift+Tab", "tui.help.focus"),
+        ("Enter", "tui.help.open"),
+        ("PageUp, PageDown", "tui.help.scroll"),
+      ],
+    )),
   }
   if notice {
     sections.push((

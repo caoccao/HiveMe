@@ -19,8 +19,9 @@
 //!
 //! `tui-textarea` has not caught up with ratatui 0.30, so the controls are written
 //! here; see the deviations in `docs/specs/app.md`. The one-line text field came with
-//! the shell, the multi-line editor with the composer; the select popup and the rest
-//! arrive with the Settings panels that use them.
+//! the shell, the multi-line editor with the composer. The selects, checkboxes, radio
+//! rows, and table rows of the Settings panels are rows of `settings/form.rs`, the one
+//! place that uses them.
 
 mod editor;
 mod text_input;

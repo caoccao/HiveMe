@@ -253,7 +253,6 @@
     },
     "tooSmall": "Agrandissez le terminal à au moins {{columns}} × {{rows}}.",
     "quitting": "fermeture, fin de la session du courtier…",
-    "settingsLater": "Cette catégorie arrivera dans l’interface terminal dans une version ultérieure. D’ici là, modifiez-la dans hmg ou dans le fichier de configuration.",
     "composer": {
       "placeholder": "Rédigez un message. Entrée envoie, Alt+Entrée ajoute une ligne.",
       "placeholderJson": "Saisissez une charge utile JSON. Entrée envoie, Alt+Entrée ajoute une ligne."
@@ -287,6 +286,10 @@
       "field": "Passer d’un champ à l’autre",
       "password": "Afficher ou masquer le mot de passe",
       "edit": "Aller au début ou à la fin, effacer avant le curseur",
+      "choose": "Ouvrir une liste, basculer ou appuyer sur un bouton",
+      "option": "Choisir l’option précédente ou suivante",
+      "scroll": "Faire défiler le panneau",
+      "open": "Ouvrir le lien",
       "releases": "Ouvrir la page des versions",
       "dismiss": "Fermer l’avis"
     }

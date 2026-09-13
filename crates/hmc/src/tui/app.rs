@@ -29,15 +29,16 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{Event, KeyEvent, KeyEventKind, MouseButton, MouseEvent, MouseEventKind};
 use hiveme_core::config::Config;
-use hiveme_core::i18n::Locale;
+use hiveme_core::i18n::{Locale, t};
 use hiveme_core::session::{GITHUB_URL, MessageRow, SessionEvent, Status, TopicNode};
 use ratatui::layout::{Position, Rect};
 use tokio::sync::{broadcast, mpsc};
 
+use super::about::AboutState;
 use super::keys::{self, Action, Context};
 use super::messages::{Focus, MessagesState};
 use super::service::Service;
-use super::settings::SettingsState;
+use super::settings::{SettingsState, cli_setup_command, is_broker_usable};
 use super::theme::{Glyphs, Theme};
 use super::{clipboard, open};
 
@@ -190,6 +191,7 @@ pub struct App<S: Service> {
   pub notice: Option<UpdateNotice>,
   update_answered: bool,
   pub settings: SettingsState,
+  pub about: AboutState,
   /// When the pending reconnect happens, for the footer's countdown.
   pub retry_deadline: Option<Instant>,
 
@@ -205,9 +207,15 @@ pub struct App<S: Service> {
   pub hits: Vec<(Rect, Action)>,
 
   pub(super) outcomes: mpsc::UnboundedSender<Outcome>,
-  /// The newest edited config and when to save it.
-  pending_save: Option<(Config, Instant)>,
+  /// When the edited config is due to be written, 500 ms after the last edit. The
+  /// config itself is `config`, which always holds the newest edits.
+  pending_save: Option<Instant>,
+  /// A write is on its way; the next one waits for it.
   saving: bool,
+  /// Whether the last write was accepted, which Copy CLI setup needs.
+  last_save_succeeded: bool,
+  /// Copy CLI setup waits for the writes in progress.
+  copy_after_save: bool,
   opener: Opener,
   pub(super) copier: Copier,
 }
@@ -225,6 +233,7 @@ impl<S: Service> App<S> {
       theme: Theme::from_gui(&config.gui),
       glyphs,
       settings: SettingsState::new(&config),
+      about: AboutState::default(),
       config,
       status,
       service,
@@ -248,6 +257,8 @@ impl<S: Service> App<S> {
       outcomes: sender,
       pending_save: None,
       saving: false,
+      last_save_succeeded: true,
+      copy_after_save: false,
       opener: open::open_url,
       copier: clipboard::copy_text,
     };
@@ -284,7 +295,7 @@ impl<S: Service> App<S> {
   pub fn key_context(&self) -> Context {
     let typing = match self.current_tab() {
       Tab::Messages => self.messages_typing(),
-      Tab::Settings => self.settings.is_typing(),
+      Tab::Settings => self.settings_typing(),
       Tab::About => false,
     };
     Context {
@@ -345,8 +356,13 @@ impl<S: Service> App<S> {
         self.messages_tab.dragging = false;
         return;
       }
-      MouseEventKind::ScrollUp | MouseEventKind::ScrollDown if !self.help && self.current_tab() == Tab::Messages => {
-        return self.wheel_messages(position, mouse.kind == MouseEventKind::ScrollUp, now);
+      MouseEventKind::ScrollUp | MouseEventKind::ScrollDown if !self.help => {
+        let up = mouse.kind == MouseEventKind::ScrollUp;
+        return match self.current_tab() {
+          Tab::Messages => self.wheel_messages(position, up, now),
+          Tab::Settings => self.wheel_settings(up),
+          Tab::About => self.wheel_about(up),
+        };
       }
       _ => return,
     }
@@ -371,11 +387,7 @@ impl<S: Service> App<S> {
     }
     match self.current_tab() {
       Tab::Messages => self.paste_messages(text),
-      Tab::Settings => {
-        if self.settings.paste(text) {
-          self.save_broker_form(now);
-        }
-      }
+      Tab::Settings => self.paste_settings(text, now),
       Tab::About => {}
     }
   }
@@ -447,19 +459,12 @@ impl<S: Service> App<S> {
       | Action::TogglePassword
       | Action::SettingsCategory(_)
       | Action::SettingsField(_)
+      | Action::SettingsChoice(..)
+      | Action::AboutLink(_)
       | Action::Edit(_) => match self.current_tab() {
         Tab::Messages => self.perform_messages(action, now),
-        Tab::Settings => {
-          let flush = action == Action::Activate && self.settings.is_last_field();
-          if self.settings.perform(&action) {
-            self.save_broker_form(now);
-          }
-          if flush && let Some((config, _)) = self.pending_save.take() {
-            self.pending_save = Some((config, now));
-            self.on_tick(now);
-          }
-        }
-        Tab::About => {}
+        Tab::Settings => self.perform_settings(action, now),
+        Tab::About => self.perform_about(action, now),
       },
     }
   }
@@ -488,7 +493,7 @@ impl<S: Service> App<S> {
     match self.current_tab() {
       Tab::Messages => self.escape_messages(),
       Tab::Settings => {
-        self.settings.escape();
+        self.escape_settings();
       }
       Tab::About => {}
     }
@@ -688,20 +693,24 @@ impl<S: Service> App<S> {
       }
       Outcome::Saved(saved) => {
         self.saving = false;
+        self.last_save_succeeded = true;
         // Only accept the normalized values when no newer edit is on screen.
         if self.pending_save.is_none() {
           self.apply_config(*saved);
         }
         let status = self.service.status();
         self.set_status(status, now);
+        self.after_save(now);
       }
       Outcome::SaveFailed(error) => {
         self.saving = false;
-        // A newer edit may already have corrected the refused value; the next save
-        // retries the complete config.
+        self.last_save_succeeded = false;
+        // A newer edit may already have corrected the refused value, and the edits stay
+        // on screen; the next save retries the complete config.
         if self.pending_save.is_none() {
           self.notify_error(error, now);
         }
+        self.after_save(now);
       }
       Outcome::Sent { topic, body, row } => {
         self.sent(&topic, &body);
@@ -732,21 +741,8 @@ impl<S: Service> App<S> {
     if self.snackbar.as_ref().is_some_and(|snackbar| now >= snackbar.until) {
       self.snackbar = None;
     }
-    if !self.saving
-      && let Some((_, at)) = self.pending_save.as_ref()
-      && now >= *at
-      && let Some((config, _)) = self.pending_save.take()
-    {
-      self.saving = true;
-      let service = self.service.clone();
-      let outcomes = self.outcomes.clone();
-      tokio::spawn(async move {
-        let outcome = match service.set_config(config).await {
-          Ok(saved) => Outcome::Saved(Box::new(saved)),
-          Err(error) => Outcome::SaveFailed(error.to_string()),
-        };
-        let _ = outcomes.send(outcome);
-      });
+    if self.pending_save.is_some_and(|at| now >= at) {
+      self.start_save();
     }
     if !self.update_answered
       && let Some(result) = self.service.update_result()
@@ -767,30 +763,104 @@ impl<S: Service> App<S> {
       .map(|deadline| deadline.saturating_duration_since(now).as_millis() as u64)
   }
 
-  /// Puts the broker fields into the config and saves it after the delay.
-  fn save_broker_form(&mut self, now: Instant) {
-    let mut config = self
-      .pending_save
-      .take()
-      .map(|(config, _)| config)
-      .unwrap_or_else(|| self.config.clone());
-    self.settings.broker.apply(&mut config);
-    self.config = config.clone();
-    self.pending_save = Some((config, now + SAVE_DELAY));
+  /// Changes the config the screen shows at once and saves it 500 ms after the last
+  /// change, as `updateConfig` does. A language, a theme, or a display mode applies to
+  /// the whole screen in the same frame.
+  pub(super) fn edit_config(&mut self, now: Instant, change: impl FnOnce(&mut Config)) {
+    let mut config = self.config.clone();
+    change(&mut config);
+    if config == self.config {
+      return;
+    }
+    self.apply_config(config);
+    self.pending_save = Some(now + SAVE_DELAY);
+  }
+
+  /// Writes the edited config now rather than after the delay, as `flushConfig` does. A
+  /// write in progress is waited for, and the newest edits follow it.
+  pub(super) fn flush_save(&mut self, now: Instant) {
+    if self.pending_save.is_some() {
+      self.pending_save = Some(now);
+      self.start_save();
+    }
+  }
+
+  /// Writes the newest config, one write at a time.
+  fn start_save(&mut self) {
+    if self.saving || self.pending_save.take().is_none() {
+      return;
+    }
+    self.saving = true;
+    let config = self.config.clone();
+    let service = self.service.clone();
+    let outcomes = self.outcomes.clone();
+    tokio::spawn(async move {
+      let outcome = match service.set_config(config).await {
+        Ok(saved) => Outcome::Saved(Box::new(saved)),
+        Err(error) => Outcome::SaveFailed(error.to_string()),
+      };
+      let _ = outcomes.send(outcome);
+    });
+  }
+
+  /// A write finished: edits made during it are written right away, and a Copy CLI setup
+  /// that waited for the writes goes on once there are none left.
+  fn after_save(&mut self, now: Instant) {
+    if self.pending_save.is_some() {
+      self.pending_save = Some(now);
+      return self.start_save();
+    }
+    if std::mem::take(&mut self.copy_after_save) && self.last_save_succeeded {
+      self.copy_cli_setup_now(now);
+    }
+  }
+
+  /// Copy CLI setup: the pending edits are saved first, so the command carries the
+  /// credentials on screen, and a save that fails copies nothing.
+  pub(super) fn copy_cli_setup(&mut self, now: Instant) {
+    if !is_broker_usable(&self.config) {
+      return;
+    }
+    if self.pending_save.is_some() || self.saving {
+      self.copy_after_save = true;
+      return self.flush_save(now);
+    }
+    if self.last_save_succeeded {
+      self.copy_cli_setup_now(now);
+    }
+  }
+
+  fn copy_cli_setup_now(&mut self, now: Instant) {
+    let setup = match self.service.broker_init() {
+      Ok(setup) => setup,
+      Err(error) => return self.notify_error(error.to_string(), now),
+    };
+    match (self.copier)(&cli_setup_command(&setup)) {
+      Ok(()) => self.notify_info(t(self.locale, "settings.cliSetupCopied"), now),
+      Err(error) => self.notify_error(error, now),
+    }
   }
 
   fn apply_config(&mut self, config: Config) {
+    let look_changed = config.gui != self.config.gui;
     self.locale = Locale::resolve(&config.gui.language);
     self.theme = Theme::from_gui(&config.gui);
     self.config = config;
-    // Bubbles hold translated text, so every height is measured again.
-    self.messages_tab.view.invalidate();
+    if look_changed {
+      // Bubbles hold translated text and colors, so every height is measured again.
+      self.messages_tab.view.invalidate();
+    }
+  }
+
+  /// Opens a page in the browser, with a failure in the snackbar.
+  pub(super) fn open_url(&mut self, url: &str, now: Instant) {
+    if let Err(error) = (self.opener)(url) {
+      self.notify_error(error, now);
+    }
   }
 
   fn open_releases(&mut self) {
-    if let Err(error) = (self.opener)(&releases_url()) {
-      self.notify_error(error, Instant::now());
-    }
+    self.open_url(&releases_url(), Instant::now());
   }
 
   fn close_update_notice(&mut self) {

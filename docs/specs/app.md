@@ -273,7 +273,7 @@ Their phase numbers are that plan's, not the initialization plan's.
 | Shared catalogs in `locales/`, `hiveme_core::i18n`, translated `hmc` lines and help | [cli.md](cli.md#languages), [tui.md](tui.md#languages), [gui.md](gui.md#languages) | `locales`, `hiveme-core::i18n`, `crates/hmc`, `src/i18n` | TUI 2 | done |
 | Terminal UI shell: trigger, toolbar, tabs, footer, snackbar, help, theme, keys, OS notifications, update notice | [tui.md](tui.md), [cli.md](cli.md#interactive-mode) | `crates/hmc/src/tui` | TUI 3 | done |
 | Terminal UI Messages tab: topic tree, message view, composer | [tui.md](tui.md#topic-tree) | `crates/hmc/src/tui/messages` | TUI 4 | done |
-| Terminal UI Settings and About tabs | [tui.md](tui.md#settings) | `crates/hmc/src/tui/settings`, `crates/hmc/src/tui/about.rs` | TUI 5 | planned |
+| Terminal UI Settings and About tabs | [tui.md](tui.md#settings) | `crates/hmc/src/tui/settings`, `crates/hmc/src/tui/about.rs` | TUI 5 | done |
 | Terminal UI end-to-end test, hardening, onboarding | [tui.md](tui.md#tests) | `crates/hmc/tests/tui.rs`, `docs`, `README.md` | TUI 6 | planned |
 
 ## Build and release
@@ -559,3 +559,27 @@ The entries below are against [the terminal UI plan](../plans/plan-terminal-ui.m
     beside `tui/tests/messages.rs`, and the scripted session keeps its rows in an
     in-memory `Store`. `Service` gains `topic_tree` and `publish`. `arboard` is taken
     without its default image support and with the Wayland clipboard.
+42. Phase 5: the plan's select popup, checkbox, radio row, number field, and editable
+    table are not widgets of `widgets/` but rows of one form description,
+    `settings/form.rs`, because only the Settings panels use them and a panel described
+    once gives its drawing, its focus order, and its scrolling alike. A text field is one
+    underlined row rather than the rounded block phase 3 drew, so more of a panel fits
+    80 x 24, and a panel that still does not fit scrolls. A text field without the focus
+    shows the start of its text, in the composer too, where it showed the end.
+43. Phase 5: the Broker URL is saved with its protocol in front, as the GUI saves it,
+    where phase 3 saved it as typed. `Enter` in any settings text field saves at once and
+    moves on, which phase 3 did on the password alone. `Tab` stops on selects,
+    checkboxes, and buttons as well as text fields, and skips a button that cannot be
+    used. Copy CLI setup's tooltip is a hint line under the button. The catalogs lose
+    `tui.settingsLater` and gain `tui.help.choose`, `tui.help.option`,
+    `tui.help.scroll`, and `tui.help.open`, and the help overlay lists the keys of the
+    About tab.
+44. Phase 5: the category list and the panel are centered together, as the GUI centers
+    its sidebar and panel, rather than the panel alone. The Theme select lists each
+    palette in its own primary color. The About tab's two cards and the two names of its
+    copyright line take the focus in the order they are drawn, and its block letters and
+    a panel's scrollbar have no ASCII fallback. An edit made during a write is written as
+    soon as the write finishes, as the GUI store's `flushConfig` loop does. `Service`
+    gains `broker_init`, and `hiveme_core::config` exports `BrokerUrlParts`,
+    `DEFAULT_SCHEME`, `Scheme::ALL`, and `Scheme::from_alias`; `BrokerUrl::parse` reads
+    its scheme through `Scheme::from_alias`.

@@ -22,9 +22,11 @@
 //! same event loop the real terminal uses. The scripted session keeps its rows in a real
 //! in-memory store, so the tree, the unread counts, and the paging are the store's own.
 //!
-//! This file holds the harness and the shell; `messages.rs` holds the Messages tab.
+//! This file holds the harness and the shell; `messages.rs` holds the Messages tab and
+//! `settings.rs` the Settings and About tabs.
 
 mod messages;
+mod settings;
 
 use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -43,13 +45,14 @@ use hiveme_core::storage::{NewMessage, Store};
 use hiveme_core::{Error, Result};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use ratatui::buffer::Buffer;
 use tokio::sync::{broadcast, mpsc};
 use unicode_width::UnicodeWidthStr;
 
 use super::app::{App, Input, QuitReason, Receivers, SAVE_DELAY, SNACKBAR_DURATION, Tab, releases_url};
 use super::keys::Action;
 use super::service::{Pending, Service};
-use super::settings::{BrokerField, Category, Focus};
+use super::settings::{Category, Field, Focus};
 use super::theme::Glyphs;
 use super::{Exit, drive, layout};
 
@@ -80,6 +83,8 @@ struct Scripted {
   begin_shutdowns: AtomicUsize,
   shutdowns: AtomicUsize,
   saved: Mutex<Vec<Config>>,
+  /// Why the next saves are refused, when they are.
+  save_error: Mutex<Option<String>>,
   skipped: Mutex<Vec<String>>,
   cleared: Mutex<Vec<String>>,
   /// Every publish asked for: the tree topic, the body, and the options.
@@ -104,6 +109,7 @@ impl Scripted {
       begin_shutdowns: AtomicUsize::new(0),
       shutdowns: AtomicUsize::new(0),
       saved: Mutex::new(Vec::new()),
+      save_error: Mutex::new(None),
       skipped: Mutex::new(Vec::new()),
       cleared: Mutex::new(Vec::new()),
       published: Mutex::new(Vec::new()),
@@ -194,9 +200,18 @@ impl Service for Scripted {
   fn set_config(&self, config: Config) -> Pending<'_, Config> {
     Box::pin(async move {
       self.saved.lock().unwrap().push(config.clone());
+      if let Some(reason) = self.save_error.lock().unwrap().clone() {
+        return Err(Error::ConfigInvalid(vec![reason]));
+      }
       *self.config.lock().unwrap() = config.clone();
       Ok(config)
     })
+  }
+
+  fn broker_init(&self) -> Result<String> {
+    let init = hiveme_core::config::BrokerInit::from_config(&self.config());
+    init.validate()?;
+    Ok(init.to_json())
   }
 
   fn status(&self) -> Status {
@@ -397,6 +412,48 @@ fn pump<S: Service>(app: &mut App<S>, receivers: &mut Receivers) {
   while let Ok(event) = receivers.events.try_recv() {
     app.on_session_event(event, Instant::now());
   }
+}
+
+fn type_text<S: Service>(app: &mut App<S>, text: &str) {
+  for character in text.chars() {
+    press(app, key(KeyCode::Char(character)));
+  }
+}
+
+/// Hands the application the answer of what it spawned.
+async fn settle<S: Service>(app: &mut App<S>, receivers: &mut Receivers) {
+  let outcome = receivers.outcomes.recv().await.unwrap();
+  app.on_outcome(outcome, Instant::now());
+}
+
+/// Renders a frame and hands back the buffer itself, for styles and positions.
+fn render_buffer<S: Service>(app: &mut App<S>, width: u16, height: u16) -> Buffer {
+  let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+  terminal.draw(|frame| layout::render(app, frame)).unwrap();
+  terminal.backend().buffer().clone()
+}
+
+/// Where `text` starts on screen, counting a wide glyph as the cells it takes.
+fn locate(buffer: &Buffer, text: &str, rows: std::ops::Range<u16>) -> Option<(u16, u16)> {
+  for y in rows {
+    let mut line = String::new();
+    let mut columns = Vec::new();
+    let mut skip = 0;
+    for x in 0..buffer.area.width {
+      if skip > 0 {
+        skip -= 1;
+        continue;
+      }
+      let symbol = buffer[(x, y)].symbol();
+      skip = symbol.width().saturating_sub(1);
+      columns.extend(std::iter::repeat_n(x, symbol.len()));
+      line.push_str(symbol);
+    }
+    if let Some(offset) = line.find(text) {
+      return Some((columns[offset], y));
+    }
+  }
+  None
 }
 
 /// Where a click performs `action` on the last frame.
@@ -797,9 +854,16 @@ async fn a_first_run_opens_on_the_broker_url_and_saves_what_is_typed_once() {
   let (mut app, mut receivers) = App::new(service.clone(), Glyphs::UNICODE, false, true);
   assert_eq!(app.current_tab(), Tab::Settings);
   assert_eq!(app.settings.category, Category::Broker);
-  assert_eq!(app.settings.focus, Focus::Field(BrokerField::Url));
+  assert_eq!(app.settings.focus, Focus::Field(Field::Url));
   let screen = render(&mut app, 80, 24).join("\n");
-  for text in [" URL ", " Username ", " Password ", "Ctrl+H  Show the password"] {
+  for text in [
+    "Protocol",
+    "[TLS MQTT ▾]",
+    "URL",
+    "Username",
+    "Password",
+    "Ctrl+H  Show the password",
+  ] {
     assert!(screen.contains(text), "{text}:\n{screen}");
   }
 
@@ -821,16 +885,19 @@ async fn a_first_run_opens_on_the_broker_url_and_saves_what_is_typed_once() {
   app.on_outcome(outcome, Instant::now());
   let saved = service.saved.lock().unwrap().clone();
   assert_eq!(saved.len(), 1, "three edits, one write");
-  assert_eq!(saved[0].broker.url, "h?ost:8883");
+  assert_eq!(saved[0].broker.url, "mqtts://h?ost:8883", "the protocol goes in front");
 
   // Enter on the password saves at once.
   press(&mut app, key(KeyCode::Tab));
   press(&mut app, key(KeyCode::Char('u')));
   press(&mut app, key(KeyCode::Tab));
   press(&mut app, key(KeyCode::Char('p')));
+  let screen = render(&mut app, 80, 24);
+  let row = screen.iter().find(|row| row.contains("Password")).unwrap();
+  let password = &row[row.find("Password").unwrap() + "Password".len()..];
   assert!(
-    render(&mut app, 80, 24).join("\n").contains("│ *"),
-    "the password is hidden"
+    password.contains('*') && !password.contains('p'),
+    "the password is hidden: {row}"
   );
   press(&mut app, chord(KeyCode::Char('h'), KeyModifiers::CONTROL));
   assert!(render(&mut app, 80, 24).join("\n").contains("Hide the password"));
@@ -873,36 +940,6 @@ fn clearing_the_topic_reloads_it_and_an_echo_never_doubles_a_row() {
       .join("\n")
       .contains("No messages on this topic.")
   );
-}
-
-#[test]
-fn the_about_tab_says_what_the_gui_says() {
-  let service = Scripted::in_language("en-US");
-  let (mut app, _receivers) = open_app(&service);
-  press(&mut app, key(KeyCode::F(1)));
-  let screen = render(&mut app, 120, 40).join("\n");
-  let title = format!("HiveMe  v{}", hiveme_core::VERSION);
-  for text in [
-    title.as_str(),
-    "sams-macbook (0f9c2d1e-1111-7000-8000-aaaabbbbcccc)",
-    "/home/sam/.config/HiveMe/HiveMe.json",
-    "Apache-2.0",
-    "https://github.com/caoccao/HiveMe",
-  ] {
-    assert!(screen.contains(text), "{text}:\n{screen}");
-  }
-}
-
-#[test]
-fn the_other_settings_categories_say_they_come_later() {
-  let service = Scripted::in_language("de");
-  let (mut app, _receivers) = open_app(&service);
-  press(&mut app, key(KeyCode::F(10)));
-  assert_eq!(app.settings.category, Category::Appearance);
-  let screen = render(&mut app, 120, 40).join("\n");
-  let later = t(Locale::De, "tui.settingsLater");
-  let start: String = later.chars().take(30).collect();
-  assert!(screen.contains(&start), "{screen}");
 }
 
 /// Runs the event loop until it ends, counting how often the terminal was restored.
@@ -975,7 +1012,11 @@ async fn ctrl_q_quits_and_ctrl_c_quits_even_from_a_text_field() {
   .await;
   assert_eq!((exit, restored), (Exit::Clean, 1));
   assert_ended_once(&service);
-  assert_eq!(app.settings.broker.url.text(), "?", "Ctrl+C typed nothing");
+  assert_eq!(
+    app.settings.input(Field::Url).unwrap().text(),
+    "?",
+    "Ctrl+C typed nothing"
+  );
 }
 
 #[tokio::test]

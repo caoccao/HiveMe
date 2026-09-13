@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+* The terminal UI of `hmc` has all of Settings and the About tab. Appearance applies a
+  display mode, a theme, or a language to the whole screen at once; Broker has the
+  protocol list, the line that says which URL and port will be used, the connection and
+  reconnect numbers, and **Copy CLI setup**, which copies the complete `hmc --init`
+  command; Topics edits the subscriptions and Notifications the switches and the rules;
+  History and Update have their limits and interval. Edits are saved half a second after
+  the last one, as in `hmg`, and a URL saved in either application reads the same in the
+  other. About shows HiveMe in large letters and opens the author's and the repository's
+  pages.
+
 * The terminal UI of `hmc` has its Messages tab: the topic tree with its filter and
   unread badges, the chat view with the bubbles, levels, and data trees of `hmg`, and the
   composer with the Level select and More Options. `Enter` sends, `Alt+Enter` or
@@ -17,8 +27,7 @@
   and a key help on `?`. A fresh install opens on the broker URL, username, and password
   so the cluster can be entered without leaving the terminal. `Ctrl+Q`, `Ctrl+C`, the
   Quit tool, and closing the terminal all end the broker session before `hmc` exits.
-  The rest of Settings follows in a later version. `echo hi | hmc`
-  and every publish option work as before.
+  `echo hi | hmc` and every publish option work as before.
 
 * `hmc` speaks the language of the config in all nine languages: `--help`, the publish
   confirmation, the `--init` outcomes, and its own usage errors follow `gui.language`.

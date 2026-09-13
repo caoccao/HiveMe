@@ -1,0 +1,22 @@
+[
+  { "raw": "abc123.s1.eu.hivemq.cloud", "fallback": "mqtts", "protocol": "mqtts", "address": "abc123.s1.eu.hivemq.cloud", "url": "mqtts://abc123.s1.eu.hivemq.cloud", "port": 8883 },
+  { "raw": "abc123.s1.eu.hivemq.cloud:8883", "fallback": "mqtts", "protocol": "mqtts", "address": "abc123.s1.eu.hivemq.cloud:8883", "url": "mqtts://abc123.s1.eu.hivemq.cloud:8883", "port": 8883 },
+  { "raw": "abc123.s1.eu.hivemq.cloud:8884/mqtt", "fallback": "wss", "protocol": "wss", "address": "abc123.s1.eu.hivemq.cloud:8884/mqtt", "url": "wss://abc123.s1.eu.hivemq.cloud:8884/mqtt", "port": 8884 },
+  { "raw": "abc123.s1.eu.hivemq.cloud", "fallback": "mqtt", "protocol": "mqtt", "address": "abc123.s1.eu.hivemq.cloud", "url": "mqtt://abc123.s1.eu.hivemq.cloud", "port": 1883 },
+  { "raw": "mqtts://abc123.s1.eu.hivemq.cloud:8883", "fallback": "mqtt", "protocol": "mqtts", "address": "abc123.s1.eu.hivemq.cloud:8883", "url": "mqtts://abc123.s1.eu.hivemq.cloud:8883", "port": 8883 },
+  { "raw": "wss://abc123.s1.eu.hivemq.cloud:8884/mqtt", "fallback": "mqtts", "protocol": "wss", "address": "abc123.s1.eu.hivemq.cloud:8884/mqtt", "url": "wss://abc123.s1.eu.hivemq.cloud:8884/mqtt", "port": 8884 },
+  { "raw": "mqtt://localhost:1884", "fallback": "mqtts", "protocol": "mqtt", "address": "localhost:1884", "url": "mqtt://localhost:1884", "port": 1884 },
+  { "raw": "ssl://host", "fallback": "ws", "protocol": "mqtts", "address": "host", "url": "mqtts://host", "port": 8883 },
+  { "raw": "mqtt+ssl://host", "fallback": "ws", "protocol": "mqtts", "address": "host", "url": "mqtts://host", "port": 8883 },
+  { "raw": "tcp://host", "fallback": "wss", "protocol": "mqtt", "address": "host", "url": "mqtt://host", "port": 1883 },
+  { "raw": "MQTTS://host", "fallback": "ws", "protocol": "mqtts", "address": "host", "url": "mqtts://host", "port": 8883 },
+  { "raw": "http://host:80", "fallback": "wss", "protocol": "wss", "address": "host:80", "url": "wss://host:80", "port": 80 },
+  { "raw": "  host:8883  ", "fallback": "mqtts", "protocol": "mqtts", "address": "host:8883", "url": "mqtts://host:8883", "port": 8883 },
+  { "raw": "host/mqtt", "fallback": "ws", "protocol": "ws", "address": "host/mqtt", "url": "ws://host/mqtt", "port": 8083 },
+  { "raw": "host:", "fallback": "mqtts", "protocol": "mqtts", "address": "host:", "url": "mqtts://host:", "port": 8883 },
+  { "raw": "host:80ab", "fallback": "mqtts", "protocol": "mqtts", "address": "host:80ab", "url": "mqtts://host:80ab", "port": 8883 },
+  { "raw": "host:99999", "fallback": "mqtts", "protocol": "mqtts", "address": "host:99999", "url": "mqtts://host:99999", "port": 8883 },
+  { "raw": "host:0883", "fallback": "mqtts", "protocol": "mqtts", "address": "host:0883", "url": "mqtts://host:0883", "port": 8883 },
+  { "raw": "", "fallback": "mqtts", "protocol": "mqtts", "address": "", "url": "", "port": 8883 },
+  { "raw": "   ", "fallback": "wss", "protocol": "wss", "address": "", "url": "", "port": 8884 }
+]

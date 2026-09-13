@@ -595,6 +595,11 @@ had already written, and a URL that came back from HiveMe differing from the one
 went in is a bug waiting for somebody to report it. `hiveme_core::config::url` is still
 the one thing that reads a host, a port, and a path out of a URL.
 
+`BrokerUrlParts` in `hiveme_core::config` is the Rust twin of `brokerUrl.ts`, which the
+Broker panel of the terminal UI uses, so both applications take a pasted URL apart the same
+way; `crates/hiveme-core/tests/fixtures/broker_url.json` holds the cases the Rust tests and
+`brokerUrl.test.ts` both read. The frontend keeps its own copy because it is display code.
+
 The protocol list is the transports the backend speaks, headed by TLS MQTT, which a new
 install starts on because it is the only one a HiveMQ Cloud cluster accepts. A URL
 pasted with a scheme on it is read rather than refused, moving the list and leaving the

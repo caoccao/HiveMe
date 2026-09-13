@@ -46,7 +46,7 @@ pub use paths::{
   APP_NAME, CONFIG_FILE_NAME, CONFIG_PATH_VARIABLE, DATABASE_FILE_NAME, Os, PathEnv, config_dir_with, config_path,
   config_path_with, database_path,
 };
-pub use url::{BrokerUrl, DEFAULT_WEBSOCKET_PATH, Scheme};
+pub use url::{BrokerUrl, BrokerUrlParts, DEFAULT_SCHEME, DEFAULT_WEBSOCKET_PATH, Scheme};
 
 /// The environment variable that overrides the broker password.
 pub const PASSWORD_VARIABLE: &str = "HIVEME_PASSWORD";

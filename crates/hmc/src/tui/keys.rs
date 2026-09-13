@@ -28,7 +28,9 @@ use std::io;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags};
 
+use super::about::Link;
 use super::messages::{Control, Pane};
+use super::settings::Field;
 
 /// What a key or a click asks the terminal UI to do.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,8 +87,12 @@ pub enum Action {
   ShowLastError,
   /// Focus a settings category.
   SettingsCategory(usize),
-  /// Focus a settings field.
-  SettingsField(usize),
+  /// A click on a settings control, which focuses it and does what `Space` does.
+  SettingsField(Field),
+  /// A click on a choice: an option of a radio row, or an entry of an open select.
+  SettingsChoice(Field, usize),
+  /// A card or a link of the About tab.
+  AboutLink(Link),
   /// Dismiss the snackbar.
   DismissSnackbar,
   /// A click on a pane of the Messages tab, where nothing more specific was hit. The

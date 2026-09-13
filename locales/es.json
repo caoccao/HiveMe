@@ -253,7 +253,6 @@
     },
     "tooSmall": "Amplíe el terminal a al menos {{columns}} × {{rows}}.",
     "quitting": "saliendo, cerrando la sesión del bróker…",
-    "settingsLater": "Esta categoría llegará a la interfaz de terminal en una versión posterior. Hasta entonces, cámbiela en hmg o en el archivo de configuración.",
     "composer": {
       "placeholder": "Escriba un mensaje. Intro envía; Alt+Intro añade una línea.",
       "placeholderJson": "Escriba una carga útil JSON. Intro envía; Alt+Intro añade una línea."
@@ -287,6 +286,10 @@
       "field": "Moverse entre los campos",
       "password": "Mostrar u ocultar la contraseña",
       "edit": "Ir al principio o al final, borrar antes del cursor",
+      "choose": "Abrir una lista, alternar o pulsar un botón",
+      "option": "Elegir la opción anterior o la siguiente",
+      "scroll": "Desplazar el panel",
+      "open": "Abrir el enlace",
       "releases": "Abrir la página de versiones",
       "dismiss": "Cerrar el aviso"
     }

@@ -22,6 +22,10 @@
 // saved as they are. Only the scheme is ever taken off the front: the rest of the URL
 // is one string here, as it is in the config file and in `hiveme_core::config::url`,
 // which stays the one thing that reads a host, a port, and a path out of it.
+//
+// `BrokerUrlParts` in that module is the twin the terminal UI uses, and
+// `crates/hiveme-core/tests/fixtures/broker_url.json` holds the cases both are tested
+// against.
 
 /** A transport HiveMe speaks. The value is the scheme it is written with. */
 export enum BrokerProtocol {

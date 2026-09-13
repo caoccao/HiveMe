@@ -21,7 +21,6 @@
 use std::path::Path;
 
 use hiveme_core::config::DisplayMode;
-use ratatui::buffer::Buffer;
 use ratatui::style::Modifier;
 
 use super::super::app::Outcome;
@@ -42,54 +41,12 @@ fn mouse(kind: MouseEventKind, column: u16, row: u16) -> Input {
   }))
 }
 
-fn type_text<S: Service>(app: &mut App<S>, text: &str) {
-  for character in text.chars() {
-    press(app, key(KeyCode::Char(character)));
-  }
-}
-
 /// A connected session in English and the application on it.
 fn connected() -> (Arc<Scripted>, App<Scripted>, Receivers) {
   let service = Scripted::in_language("en-US");
   service.set_state("Connected");
   let (app, receivers) = open_app(&service);
   (service, app, receivers)
-}
-
-/// Hands the application the answer of what it spawned.
-async fn settle<S: Service>(app: &mut App<S>, receivers: &mut Receivers) {
-  let outcome = receivers.outcomes.recv().await.unwrap();
-  app.on_outcome(outcome, Instant::now());
-}
-
-/// Renders a frame and hands back the buffer itself, for styles and positions.
-fn render_buffer<S: Service>(app: &mut App<S>, width: u16, height: u16) -> Buffer {
-  let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
-  terminal.draw(|frame| layout::render(app, frame)).unwrap();
-  terminal.backend().buffer().clone()
-}
-
-/// Where `text` starts on screen, counting a wide glyph as the cells it takes.
-fn locate(buffer: &Buffer, text: &str, rows: std::ops::Range<u16>) -> Option<(u16, u16)> {
-  for y in rows {
-    let mut line = String::new();
-    let mut columns = Vec::new();
-    let mut skip = 0;
-    for x in 0..buffer.area.width {
-      if skip > 0 {
-        skip -= 1;
-        continue;
-      }
-      let symbol = buffer[(x, y)].symbol();
-      skip = symbol.width().saturating_sub(1);
-      columns.extend(std::iter::repeat_n(x, symbol.len()));
-      line.push_str(symbol);
-    }
-    if let Some(offset) = line.find(text) {
-      return Some((columns[offset], y));
-    }
-  }
-  None
 }
 
 fn text_of(buffer: &Buffer) -> Vec<String> {
