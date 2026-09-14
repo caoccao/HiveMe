@@ -29,7 +29,9 @@ use std::path::Path;
 
 use hiveme_core::config::{BrokerInit, Config, ConfigFile, InitOutcome, config_path};
 use hiveme_core::i18n::{Locale, t_with};
-use hiveme_core::message::{CONTENT_TYPE, Level, Message, MessageProperties, Sender};
+#[cfg(test)]
+use hiveme_core::message::Level;
+use hiveme_core::message::{Message, build_envelope, raw_json_payload, raw_json_properties};
 use hiveme_core::mqtt::{MqttClient, Qos, Role};
 
 use crate::cli::Cli;
@@ -43,24 +45,26 @@ const APP: &str = "hmc";
 /// This is what the help, the version, and a usage error found before the config is
 /// loaded are written in. Nothing is written: a missing or unreadable config means
 /// English, and the run itself reports what is wrong with it.
-pub fn configured_locale(explicit: Option<&Path>) -> Locale {
-  config_path(explicit)
-    .and_then(|path| ConfigFile::load(&path))
+pub fn configured_locale(explicit: Option<&Path>) -> (Locale, Option<ConfigFile>) {
+  let file = config_path(explicit).and_then(|path| ConfigFile::load(&path)).ok();
+  let locale = file
+    .as_ref()
     .map(|file| Locale::resolve(&file.config().gui.language))
-    .unwrap_or_default()
+    .unwrap_or_default();
+  (locale, file)
 }
 
 /// Publishes one message, or writes the config and stops.
 ///
 /// `locale` is [`configured_locale`], used until the config is read; from then on the
 /// language is the one in the config that was read.
-pub async fn run(cli: Cli, locale: Locale) -> Result<()> {
+pub async fn run(cli: Cli, locale: Locale, cached: Option<ConfigFile>) -> Result<()> {
   if let Some(setup) = cli.init.as_deref() {
     return init(&cli, setup);
   }
 
   let body = cli.body(locale)?;
-  let config = load_config(&cli, locale)?;
+  let config = load_config(&cli, locale, cached)?;
   let locale = Locale::resolve(&config.gui.language);
 
   // Encryption is designed in docs/specs/message.md but not implemented, and a config
@@ -78,7 +82,7 @@ pub async fn run(cli: Cli, locale: Locale) -> Result<()> {
     Some(value) => Qos::from_u8(value).unwrap_or_else(|| Qos::from_config(&config)),
     None => Qos::from_config(&config),
   };
-  let retain = cli.retain || config.publish.retain;
+  let retain = cli.retained(config.publish.retain);
 
   // Everything the user could have got wrong is settled before the network is touched,
   // so that a mistake such as `--json` with input that is not JSON is reported at once
@@ -160,10 +164,13 @@ fn init(cli: &Cli, setup: &str) -> Result<()> {
 }
 
 /// Reads the config, or writes a default one and says so.
-fn load_config(cli: &Cli, locale: Locale) -> Result<Config> {
+fn load_config(cli: &Cli, locale: Locale, cached: Option<ConfigFile>) -> Result<Config> {
   let path = config_path(cli.config.as_deref())?;
   let existed = path.exists();
-  let (file, _) = ConfigFile::load_or_create(&path)?;
+  let file = match cached.filter(|file| file.path() == path && !file.config().device.id.trim().is_empty()) {
+    Some(file) => file,
+    None => ConfigFile::load_or_create(&path)?.0,
+  };
   if !existed {
     return Err(Failure::Config(t_with(
       locale,
@@ -185,32 +192,13 @@ fn resolve_topic(cli: &Cli, config: &Config) -> Result<String> {
 
 /// The envelope of `docs/specs/message.md`, filled in from the command line.
 fn build_message(cli: &Cli, config: &Config, body: &str) -> Message {
-  let sender = Sender::from_device(&config.device, APP);
-  let level = cli.level.as_deref().map(Level::parse).unwrap_or_default();
-  let mut message = Message::new_text(sender, body).with_level(level);
-  if let Some(title) = cli.title.as_deref() {
-    message = message.with_title(title);
-  }
-  message
+  build_envelope(config, APP, body, cli.title.as_deref(), cli.level.as_deref())
 }
 
 /// The bytes of a `--json` publish, which are the user's own rather than an envelope.
 fn json_payload(text: &str, locale: Locale) -> Result<Vec<u8>> {
-  serde_json::from_str::<serde_json::Value>(text)
-    .map_err(|source| Failure::Usage(t_with(locale, "cli.notJson", &[("error", &source.to_string())])))?;
-  Ok(text.as_bytes().to_vec())
-}
-
-/// The MQTT 5 properties of a `--json` publish.
-///
-/// The content type still says JSON, because it is, but there is no `hiveme-v` property:
-/// the payload is not a HiveMe envelope and a reader must not be told that it is.
-fn raw_json_properties() -> MessageProperties {
-  MessageProperties {
-    content_type: CONTENT_TYPE,
-    user_properties: Vec::new(),
-    message_expiry_interval: None,
-  }
+  raw_json_payload(text)
+    .map_err(|source| Failure::Usage(t_with(locale, "cli.notJson", &[("error", &source.to_string())])))
 }
 
 #[cfg(test)]
@@ -419,15 +407,19 @@ mod tests {
   fn the_language_before_the_config_is_read_is_the_one_inside_it() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("HiveMe.json");
-    assert_eq!(configured_locale(Some(&path)), Locale::EnUs, "no config means English");
+    assert_eq!(
+      configured_locale(Some(&path)).0,
+      Locale::EnUs,
+      "no config means English"
+    );
     assert!(!path.exists(), "looking for the language never writes a config");
 
     std::fs::write(&path, r#"{ "gui": { "language": "zh-Hant" } }"#).unwrap();
-    assert_eq!(configured_locale(Some(&path)), Locale::ZhTw);
+    assert_eq!(configured_locale(Some(&path)).0, Locale::ZhTw);
 
     std::fs::write(&path, "{ not json").unwrap();
     assert_eq!(
-      configured_locale(Some(&path)),
+      configured_locale(Some(&path)).0,
       Locale::EnUs,
       "an unreadable config means English"
     );
@@ -444,5 +436,28 @@ mod tests {
         .iter()
         .any(|(name, _)| name == hiveme_core::message::USER_PROPERTY_VERSION)
     );
+  }
+  #[test]
+  fn a_cached_config_is_reused_without_reading_it_again() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("config.json");
+    std::fs::write(&path, serde_json::to_string(&config()).unwrap()).unwrap();
+    let (locale, cached) = configured_locale(Some(&path));
+    std::fs::write(&path, "broken JSON after the first read").unwrap();
+    let args = cli(&["--config", path.to_str().unwrap(), "hello"]);
+    assert_eq!(load_config(&args, locale, cached).unwrap(), config());
+  }
+
+  #[test]
+  fn explicit_no_retain_overrides_the_config() {
+    assert!(!cli(&["--no-retain", "hello"]).retained(true));
+    assert!(cli(&["--retain", "hello"]).retained(false));
+    assert!(cli(&["hello"]).retained(true));
+    assert!(!cli(&["hello"]).retained(false));
+    assert!(Cli::try_parse_from(["hmc", "--retain", "--no-retain", "hello"]).is_err());
+    let payload = build_message(&cli(&["--title", "  ", "hello"]), &config(), "hello")
+      .payload
+      .unwrap();
+    assert!(payload.title.is_none());
   }
 }

@@ -16,14 +16,12 @@
   },
   "topics": {
     "filter": "篩選主題",
-    "empty": "尚無訊息。主題收到第一則訊息後就會顯示在這裡。",
     "noMatch": "沒有符合篩選條件的主題。",
     "unread_other": "{{count, number}} 則未讀訊息"
   },
   "messages": {
     "selectTopic": "選取一個主題以閱讀訊息。",
     "empty": "此主題尚無訊息。",
-    "unknownSender": "未知",
     "newerVersion": "較新版本",
     "retained": "由代理伺服器保留",
     "actions": "複製選項",
@@ -161,7 +159,8 @@
       "Daily": "每天",
       "Weekly": "每週",
       "Monthly": "每月"
-    }
+    },
+    "rawNotificationHint": "純文字和 JSON 使用資訊等級。啟用資訊規則即可接收通知。"
   },
   "about": {
     "tagline": "一種訊息格式、兩個應用程式，以及一個 HiveMQ Cloud 叢集。",
@@ -229,7 +228,8 @@
     "verbose": "將連線詳細資料記錄到 stderr",
     "printHelp": "顯示說明",
     "printVersion": "顯示版本",
-    "interactive": "在終端機中不帶參數執行 hmc 即可開啟終端機介面。"
+    "interactive": "在終端機中不帶參數執行 hmc 即可開啟終端機介面。",
+    "noRetain": "清除保留旗標"
   },
   "tui": {
     "toolbar": {
@@ -285,5 +285,9 @@
       "releases": "開啟發佈頁面",
       "dismiss": "關閉通知"
     }
+  },
+  "notifications": {
+    "suppressed_one": "以及另外 {{count}} 則訊息",
+    "suppressed_other": "以及另外 {{count}} 則訊息"
   }
 }

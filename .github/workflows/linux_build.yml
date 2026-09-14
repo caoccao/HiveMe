@@ -63,7 +63,9 @@ jobs:
         sudo apt-get install -y libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libwebkit2gtk-4.1-dev librsvg2-dev webkit2gtk-driver xvfb
 
     - name: Type check the Deno scripts
-      run: deno task -c scripts/ts/deno.json check
+      run: |
+        deno task -c scripts/ts/deno.json check
+        deno task -c scripts/ts/deno.json test
 
     - name: Check license headers
       run: deno task -c scripts/ts/deno.json check-license-headers
@@ -108,7 +110,10 @@ jobs:
         }
 
     - name: Typecheck the frontend
-      run: pnpm typecheck
+      run: |
+        pnpm lint
+        pnpm format:check
+        pnpm typecheck
 
     - name: Test the frontend
       run: pnpm test

@@ -623,3 +623,58 @@ fn two_processes_storing_the_same_messages_at_once_store_each_once() {
   assert_eq!(stores[0].message_count().unwrap(), 200);
   assert_eq!(stores[1].topics().unwrap()[0].unread, 200);
 }
+
+#[test]
+fn echo_reconciliation_keeps_sender_identity_and_does_not_steal_another_unread() {
+  let directory = tempfile::tempdir().unwrap();
+  let path = directory.path().join("history.db");
+  let store = Store::open(&path).unwrap();
+  let mut echo = NewMessage::from_payload("hiveme", br#"{"raw":true}"#.to_vec(), 1, false, false);
+  store.insert(&echo).unwrap();
+  store.mark_read("hiveme").unwrap();
+  store
+    .insert(&incoming("hiveme", &envelope("someone", "another unread")))
+    .unwrap();
+  echo.outgoing = true;
+  echo.app = Some("hmg".to_owned());
+  echo.sender_id = Some("own-device".to_owned());
+  echo.sender_name = Some("own name".to_owned());
+  store.insert(&echo).unwrap();
+  assert_eq!(store.topics().unwrap()[0].unread, 1);
+  assert_eq!(store.topics().unwrap()[0].messages, 2);
+  drop(store);
+  let store = Store::open(&path).unwrap();
+  let row = store.message("hiveme", &echo.msg_id).unwrap().unwrap();
+  assert_eq!(row.app.as_deref(), Some("hmg"));
+  assert_eq!(row.sender_id, echo.sender_id);
+  assert_eq!(row.sender_name, echo.sender_name);
+  assert!(hiveme_core::session::MessageRow::seen_by(row, hiveme_core::session::SessionApp::Gui).outgoing);
+}
+
+#[test]
+fn database_size_includes_wal_and_shared_memory_files() {
+  let directory = tempfile::tempdir().unwrap();
+  let path = directory.path().join("history.db");
+  let store = Store::open(&path).unwrap();
+  store.insert(&incoming("hiveme", &envelope("someone", "data"))).unwrap();
+  let expected: u64 = ["history.db", "history.db-wal", "history.db-shm"]
+    .iter()
+    .map(|name| std::fs::metadata(directory.path().join(name)).unwrap().len())
+    .sum();
+  assert_eq!(store.size_bytes(), expected);
+}
+
+#[test]
+fn parsed_constructor_matches_the_payload_constructor_for_every_tier() {
+  for raw in [
+    b"text".to_vec(),
+    b"{}".to_vec(),
+    vec![255],
+    envelope("id", "hello").to_bytes().unwrap(),
+  ] {
+    let parsed = hiveme_core::message::parse(&raw);
+    let a = NewMessage::from_payload("hiveme", raw.clone(), 1, false, false);
+    let b = NewMessage::from_parsed("hiveme", raw, &parsed, 1, false, false);
+    assert_eq!((a.tier, a.body, a.level, a.raw), (b.tier, b.body, b.level, b.raw));
+  }
+}

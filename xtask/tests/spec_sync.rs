@@ -69,7 +69,7 @@ fn the_specifications_still_carry_their_examples() {
   let root = repo_root();
   let examples = spec::examples(&root).expect("the specifications can be read");
   let tags: std::collections::BTreeSet<&str> = examples.iter().map(|example| example.tag.as_str()).collect();
-  for expected in ["config", "message", "message-encrypted"] {
+  for expected in ["broker-init", "config", "message", "message-encrypted"] {
     assert!(tags.contains(expected), "the '{expected}' example has gone missing");
   }
 }

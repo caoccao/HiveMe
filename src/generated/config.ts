@@ -85,7 +85,7 @@ export interface Broker {
   passwordRef?: SecretRef | null;
   reconnect?: Reconnect;
   /**
-   * `hmg` only. `hmc` always connects with a clean start and no session.
+   * `hmg` and interactive `hmc`. One-shot `hmc` uses a clean start and no session.
    */
   sessionExpirySecs?: number;
   tls?: Tls;
@@ -97,7 +97,7 @@ export interface Broker {
   username?: string;
 }
 /**
- * Exponential backoff for the `hmg` connection.
+ * Exponential backoff for `hmg` and interactive `hmc`.
  */
 export interface Reconnect {
   initialDelayMs?: number;
@@ -324,7 +324,7 @@ export interface Publish {
  */
 export interface Topics {
   /**
-   * What `hmg` subscribes to, relative to `hiveme`.
+   * What `hmg` and interactive `hmc` subscribe to, relative to `hiveme`.
    */
   subscriptions?: Subscription[];
 }

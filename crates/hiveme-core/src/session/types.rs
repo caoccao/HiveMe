@@ -213,7 +213,8 @@ impl MessageRow {
 fn hex(bytes: &[u8]) -> String {
   let mut out = String::with_capacity(bytes.len() * 2);
   for byte in bytes {
-    out.push_str(&format!("{byte:02x}"));
+    use std::fmt::Write;
+    write!(out, "{byte:02x}").expect("writing into a String cannot fail");
   }
   out
 }

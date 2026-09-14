@@ -225,8 +225,8 @@ mod tests {
   fn the_terminal_ui_does_not_share_a_client_id_with_either_application() {
     let config = config();
     let tui = client_id(&config, Role::Tui);
-    assert!(tui.starts_with("hiveme-hmc-0f9c2d1e-"), "{tui}");
-    assert_eq!(tui.len(), "hiveme-hmc-0f9c2d1e-".len() + 8);
+    assert!(tui.starts_with("hiveme-hmc-0f9c2d1e111170008000aaaabbbbcccc-"), "{tui}");
+    assert_eq!(tui.len(), "hiveme-hmc-0f9c2d1e111170008000aaaabbbbcccc-".len() + 8);
     assert_ne!(tui, client_id(&config, Role::Tui), "every terminal UI takes a fresh id");
     assert_ne!(tui, client_id(&config, Role::Gui));
   }
@@ -275,7 +275,10 @@ mod tests {
   fn the_gui_client_id_is_stable_across_runs() {
     let config = config();
     assert_eq!(client_id(&config, Role::Gui), client_id(&config, Role::Gui));
-    assert_eq!(client_id(&config, Role::Gui), "hiveme-hmg-0f9c2d1e");
+    assert_eq!(
+      client_id(&config, Role::Gui),
+      "hiveme-hmg-0f9c2d1e111170008000aaaabbbbcccc"
+    );
   }
 
   #[test]
@@ -284,15 +287,18 @@ mod tests {
     let one = client_id(&config, Role::Cli);
     let other = client_id(&config, Role::Cli);
     assert_ne!(one, other);
-    assert!(one.starts_with("hiveme-hmc-0f9c2d1e-"), "{one}");
-    assert_eq!(one.len(), "hiveme-hmc-0f9c2d1e-".len() + 8);
+    assert!(one.starts_with("hiveme-hmc-0f9c2d1e111170008000aaaabbbbcccc-"), "{one}");
+    assert_eq!(one.len(), "hiveme-hmc-0f9c2d1e111170008000aaaabbbbcccc-".len() + 8);
   }
 
   #[test]
   fn the_client_id_prefix_is_configurable() {
     let mut config = config();
     config.broker.client_id_prefix = "build-farm".to_owned();
-    assert_eq!(client_id(&config, Role::Gui), "build-farm-hmg-0f9c2d1e");
+    assert_eq!(
+      client_id(&config, Role::Gui),
+      "build-farm-hmg-0f9c2d1e111170008000aaaabbbbcccc"
+    );
   }
 
   #[test]

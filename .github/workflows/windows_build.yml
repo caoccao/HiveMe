@@ -60,7 +60,9 @@ jobs:
         deno-version: v2.x
 
     - name: Type check the Deno scripts
-      run: deno task -c scripts/ts/deno.json check
+      run: |
+        deno task -c scripts/ts/deno.json check
+        deno task -c scripts/ts/deno.json test
 
     - name: Check license headers
       run: deno task -c scripts/ts/deno.json check-license-headers
@@ -105,7 +107,10 @@ jobs:
         }
 
     - name: Typecheck the frontend
-      run: pnpm typecheck
+      run: |
+        pnpm lint
+        pnpm format:check
+        pnpm typecheck
 
     - name: Test the frontend
       run: pnpm test

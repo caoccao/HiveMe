@@ -88,16 +88,19 @@ describe('the parse tiers', () => {
     expect(displayedLevel(level)).toBe(Level.Success);
   });
 
-  it.each(['INFO', 'Error', 'SuCcEsS', 'WARN', 'DeBuG'])('normalizes %s before choosing its display label and color', (level) => {
-    const message = JSON.parse(fixture('success.json'));
-    message.payload.level = level;
-    const parsed = parseText(JSON.stringify(message));
-    expect(parsed.tier).toBe(Tier.Envelope);
-    if (parsed.tier !== Tier.Envelope) return;
-    expect(payloadOf(parsed.message)?.level).toBe(level.toLowerCase());
-    expect(displayedLevel(level)).toBe(level.toLowerCase());
-    expect(isKnownLevel(level)).toBe(true);
-  });
+  it.each(['INFO', 'Error', 'SuCcEsS', 'WARN', 'DeBuG'])(
+    'normalizes %s before choosing its display label and color',
+    (level) => {
+      const message = JSON.parse(fixture('success.json'));
+      message.payload.level = level;
+      const parsed = parseText(JSON.stringify(message));
+      expect(parsed.tier).toBe(Tier.Envelope);
+      if (parsed.tier !== Tier.Envelope) return;
+      expect(payloadOf(parsed.message)?.level).toBe(level.toLowerCase());
+      expect(displayedLevel(level)).toBe(level.toLowerCase());
+      expect(isKnownLevel(level)).toBe(true);
+    }
+  );
 
   it('displays a level it does not know as info while keeping the raw value', () => {
     const parsed = parseText(fixture('unknown_level.json'));
@@ -193,4 +196,24 @@ describe('previews', () => {
   it('uses the body of an envelope', () => {
     expect(previewOf(parseText(fixture('minimal.json')))).toBe('only the required keys');
   });
+});
+
+it('rejects malformed envelope field shapes and trusts the stored tier', () => {
+  const base = { v: 1, id: 'x', ts: 'now', payload: { body: 'ok' } };
+  for (const change of [
+    { payload: 'not an object' },
+    { payload: {} },
+    { payload: { body: 1 } },
+    { payload: { body: 'ok', level: 5 } },
+    { enc: {}, ciphertext: 'x' },
+    { enc: { alg: 'AES', kid: 'k', iv: 2 }, ciphertext: 'x' },
+    { sender: 1 },
+    { ttlSecs: -1 },
+    { type: null },
+    { v: 4294967296 },
+  ])
+    expect(parseText(JSON.stringify({ ...base, ...change })).tier).toBe('json');
+  const raw = '{"v":1.0,"id":"x","ts":"now","payload":{"body":"ok"}}';
+  expect(parseRow({ tier: 'json', raw, rawLength: raw.length }).tier).toBe('json');
+  expect(parseRow({ tier: 'text', raw, rawLength: raw.length })).toEqual({ tier: 'text', text: raw });
 });

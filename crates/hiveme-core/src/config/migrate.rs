@@ -40,12 +40,18 @@ const MIGRATIONS: &[fn(&mut Value)] = &[];
 /// A document without a `version` key is treated as the current version, matching the
 /// default in the field table of `docs/specs/config.md`. The caller is warned so that
 /// a hand edited file does not silently skip a future migration.
-pub fn declared_version(document: &Value, path: &Path) -> u32 {
-  match document.get("version").and_then(Value::as_u64) {
-    Some(version) => version as u32,
+pub fn declared_version(document: &Value, path: &Path) -> Result<u32> {
+  match document.get("version") {
+    Some(value) => value
+      .as_u64()
+      .and_then(|v| u32::try_from(v).ok())
+      .ok_or_else(|| Error::ConfigMigrate {
+        path: path.to_path_buf(),
+        reason: "version must be an unsigned 32-bit integer".to_owned(),
+      }),
     None => {
       log::warn!("{} has no \"version\" key, assuming {}", path.display(), CONFIG_VERSION);
-      CONFIG_VERSION
+      Ok(CONFIG_VERSION)
     }
   }
 }
@@ -56,7 +62,7 @@ pub fn declared_version(document: &Value, path: &Path) -> u32 {
 /// the caller must not write the file back. A document from an unknown older version is
 /// an error, because guessing at its shape would lose data.
 pub fn migrate(document: &mut Value, path: &Path) -> Result<MigrationOutcome> {
-  let from = declared_version(document, path);
+  let from = declared_version(document, path)?;
 
   if from > CONFIG_VERSION {
     log::warn!(
@@ -127,7 +133,7 @@ mod tests {
   #[test]
   fn a_document_without_a_version_is_assumed_current() {
     let document = serde_json::json!({ "device": { "id": "x" } });
-    assert_eq!(declared_version(&document, path()), CONFIG_VERSION);
+    assert_eq!(declared_version(&document, path()).unwrap(), CONFIG_VERSION);
   }
 
   #[test]

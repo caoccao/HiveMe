@@ -70,10 +70,6 @@ export async function markRead(topic: string): Promise<void> {
   return await invoke<void>('mark_read', { topic });
 }
 
-export async function openConfigFile(): Promise<void> {
-  return await invoke<void>('open_config_file');
-}
-
 export async function publish(
   topic: string,
   body: string,

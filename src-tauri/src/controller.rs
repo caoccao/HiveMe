@@ -20,13 +20,11 @@
 //! Orchestration only, and barely that: every command is one call into the shared
 //! session of `hiveme-core`, which owns the config, the history, the broker connection,
 //! and the rules, so that `hmc` and `hmg` cannot drift apart. The commands in `lib.rs`
-//! are thin wrappers around this file. The one command the session cannot answer is
-//! `open_config_file`, because it needs the opener plugin.
+//! are thin wrappers around this file.
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use hiveme_core::Config;
 use hiveme_core::session::Session;
-use tauri::AppHandle;
 
 use crate::protocol::{About, MessageRow, PublishOptions, Status, TopicNode, UpdateCheckResult};
 
@@ -83,24 +81,6 @@ pub fn list_topics(session: &Session) -> Result<Vec<TopicNode>> {
 /// Clears the unread count of a topic.
 pub fn mark_read(session: &Session, topic: &str) -> Result<()> {
   Ok(session.mark_read(topic)?)
-}
-
-/// Shows the config file in the file manager.
-pub fn open_config_file(app: &AppHandle, session: &Session) -> Result<()> {
-  use tauri_plugin_opener::OpenerExt;
-
-  let path = session.config_path();
-  if path.exists() {
-    app
-      .opener()
-      .reveal_item_in_dir(&path)
-      .map_err(|error| anyhow!(error.to_string()))
-  } else {
-    app
-      .opener()
-      .open_path(session.config_directory().display().to_string(), None::<&str>)
-      .map_err(|error| anyhow!(error.to_string()))
-  }
 }
 
 /// Publishes from the composer, through the same core path `hmc` uses.

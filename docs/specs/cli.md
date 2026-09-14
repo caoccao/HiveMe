@@ -30,6 +30,7 @@ Options:
   -l, --level <LEVEL>  debug | info | success | warn | error [default: info; independent of topic]
   -q, --qos <QOS>      0 | 1 | 2 [default: publish.qos]
   -r, --retain         Set the retain flag
+      --no-retain      Clear the retain flag
   -c, --config <PATH>  Config file path
   -v, --verbose        Log connection details to stderr
   -h, --help           Print help
@@ -272,7 +273,7 @@ it.
 
 ## Client identifier
 
-`<broker.clientIdPrefix>-hmc-<first 8 alphanumerics of device.id>-<8 random
+`<broker.clientIdPrefix>-hmc-<device.id alphanumeric>-<8 random
 characters>`. The random suffix keeps concurrent `hmc` invocations, and a running
 `hmg`, from colliding on the broker, which disconnects duplicate client identifiers.
 `hmg` uses the same shape without the suffix to resume its session after a network
@@ -326,3 +327,12 @@ See [Interactive mode](#interactive-mode).
 - A non-interactive tail of a topic filter is superseded by interactive mode, which
   tails every configured subscription; whether an option for it is still wanted is an
   open item in [todos.md](../todos.md).
+
+`--no-retain` explicitly disables retention even when `publish.retain` is true;
+it conflicts with `--retain`. All composers use the shared envelope/raw JSON
+builders, trimming titles and omitting blank titles. The one-shot path reuses
+the config read for help language when the file already has a device identity.
+
+Setup accepts positive future format versions with valid known fields and ignores unknown
+setup fields. Version zero and malformed known fields are rejected. Existing unrelated
+configuration keys remain preserved by the shared writer.

@@ -111,12 +111,6 @@ async fn mark_read(topic: String, state: tauri::State<'_, AppState>) -> Result<(
 }
 
 #[tauri::command]
-async fn open_config_file(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
-  log::debug!("open_config_file");
-  controller::open_config_file(&app, &state.session).map_err(convert_error)
-}
-
-#[tauri::command]
 async fn publish(
   topic: String,
   body: String,
@@ -143,12 +137,20 @@ pub fn run() {
 
   // A config that cannot be read is not fatal: the session opens on defaults, the
   // status bar says so, and nothing is written until the user saves the Settings tab.
-  // A history that cannot be opened is, because there is nothing to show without it
-  // and nowhere to put what arrives.
+  // Corrupt or incompatible history is recreated by the store. Storage failures
+  // that remain, such as a directory that is not writable, need a visible error.
+  let mut context = tauri::generate_context!();
   let toaster = Arc::new(notification::TauriToaster::new());
   let session = match Session::open(None, SessionApp::Gui, toaster.clone()) {
     Ok(session) => session,
-    Err(error) => panic!("the shared session could not be opened: {error}"),
+    Err(error) => {
+      let path = hiveme_core::config::config_path(None).map(|path| hiveme_core::config::database_path(&path));
+      let path = path
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|_| "HiveMe.db".to_owned());
+      show_startup_error(startup_error_message(&path, &error.to_string()), context);
+      return;
+    }
   };
   if let Some(error) = session.load_error() {
     log::error!("the config could not be read: {error}");
@@ -156,7 +158,6 @@ pub fn run() {
 
   // Before the builder, because the builder creates the window and a window that is moved
   // after it exists is drawn twice. See `window::place`.
-  let mut context = tauri::generate_context!();
   window::place(&mut context, &session);
 
   tauri::Builder::default()
@@ -179,7 +180,6 @@ pub fn run() {
       get_update_result,
       list_topics,
       mark_read,
-      open_config_file,
       publish,
       set_config,
       set_notifications_paused,
@@ -212,4 +212,66 @@ async fn set_notifications_paused(paused: bool, state: tauri::State<'_, AppState
 async fn skip_version(version: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
   log::debug!("skip_version({version})");
   controller::skip_version(&state.session, &version).map_err(convert_error)
+}
+
+/// A startup failure remains visible even in Windows builds without a console.
+fn show_startup_error(message: String, mut context: tauri::Context<tauri::Wry>) {
+  use tauri_plugin_dialog::DialogExt;
+  context.config_mut().app.windows.clear();
+  tauri::Builder::default()
+    .plugin(tauri_plugin_dialog::init())
+    .setup(move |app| {
+      // Keep the native event loop alive until the asynchronous dialog is dismissed.
+      // This hidden host loads no application code or session commands.
+      tauri::WebviewWindowBuilder::new(
+        app,
+        "startup-error",
+        tauri::WebviewUrl::External("about:blank".parse()?),
+      )
+      .title("HiveMe")
+      .visible(false)
+      .build()?;
+      let handle = app.handle().clone();
+      app
+        .dialog()
+        .message(&message)
+        .title("HiveMe")
+        .kind(tauri_plugin_dialog::MessageDialogKind::Error)
+        .show(move |_| handle.exit(1));
+      Ok(())
+    })
+    .build(context)
+    .expect("the startup error dialog application is built")
+    .run_return(|_, _| {});
+  // Native modal loops may return their own platform code; startup still failed.
+  std::process::exit(1);
+}
+
+fn startup_error_message(path: &str, error: &str) -> String {
+  format!("HiveMe could not open its history at {path}.\n\n{error}")
+}
+
+#[cfg(test)]
+mod review_tests {
+  #[test]
+  fn startup_error_names_the_history_and_underlying_reason() {
+    let message = super::startup_error_message("/tmp/isolated/HiveMe.db", "file is not a database");
+    assert!(message.contains("/tmp/isolated/HiveMe.db"));
+    assert!(message.contains("file is not a database"));
+  }
+
+  #[test]
+  fn webview_policy_keeps_ipc_and_styles_without_remote_scripts_or_clipboard_reads() {
+    let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+    let csp = config["app"]["security"]["csp"].as_str().expect("CSP is enabled");
+    let directives: Vec<_> = csp.split(';').map(str::trim).collect();
+    assert!(directives.contains(&"default-src 'self'"));
+    assert!(directives.contains(&"connect-src 'self' ipc: http://ipc.localhost"));
+    assert!(directives.contains(&"style-src 'self' 'unsafe-inline'"));
+    assert!(!csp.contains("unsafe-eval"));
+    let capability: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+    let permissions = capability["permissions"].as_array().unwrap();
+    assert!(permissions.contains(&serde_json::json!("clipboard-manager:allow-write-text")));
+    assert!(!permissions.contains(&serde_json::json!("clipboard-manager:allow-read-text")));
+  }
 }

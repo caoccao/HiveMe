@@ -16,14 +16,12 @@
   },
   "topics": {
     "filter": "トピックを絞り込む",
-    "empty": "メッセージはまだありません。最初のメッセージを受信すると、ここにトピックが表示されます。",
     "noMatch": "フィルターに一致するトピックはありません。",
     "unread_other": "未読メッセージ {{count, number}} 件"
   },
   "messages": {
     "selectTopic": "トピックを選択するとメッセージを読めます。",
     "empty": "このトピックにはメッセージがありません。",
-    "unknownSender": "不明",
     "newerVersion": "新しいバージョン",
     "retained": "ブローカーに保持されています",
     "actions": "コピーオプション",
@@ -161,7 +159,8 @@
       "Daily": "毎日",
       "Weekly": "毎週",
       "Monthly": "毎月"
-    }
+    },
+    "rawNotificationHint": "プレーンテキストと JSON は情報レベルです。通知するには情報のルールを有効にしてください。"
   },
   "about": {
     "tagline": "ひとつのメッセージ形式、ふたつのアプリ、そして HiveMQ Cloud クラスター。",
@@ -229,7 +228,8 @@
     "verbose": "接続の詳細を stderr に記録します",
     "printHelp": "ヘルプを表示",
     "printVersion": "バージョンを表示",
-    "interactive": "ターミナルで hmc を引数なしで実行すると、ターミナル UI が開きます。"
+    "interactive": "ターミナルで hmc を引数なしで実行すると、ターミナル UI が開きます。",
+    "noRetain": "retainフラグを解除"
   },
   "tui": {
     "toolbar": {
@@ -285,5 +285,9 @@
       "releases": "リリースページを開く",
       "dismiss": "お知らせを閉じる"
     }
+  },
+  "notifications": {
+    "suppressed_one": "ほか{{count}}件のメッセージ",
+    "suppressed_other": "ほか{{count}}件のメッセージ"
   }
 }

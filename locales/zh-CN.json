@@ -16,14 +16,12 @@
   },
   "topics": {
     "filter": "筛选主题",
-    "empty": "暂无消息。主题收到第一条消息后会显示在这里。",
     "noMatch": "没有符合筛选条件的主题。",
     "unread_other": "{{count, number}} 条未读消息"
   },
   "messages": {
     "selectTopic": "选择一个主题以阅读消息。",
     "empty": "此主题暂无消息。",
-    "unknownSender": "未知",
     "newerVersion": "较新版本",
     "retained": "由代理服务器保留",
     "actions": "复制选项",
@@ -161,7 +159,8 @@
       "Daily": "每天",
       "Weekly": "每周",
       "Monthly": "每月"
-    }
+    },
+    "rawNotificationHint": "纯文本和 JSON 使用信息级别。启用信息规则即可接收通知。"
   },
   "about": {
     "tagline": "一种消息格式、两个应用和一个 HiveMQ Cloud 集群。",
@@ -229,7 +228,8 @@
     "verbose": "将连接详情记录到 stderr",
     "printHelp": "显示帮助",
     "printVersion": "显示版本",
-    "interactive": "在终端中不带参数运行 hmc 即可打开终端界面。"
+    "interactive": "在终端中不带参数运行 hmc 即可打开终端界面。",
+    "noRetain": "清除保留标志"
   },
   "tui": {
     "toolbar": {
@@ -285,5 +285,9 @@
       "releases": "打开发布页面",
       "dismiss": "关闭通知"
     }
+  },
+  "notifications": {
+    "suppressed_one": "以及另外 {{count}} 条消息",
+    "suppressed_other": "以及另外 {{count}} 条消息"
   }
 }

@@ -38,6 +38,7 @@ pub trait Toaster: Send + Sync {
 /// The rule engine, its rate limiter, and the pause toggle.
 pub struct Notifier {
   engine: RwLock<RuleEngine>,
+  locale: RwLock<crate::i18n::Locale>,
   limiter: Mutex<NotificationLimiter>,
   paused: AtomicBool,
   toaster: Arc<dyn Toaster>,
@@ -48,6 +49,7 @@ impl Notifier {
   pub fn new(config: &Config, toaster: Arc<dyn Toaster>) -> Self {
     Self {
       engine: RwLock::new(RuleEngine::from_config(config)),
+      locale: RwLock::new(crate::i18n::Locale::resolve(&config.gui.language)),
       limiter: Mutex::new(NotificationLimiter::default()),
       paused: AtomicBool::new(false),
       toaster,
@@ -59,8 +61,14 @@ impl Notifier {
   /// The rate limiter is cleared as well, because what it remembers is about rules
   /// that may no longer exist.
   pub fn reload(&self, config: &Config) {
-    *self.engine.write().unwrap() = RuleEngine::from_config(config);
-    self.limiter.lock().unwrap().reset();
+    *self.locale.write().unwrap_or_else(|poisoned| poisoned.into_inner()) =
+      crate::i18n::Locale::resolve(&config.gui.language);
+    *self.engine.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = RuleEngine::from_config(config);
+    self
+      .limiter
+      .lock()
+      .unwrap_or_else(|poisoned| poisoned.into_inner())
+      .reset();
   }
 
   /// Whether the toolbar toggle is holding notifications back.
@@ -75,7 +83,11 @@ impl Notifier {
   pub fn set_paused(&self, paused: bool) {
     self.paused.store(paused, Ordering::Relaxed);
     if !paused {
-      self.limiter.lock().unwrap().reset();
+      self
+        .limiter
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .reset();
     }
   }
 
@@ -88,17 +100,30 @@ impl Notifier {
     if self.is_paused() {
       return None;
     }
-    let notification = self.engine.read().unwrap().evaluate(topic, parsed)?;
+    let notification = self
+      .engine
+      .read()
+      .unwrap_or_else(|poisoned| poisoned.into_inner())
+      .evaluate(topic, parsed)?;
     let admission = self
       .limiter
       .lock()
-      .unwrap()
+      .unwrap_or_else(|poisoned| poisoned.into_inner())
       .admit(&notification.rule_id, Instant::now());
     let Admission::Show { suppressed } = admission else {
       log::debug!("rule {} is rate limited, holding back {topic}", notification.rule_id);
       return None;
     };
-    let notification = notification.with_suppressed(suppressed);
+    let suffix = if suppressed == 0 {
+      String::new()
+    } else {
+      crate::i18n::t_count(
+        *self.locale.read().unwrap_or_else(|poisoned| poisoned.into_inner()),
+        "notifications.suppressed",
+        u64::from(suppressed),
+      )
+    };
+    let notification = notification.with_suppressed(&suffix);
 
     if let Err(error) = self.toaster.show(&notification.title, &notification.body) {
       log::warn!("the OS would not show a notification: {error}");
@@ -114,9 +139,37 @@ impl std::fmt::Debug for Notifier {
     formatter
       .debug_struct("Notifier")
       .field("paused", &self.is_paused())
-      .field("rules", &self.engine.read().unwrap().rules().len())
+      .field(
+        "rules",
+        &self
+          .engine
+          .read()
+          .unwrap_or_else(|poisoned| poisoned.into_inner())
+          .rules()
+          .len(),
+      )
       .finish()
   }
+}
+
+/// Registers the shared Windows toast label, optionally with a development icon.
+#[cfg(target_os = "windows")]
+pub fn register_toast_identity(icon: Option<&std::path::Path>) -> Result<(), String> {
+  let key = windows_registry::CURRENT_USER
+    .create(format!(r"SOFTWARE\Classes\AppUserModelId\{}", crate::APP_NAME))
+    .map_err(|error| error.to_string())?;
+  key
+    .set_expand_string("DisplayName", crate::APP_NAME)
+    .map_err(|error| error.to_string())?;
+  key
+    .set_string("IconBackgroundColor", "0")
+    .map_err(|error| error.to_string())?;
+  if let Some(icon) = icon.filter(|icon| icon.is_file()) {
+    key
+      .set_expand_string("IconUri", icon.to_string_lossy())
+      .map_err(|error| error.to_string())?;
+  }
+  Ok(())
 }
 
 #[cfg(test)]
@@ -124,22 +177,7 @@ mod tests {
   use super::*;
   use crate::message::{Level, Message, Sender};
 
-  /// Records what it was asked to show, and fails when told to.
-  #[derive(Default)]
-  struct Recorder {
-    shown: Mutex<Vec<(String, String)>>,
-    fail: AtomicBool,
-  }
-
-  impl Toaster for Recorder {
-    fn show(&self, title: &str, body: &str) -> Result<(), String> {
-      if self.fail.load(Ordering::Relaxed) {
-        return Err("no notification daemon".to_owned());
-      }
-      self.shown.lock().unwrap().push((title.to_owned(), body.to_owned()));
-      Ok(())
-    }
-  }
+  use crate::test_support::Recorder;
 
   fn error_from_elsewhere(body: &str) -> Parsed {
     let sender = Sender {
@@ -160,7 +198,11 @@ mod tests {
     assert!(notifier.is_paused());
     assert_eq!(notifier.notify("hiveme", &error_from_elsewhere("Disk full")), None);
     assert!(
-      recorder.shown.lock().unwrap().is_empty(),
+      recorder
+        .shown
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .is_empty(),
       "a paused session shows nothing"
     );
 
@@ -170,14 +212,21 @@ mod tests {
       notifier.notify("hiveme", &error_from_elsewhere("Disk full")).as_deref(),
       Some("error")
     );
-    assert_eq!(recorder.shown.lock().unwrap().len(), 1);
+    assert_eq!(
+      recorder
+        .shown
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .len(),
+      1
+    );
   }
 
   #[test]
   fn rules_match_the_payload_level_on_the_same_topic() {
     let notifier = Notifier::new(&Config::default(), Arc::new(Recorder::default()));
     for level in [Level::Info, Level::Warn, Level::Error] {
-      let engine = notifier.engine.read().unwrap();
+      let engine = notifier.engine.read().unwrap_or_else(|poisoned| poisoned.into_inner());
       assert_eq!(engine.matching_enabled("hiveme", &level).unwrap().level, level);
     }
   }
@@ -194,7 +243,7 @@ mod tests {
       notifier
         .engine
         .read()
-        .unwrap()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
         .matching_enabled("hiveme", &Level::Error)
         .is_none()
     );
@@ -207,5 +256,29 @@ mod tests {
     let notifier = Notifier::new(&Config::default(), recorder);
 
     assert_eq!(notifier.notify("hiveme", &error_from_elsewhere("Disk full")), None);
+  }
+  #[test]
+  fn rate_limit_summaries_follow_the_saved_language_and_survive_poison() {
+    let recorder = Arc::new(Recorder::default());
+    let mut config = Config::default();
+    config.gui.language = "de".to_owned();
+    let notifier = Arc::new(Notifier::new(&config, recorder.clone()));
+    let past = Instant::now() - std::time::Duration::from_secs(2);
+    {
+      let mut limiter = notifier.limiter.lock().unwrap();
+      limiter.admit("error", past);
+      limiter.admit("error", past);
+    }
+    let poisoned = notifier.clone();
+    let _ = std::thread::spawn(move || {
+      let _guard = poisoned.engine.write().unwrap();
+      panic!("test poison");
+    })
+    .join();
+    assert!(notifier.notify("hiveme", &error_from_elsewhere("Disk full")).is_some());
+    assert!(recorder.shown()[0].1.ends_with("und 1 weitere Nachricht"));
+    config.gui.language = "ja".to_owned();
+    notifier.reload(&config);
+    assert_eq!(*notifier.locale.read().unwrap(), crate::i18n::Locale::Ja);
   }
 }

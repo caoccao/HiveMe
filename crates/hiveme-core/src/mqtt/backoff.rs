@@ -15,7 +15,7 @@
 * limitations under the License.
 */
 
-//! The reconnect delay of the `hmg` connection.
+//! The reconnect delay of `hmg` and interactive `hmc`.
 //!
 //! Exponential with equal jitter: the delay doubles until `broker.reconnect.maxDelayMs`
 //! and then half of it is randomized. The jitter matters because several HiveMe

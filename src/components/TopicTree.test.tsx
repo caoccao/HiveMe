@@ -66,13 +66,7 @@ describe('filterNodes', () => {
 
 describe('allNodeIds', () => {
   it('lists every node, which is what expands the tree while a filter is typed', () => {
-    expect(allNodeIds(TREE)).toEqual([
-      'hiveme',
-      'hiveme/build',
-      'hiveme/build/ci',
-      'hiveme/error',
-      'hiveme/info',
-    ]);
+    expect(allNodeIds(TREE)).toEqual(['hiveme', 'hiveme/build', 'hiveme/build/ci', 'hiveme/error', 'hiveme/info']);
   });
 });
 

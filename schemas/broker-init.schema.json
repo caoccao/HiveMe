@@ -1,5 +1,5 @@
 {
-  "$id": "https://github.com/caoccao/HiveMe/schemas/broker-init.schema.json",
+  "$id": "https://hiveme.dev/schemas/broker-init/v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Everything `hmc` needs to reach the cluster `hmg` is already talking to, and the\nlanguage to talk about it in.",
   "properties": {
@@ -28,7 +28,7 @@
       "default": 1,
       "description": "The format version. See [`BROKER_INIT_VERSION`].",
       "format": "uint32",
-      "minimum": 0,
+      "minimum": 1,
       "type": "integer"
     }
   },

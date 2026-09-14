@@ -191,7 +191,7 @@ impl Shared {
   /// A status that names no error keeps the last one, so that the reason a connection
   /// dropped, or the filter a credential may not subscribe to, stays readable in the
   /// status bar after the connection has recovered.
-  fn publish_status(&self, status: Status) {
+  pub(super) fn publish_status(&self, status: Status) {
     {
       let mut held = self.status.lock().unwrap();
       let previous = held.last_error.take();
@@ -288,6 +288,7 @@ impl Mqtt {
     self.ensure_running()?;
 
     let mut client = MqttClient::start(&config, self.role)?;
+    self.shared.publish_status(Status::from_client(&client.status_now()));
     let incoming = client
       .take_incoming()
       .ok_or_else(|| Error::ClientStopped("the incoming stream was already taken".to_owned()))?;
@@ -430,63 +431,92 @@ impl std::fmt::Debug for Mqtt {
 
 /// Stores everything the broker delivers, and turns it into events and notifications.
 ///
-/// The store is SQLite, so each insert blocks for as long as one small statement
-/// takes. That is short enough to do on the runtime, and doing it here keeps the
-/// messages in the order the broker sent them, which is what a chat view shows.
-async fn pump(shared: Arc<Shared>, mut incoming: mpsc::Receiver<IncomingMessage>) {
-  while let Some(message) = incoming.recv().await {
-    shared.received.fetch_add(1, Ordering::Relaxed);
-    let parsed = message.parse();
-    let mut row = NewMessage::from_payload(
-      message.topic.clone(),
-      message.payload.clone(),
-      message.qos.as_u8(),
-      message.retain,
-      false,
-    );
-    // A payload without an envelope was given a generated id a moment ago, which the
-    // echo of this session's own raw publish would not share with the row it belongs
-    // to. See [`RawPublishes`].
-    if !matches!(parsed, crate::message::Parsed::Envelope(_))
-      && let Some(msg_id) = shared.raw_publish_id(&row.topic, &message.payload)
-    {
-      row.msg_id = msg_id;
+/// One blocking worker preserves arrival order without blocking Tokio. A separate
+/// ordered worker handles OS notifications so a slow daemon cannot stall storage.
+async fn pump(shared: Arc<Shared>, mut incoming: mpsc::UnboundedReceiver<IncomingMessage>) {
+  let (toast_tx, mut toast_rx) = mpsc::unbounded_channel::<(String, crate::message::Parsed, String)>();
+  let notify_shared = shared.clone();
+  let toast_worker = tokio::task::spawn_blocking(move || {
+    while let Some((topic, parsed, message_id)) = toast_rx.blocking_recv() {
+      if let Some(rule_id) = notify_shared.notifier.notify(&topic, &parsed) {
+        notify_shared.emit(SessionEvent::NotificationFired {
+          rule_id,
+          message_id,
+          topic,
+        });
+      }
     }
-    let insertion = match shared.store.insert(&row) {
-      Ok(insertion) => insertion,
-      Err(error) => {
-        log::error!("a message on {} could not be stored: {error}", message.topic);
+  });
+  let _ = tokio::task::spawn_blocking(move || {
+    let mut warned = false;
+    while let Some(message) = incoming.blocking_recv() {
+      let backed_up = incoming.len() >= crate::mqtt::INCOMING_HIGH_WATER;
+      if backed_up && !warned {
+        log::warn!("the incoming backlog exceeds 1,024 messages; preserving queued messages");
+      }
+      warned = backed_up;
+      // Snapshot before publishing any events: an observer may resume notifications
+      // as soon as it sees this message, while the toast worker is still busy.
+      let notifications_paused = shared.notifier.is_paused();
+      let parsed = message.parse();
+      let raw_id = if matches!(parsed, crate::message::Parsed::Envelope(_)) {
+        None
+      } else {
+        shared.raw_publish_id(&message.topic, &message.payload)
+      };
+      let mut row = NewMessage::from_parsed(
+        message.topic.clone(),
+        message.payload,
+        &parsed,
+        message.qos.as_u8(),
+        message.retain,
+        false,
+      );
+      // A payload without an envelope was given a generated id a moment ago, which the
+      // echo of this session's own raw publish would not share with the row it belongs
+      // to. See [`RawPublishes`].
+      if !matches!(parsed, crate::message::Parsed::Envelope(_))
+        && let Some(msg_id) = raw_id
+      {
+        row.msg_id = msg_id;
+        row.app = Some(shared.app.app_id().to_owned());
+        row.outgoing = true;
+      }
+      let insertion = match shared.store.insert(&row) {
+        Ok(insertion) => insertion,
+        Err(error) => {
+          log::error!("a message on {} could not be stored: {error}", message.topic);
+          continue;
+        }
+      };
+      shared.received.fetch_add(1, Ordering::Relaxed);
+      if insertion.topic_is_new {
+        shared.emit(SessionEvent::TopicAdded {
+          topic: message.topic.clone(),
+        });
+      }
+      let new_here = shared.remember(&row.topic, &row.msg_id);
+      if !new_here || (!insertion.is_new && message.retain) {
+        // Known to this session already: the echo of its own publish, whose bubble the
+        // composer has on screen and whose rules had their say when it was sent, or the
+        // broker delivering a message a second time. A retained copy of a message that
+        // was already stored is old news too. What is left was stored a moment ago by
+        // another process on the same database, `hmg` or another terminal UI, and is new
+        // to this one.
         continue;
       }
-    };
-    if insertion.topic_is_new {
-      shared.emit(SessionEvent::TopicAdded {
-        topic: message.topic.clone(),
-      });
+      shared.emit(SessionEvent::Message(MessageRow::seen_by(
+        insertion.message,
+        shared.app,
+      )));
+      if !notifications_paused {
+        let _ = toast_tx.send((message.topic, parsed, row.msg_id));
+      }
     }
-    let new_here = shared.remember(&row.topic, &row.msg_id);
-    if !new_here || (!insertion.is_new && message.retain) {
-      // Known to this session already: the echo of its own publish, whose bubble the
-      // composer has on screen and whose rules had their say when it was sent, or the
-      // broker delivering a message a second time. A retained copy of a message that
-      // was already stored is old news too. What is left was stored a moment ago by
-      // another process on the same database, `hmg` or another terminal UI, and is new
-      // to this one.
-      continue;
-    }
-    shared.emit(SessionEvent::Message(MessageRow::seen_by(
-      insertion.message,
-      shared.app,
-    )));
-    if let Some(rule_id) = shared.notifier.notify(&message.topic, &parsed) {
-      shared.emit(SessionEvent::NotificationFired {
-        rule_id,
-        message_id: row.msg_id.clone(),
-        topic: message.topic.clone(),
-      });
-    }
-  }
-  log::debug!("the incoming message stream ended");
+    log::debug!("the incoming message stream ended");
+  })
+  .await;
+  let _ = toast_worker.await;
 }
 
 /// Forwards every connection state change to the status bar.
@@ -579,5 +609,126 @@ mod tests {
 
     assert_eq!(error.to_string(), "not connected to the broker");
     assert!(error.is_connection());
+  }
+  #[tokio::test]
+  async fn connecting_is_visible_while_the_broker_has_not_answered() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let config = Arc::new(ConfigStore::open(&directory.path().join("HiveMe.json")).unwrap());
+    let mut settings = config.get();
+    settings.broker.url = format!("mqtt://{}", listener.local_addr().unwrap());
+    settings.broker.username = "test".to_owned();
+    settings.broker.password = "test".to_owned();
+    config.set(settings).unwrap();
+    let (events, mut receiver) = broadcast::channel(8);
+    let mqtt = Arc::new(Mqtt::new(
+      SessionApp::Gui,
+      Arc::new(Store::in_memory().unwrap()),
+      Arc::new(Notifier::new(&config.get(), Arc::new(Silent))),
+      config,
+      events,
+    ));
+    let connect = tokio::spawn({
+      let mqtt = mqtt.clone();
+      async move { mqtt.connect().await }
+    });
+    let status = tokio::time::timeout(Duration::from_secs(1), receiver.recv())
+      .await
+      .unwrap()
+      .unwrap();
+    assert!(matches!(status, SessionEvent::Status(status) if status.state == "Connecting"));
+    assert!(!connect.is_finished(), "the server has not sent CONNACK");
+    mqtt.begin_shutdown();
+    assert!(connect.await.unwrap().is_err());
+    // A stalled peer need not delay the rest of this test's teardown.
+    drop(mqtt.connection.lock().await.take());
+  }
+
+  #[tokio::test]
+  async fn a_slow_toaster_blocks_neither_storage_nor_the_async_runtime() {
+    struct Slow {
+      entered: tokio::sync::mpsc::UnboundedSender<()>,
+      release: Mutex<std::sync::mpsc::Receiver<()>>,
+      shown: Mutex<Vec<String>>,
+    }
+    impl super::super::notify::Toaster for Slow {
+      fn show(&self, _: &str, body: &str) -> std::result::Result<(), String> {
+        self.shown.lock().unwrap().push(body.to_owned());
+        let _ = self.entered.send(());
+        let _ = self.release.lock().unwrap().recv_timeout(Duration::from_secs(3));
+        Ok(())
+      }
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let config = Arc::new(ConfigStore::open(&directory.path().join("HiveMe.json")).unwrap());
+    let store = Arc::new(Store::in_memory().unwrap());
+    let (entered, mut started) = tokio::sync::mpsc::unbounded_channel();
+    let (release, wait) = std::sync::mpsc::channel();
+    let toaster = Arc::new(Slow {
+      entered,
+      release: Mutex::new(wait),
+      shown: Mutex::new(Vec::new()),
+    });
+    let (events, mut event_rx) = broadcast::channel(16);
+    let mqtt = Mqtt::new(
+      SessionApp::Gui,
+      store.clone(),
+      Arc::new(Notifier::new(&config.get(), toaster.clone())),
+      config,
+      events,
+    );
+    let (send, receive) = mpsc::unbounded_channel();
+    let pump = tokio::spawn(pump(mqtt.shared.clone(), receive));
+    let message = crate::message::Message::new_text(crate::message::Sender::default(), "first")
+      .with_level(crate::message::Level::Error);
+    send
+      .send(IncomingMessage {
+        topic: "hiveme".to_owned(),
+        payload: message.to_bytes().unwrap(),
+        qos: Qos::AtLeastOnce,
+        retain: false,
+        properties: Default::default(),
+      })
+      .unwrap();
+    tokio::time::timeout(Duration::from_secs(1), started.recv())
+      .await
+      .unwrap()
+      .unwrap();
+    mqtt.shared.notifier.set_paused(true);
+    let paused = crate::message::Message::new_text(crate::message::Sender::default(), "received while paused")
+      .with_level(crate::message::Level::Error);
+    send
+      .send(IncomingMessage {
+        topic: "hiveme".to_owned(),
+        payload: paused.to_bytes().unwrap(),
+        qos: Qos::AtLeastOnce,
+        retain: false,
+        properties: Default::default(),
+      })
+      .unwrap();
+    let started_at = std::time::Instant::now();
+    tokio::time::timeout(Duration::from_secs(1), async {
+      loop {
+        if let SessionEvent::Message(row) = event_rx.recv().await.unwrap()
+          && row.id == paused.id
+        {
+          break;
+        }
+      }
+    })
+    .await
+    .expect("the second row must persist while the first toast is blocked");
+    assert!(started_at.elapsed() < Duration::from_secs(1));
+    assert_eq!(store.messages("hiveme", None, 10).unwrap().len(), 2);
+    // Resuming resets the rate limiter. A paused message incorrectly queued behind
+    // the first toast would therefore become visible when that worker resumes.
+    mqtt.shared.notifier.set_paused(false);
+    drop(release);
+    drop(send);
+    tokio::time::timeout(Duration::from_secs(1), pump)
+      .await
+      .unwrap()
+      .unwrap();
+    assert_eq!(*toaster.shown.lock().unwrap(), ["first"]);
   }
 }

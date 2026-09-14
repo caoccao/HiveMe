@@ -26,11 +26,13 @@ import { BrokerProtocol } from '../lib/brokerUrl';
 import { formatBytes, formatDateTime, formatDay, formatDuration, formatTime } from '../lib/format';
 
 function flatten(object: Record<string, unknown>, prefix = ''): Record<string, string> {
-  return Object.fromEntries(Object.entries(object).flatMap(([key, value]) =>
-    typeof value === 'string'
-      ? [[prefix + key, value]]
-      : Object.entries(flatten(value as Record<string, unknown>, prefix + key + '.'))
-  ));
+  return Object.fromEntries(
+    Object.entries(object).flatMap(([key, value]) =>
+      typeof value === 'string'
+        ? [[prefix + key, value]]
+        : Object.entries(flatten(value as Record<string, unknown>, prefix + key + '.'))
+    )
+  );
 }
 
 const pluralSuffix = /_(zero|one|two|few|many|other)$/;
@@ -40,28 +42,31 @@ const source = flatten(enUS);
 const sourceByBase = Object.fromEntries(Object.entries(source).map(([key, value]) => [baseKey(key), value]));
 
 describe('the bundled catalogs', () => {
-  it.each(LANGUAGES)('%s covers every string and preserves interpolation variables without English fallback', (language) => {
-    const catalog = flatten(i18n.getResourceBundle(language, 'translation'));
-    expect([...new Set(Object.keys(catalog).map(baseKey))].sort()).toEqual(Object.keys(sourceByBase).sort());
-    for (const [key, value] of Object.entries(catalog)) {
-      expect(value.trim(), language + ': ' + key).not.toBe('');
-      expect(variables(value), language + ': ' + key).toEqual(variables(sourceByBase[baseKey(key)]));
-    }
-    const categories = new Intl.PluralRules(language).resolvedOptions().pluralCategories;
-    for (const key of Object.keys(source).filter((key) => key.endsWith('_other'))) {
-      for (const category of categories) {
-        expect(catalog[baseKey(key) + '_' + category], language + ': ' + key + ' / ' + category).toBeTruthy();
+  it.each(LANGUAGES)(
+    '%s covers every string and preserves interpolation variables without English fallback',
+    (language) => {
+      const catalog = flatten(i18n.getResourceBundle(language, 'translation'));
+      expect([...new Set(Object.keys(catalog).map(baseKey))].sort()).toEqual(Object.keys(sourceByBase).sort());
+      for (const [key, value] of Object.entries(catalog)) {
+        expect(value.trim(), language + ': ' + key).not.toBe('');
+        expect(variables(value), language + ': ' + key).toEqual(variables(sourceByBase[baseKey(key)]));
       }
+      const categories = new Intl.PluralRules(language).resolvedOptions().pluralCategories;
+      for (const key of Object.keys(source).filter((key) => key.endsWith('_other'))) {
+        for (const category of categories) {
+          expect(catalog[baseKey(key) + '_' + category], language + ': ' + key + ' / ' + category).toBeTruthy();
+        }
+      }
+      const dynamicKeys = [
+        ...LEVELS.map((level) => 'levels.' + level),
+        ...THEMES.map((theme) => 'settings.themes.' + theme),
+        ...Object.values(ConnectionState).map((state) => 'footer.state.' + state),
+        ...Object.values(UpdateCheckInterval).map((interval) => 'settings.interval.' + interval),
+        ...Object.values(BrokerProtocol).map((protocol) => 'settings.protocols.' + protocol),
+      ];
+      for (const key of dynamicKeys) expect(catalog[key], language + ': ' + key).toBeTruthy();
     }
-    const dynamicKeys = [
-      ...LEVELS.map((level) => 'levels.' + level),
-      ...THEMES.map((theme) => 'settings.themes.' + theme),
-      ...Object.values(ConnectionState).map((state) => 'footer.state.' + state),
-      ...Object.values(UpdateCheckInterval).map((interval) => 'settings.interval.' + interval),
-      ...Object.values(BrokerProtocol).map((protocol) => 'settings.protocols.' + protocol),
-    ];
-    for (const key of dynamicKeys) expect(catalog[key], language + ': ' + key).toBeTruthy();
-  });
+  );
 
   it('renders singular, plural, zero, and grouped counts', async () => {
     await changeLanguage('en-US');
@@ -82,10 +87,22 @@ describe('the bundled catalogs', () => {
 
 describe('language resolution and formatting', () => {
   it.each([
-    ['de-DE', 'de'], ['es-MX', 'es'], ['fr-CA', 'fr'], ['it-CH', 'it'], ['ja-JP', 'ja'],
-    ['en-GB', 'en-US'], ['zh', 'zh-CN'], ['zh-Hans-SG', 'zh-CN'], ['zh-Hant', 'zh-TW'],
-    ['zh-Hant-HK', 'zh-HK'], ['zh-MO', 'zh-HK'], ['zh_TW', 'zh-TW'], [' DE-at ', 'de'],
-    ['unsupported', 'en-US'], ['', 'en-US'], [undefined, 'en-US'],
+    ['de-DE', 'de'],
+    ['es-MX', 'es'],
+    ['fr-CA', 'fr'],
+    ['it-CH', 'it'],
+    ['ja-JP', 'ja'],
+    ['en-GB', 'en-US'],
+    ['zh', 'zh-CN'],
+    ['zh-Hans-SG', 'zh-CN'],
+    ['zh-Hant', 'zh-TW'],
+    ['zh-Hant-HK', 'zh-HK'],
+    ['zh-MO', 'zh-HK'],
+    ['zh_TW', 'zh-TW'],
+    [' DE-at ', 'de'],
+    ['unsupported', 'en-US'],
+    ['', 'en-US'],
+    [undefined, 'en-US'],
   ])('resolves %s to %s', async (requested, expected) => {
     expect(resolveLanguage(requested)).toBe(expected);
     await changeLanguage(requested);
@@ -98,13 +115,20 @@ describe('language resolution and formatting', () => {
     const date = new Date(timestamp);
     for (const language of LANGUAGES) {
       await changeLanguage(language);
-      expect(formatTime(timestamp)).toBe(date.toLocaleTimeString(language, {
-        hour: 'numeric', minute: '2-digit',
-      }));
+      expect(formatTime(timestamp)).toBe(
+        date.toLocaleTimeString(language, {
+          hour: 'numeric',
+          minute: '2-digit',
+        })
+      );
       expect(formatDateTime(timestamp)).toBe(date.toLocaleString(language));
-      expect(formatDay(timestamp)).toBe(date.toLocaleDateString(language, {
-        year: 'numeric', month: 'short', day: 'numeric',
-      }));
+      expect(formatDay(timestamp)).toBe(
+        date.toLocaleDateString(language, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        })
+      );
     }
     await changeLanguage('de');
     expect(formatBytes(1536)).toBe('1,5 KB');
@@ -121,11 +145,12 @@ describe('language resolution and formatting', () => {
 describe('frontend string audit', () => {
   it('keeps UI prose in the catalogs', () => {
     const root = join(process.cwd(), 'src');
-    const files = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) return ['generated', 'i18n', 'test'].includes(entry.name) ? [] : files(path);
-      return /\.tsx?$/.test(entry.name) && !/\.test\.|\.d\.ts$/.test(entry.name) ? [path] : [];
-    });
+    const files = (directory: string): string[] =>
+      readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(directory, entry.name);
+        if (entry.isDirectory()) return ['generated', 'i18n', 'test'].includes(entry.name) ? [] : files(path);
+        return /\.tsx?$/.test(entry.name) && !/\.test\.|\.d\.ts$/.test(entry.name) ? [path] : [];
+      });
     // Product names, license identifiers, and example addresses are language invariant.
     const invariant = new Set(['Apache-2.0', 'caoccao.com', 'abc123.s1.eu.hivemq.cloud:8883']);
     const uiProps = new Set(['label', 'title', 'placeholder', 'helperText', 'aria-label', 'alt', 'closeText']);
@@ -142,11 +167,19 @@ describe('frontend string audit', () => {
         if (ts.isJsxText(node)) checkText(node.text, node);
         if (ts.isJsxAttribute(node) && uiProps.has(node.name.getText(syntax)) && node.initializer) {
           if (ts.isStringLiteral(node.initializer)) checkText(node.initializer.text, node);
-          if (ts.isJsxExpression(node.initializer) && node.initializer.expression
-            && ts.isStringLiteral(node.initializer.expression)) checkText(node.initializer.expression.text, node);
+          if (
+            ts.isJsxExpression(node.initializer) &&
+            node.initializer.expression &&
+            ts.isStringLiteral(node.initializer.expression)
+          )
+            checkText(node.initializer.expression.text, node);
         }
-        if (ts.isCallExpression(node) && node.arguments[0] && ts.isStringLiteral(node.arguments[0])
-          && (node.expression.getText(syntax) === 't' || node.expression.getText(syntax) === 'i18n.t')) {
+        if (
+          ts.isCallExpression(node) &&
+          node.arguments[0] &&
+          ts.isStringLiteral(node.arguments[0]) &&
+          (node.expression.getText(syntax) === 't' || node.expression.getText(syntax) === 'i18n.t')
+        ) {
           const key = node.arguments[0].text;
           if (!(key in sourceByBase)) failures.push(file + ': missing translation ' + key);
         }

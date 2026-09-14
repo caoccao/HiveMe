@@ -118,6 +118,6 @@ export function effectivePort(parts: BrokerUrlParts): number {
   const authority = parts.address.split('/')[0] ?? '';
   const written = authority.slice(authority.lastIndexOf(':') + 1);
   const port = Number.parseInt(written, 10);
-  const carriesPort = authority.includes(':') && String(port) === written && port > 0 && port <= 65535;
+  const carriesPort = authority.includes(':') && /^\d+$/.test(written) && port > 0 && port <= 65535;
   return carriesPort ? port : defaultPort(parts.protocol);
 }

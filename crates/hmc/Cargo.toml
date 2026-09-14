@@ -44,9 +44,9 @@ notify-rust = { workspace = true }
 # Windows only: the toast API under the HiveMe application identity hmg registers.
 [target.'cfg(target_os = "windows")'.dependencies]
 tauri-winrt-notification = { workspace = true }
-windows-registry = { workspace = true }
 
 [dev-dependencies]
+hiveme-core = { workspace = true, features = ["test-support"] }
 assert_cmd = { workspace = true }
 # tests/tui.rs: the terminal UI in a pseudo-terminal, read back as a screen.
 portable-pty = { workspace = true }

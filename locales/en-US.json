@@ -16,7 +16,6 @@
   },
   "topics": {
     "filter": "Filter topics",
-    "empty": "No messages yet. A topic appears here when the first message arrives on it.",
     "noMatch": "No topic matches the filter.",
     "unread_one": "{{count, number}} unread message",
     "unread_other": "{{count, number}} unread messages"
@@ -24,7 +23,6 @@
   "messages": {
     "selectTopic": "Select a topic to read its messages.",
     "empty": "No messages on this topic.",
-    "unknownSender": "unknown",
     "newerVersion": "newer version",
     "retained": "Retained by the broker",
     "actions": "Copy options",
@@ -165,7 +163,8 @@
       "Daily": "Daily",
       "Weekly": "Weekly",
       "Monthly": "Monthly"
-    }
+    },
+    "rawNotificationHint": "Raw text and JSON use the Info level. Enable an Info rule to notify for them."
   },
   "about": {
     "tagline": "One message format, two applications, and a HiveMQ Cloud cluster.",
@@ -233,7 +232,8 @@
     "verbose": "Log connection details to stderr",
     "printHelp": "Print help",
     "printVersion": "Print version",
-    "interactive": "Run hmc with no arguments on a terminal to open the terminal UI."
+    "interactive": "Run hmc with no arguments on a terminal to open the terminal UI.",
+    "noRetain": "Clear the retain flag"
   },
   "tui": {
     "toolbar": {
@@ -289,5 +289,9 @@
       "releases": "Open the releases page",
       "dismiss": "Close the notice"
     }
+  },
+  "notifications": {
+    "suppressed_one": "and {{count}} more message",
+    "suppressed_other": "and {{count}} more messages"
   }
 }

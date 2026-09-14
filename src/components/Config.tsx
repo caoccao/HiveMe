@@ -68,13 +68,7 @@ import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { useTranslation } from 'react-i18next';
 import { resolveLanguage } from '../i18n';
 import * as Protocol from '../lib/protocol';
-import {
-  BrokerProtocol,
-  type BrokerUrlParts,
-  effectivePort,
-  joinBrokerUrl,
-  splitBrokerUrl,
-} from '../lib/brokerUrl';
+import { BrokerProtocol, type BrokerUrlParts, effectivePort, joinBrokerUrl, splitBrokerUrl } from '../lib/brokerUrl';
 import { getBrokerInit } from '../lib/service';
 import { useAppStore } from '../lib/store';
 
@@ -120,7 +114,9 @@ function SettingRow({ label, children }: { label: string; children: React.ReactN
         borderColor: 'divider',
       }}
     >
-      <Typography variant="body2" color="text.secondary">{label}</Typography>
+      <Typography variant="body2" color="text.secondary">
+        {label}
+      </Typography>
       <Box>{children}</Box>
     </Box>
   );
@@ -181,7 +177,17 @@ export function toDrafts(subscriptions: Protocol.Subscription[] | undefined): Su
 }
 
 export function fromDrafts(drafts: SubscriptionDraft[]): Protocol.Subscription[] {
-  return drafts.map((draft) => (draft.absolute ? { filter: draft.filter.trim(), absolute: true } : draft.filter.trim()));
+  return drafts.map((draft) =>
+    draft.absolute ? { filter: draft.filter.trim(), absolute: true } : draft.filter.trim()
+  );
+}
+
+export function cliSetupCommand(setup: string): string {
+  const escaped = setup.replace(
+    /['\u2018\u2019\u201a\u201b]/g,
+    (quote) => `\\u${quote.charCodeAt(0).toString(16).padStart(4, '0')}`
+  );
+  return `hmc --init '${escaped}'`;
 }
 
 export default function Config() {
@@ -202,7 +208,7 @@ export default function Config() {
   useEffect(() => {
     // Keep the raw text and a protocol selected before an address is entered.
     const stored = config?.broker?.url ?? '';
-    setUrl((previous) => joinBrokerUrl(previous) === stored ? previous : splitBrokerUrl(stored, previous));
+    setUrl((previous) => (joinBrokerUrl(previous) === stored ? previous : splitBrokerUrl(stored, previous)));
   }, [config?.broker?.url]);
 
   const subscriptions = useMemo(() => toDrafts(config?.topics?.subscriptions), [config?.topics?.subscriptions]);
@@ -227,11 +233,8 @@ export default function Config() {
 
   const copyCliSetup = async () => {
     try {
-      if (!await flushConfig()) return;
-      // JSON escapes preserve apostrophes without ending the shell's quoted argument.
-      const setup = (await getBrokerInit()).replace(/['\u2018\u2019\u201a\u201b]/g,
-        (quote) => `\\u${quote.charCodeAt(0).toString(16).padStart(4, '0')}`);
-      await writeText(`hmc --init '${setup}'`);
+      if (!(await flushConfig())) return;
+      await writeText(cliSetupCommand(await getBrokerInit()));
       notifyInfo(t('settings.cliSetupCopied'));
     } catch (error) {
       notifyError(error);
@@ -466,8 +469,10 @@ export default function Config() {
               onClick={() =>
                 update((next) => {
                   const list = ((next.notifications ??= {}).rules ??= []);
+                  let index = list.length + 1;
+                  while (list.some((rule) => rule.id === `rule-${index}`)) index += 1;
                   list.push({
-                    id: `rule-${list.length + 1}`,
+                    id: `rule-${index}`,
                     topic: 'info',
                     level: Protocol.Level.Info,
                     enabled: true,
@@ -481,6 +486,9 @@ export default function Config() {
             </Button>
           }
         />
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          {t('settings.rawNotificationHint')}
+        </Typography>
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -500,7 +508,7 @@ export default function Config() {
                   <TextField
                     value={rule.id ?? ''}
                     onChange={(event) =>
-                      update((next) => ((next.notifications ??= {}).rules ??= [])[index].id = event.target.value)
+                      update((next) => (((next.notifications ??= {}).rules ??= [])[index].id = event.target.value))
                     }
                     slotProps={{ htmlInput: { 'aria-label': t('settings.ruleId') } }}
                   />
@@ -509,7 +517,7 @@ export default function Config() {
                   <TextField
                     value={rule.topic ?? ''}
                     onChange={(event) =>
-                      update((next) => ((next.notifications ??= {}).rules ??= [])[index].topic = event.target.value)
+                      update((next) => (((next.notifications ??= {}).rules ??= [])[index].topic = event.target.value))
                     }
                     slotProps={{ htmlInput: { 'aria-label': t('settings.ruleTopic') } }}
                   />
@@ -547,7 +555,7 @@ export default function Config() {
                   <TextField
                     value={rule.title ?? ''}
                     onChange={(event) =>
-                      update((next) => ((next.notifications ??= {}).rules ??= [])[index].title = event.target.value)
+                      update((next) => (((next.notifications ??= {}).rules ??= [])[index].title = event.target.value))
                     }
                     slotProps={{ htmlInput: { 'aria-label': t('settings.ruleTitle') } }}
                   />
@@ -556,7 +564,7 @@ export default function Config() {
                   <TextField
                     value={rule.body ?? ''}
                     onChange={(event) =>
-                      update((next) => ((next.notifications ??= {}).rules ??= [])[index].body = event.target.value)
+                      update((next) => (((next.notifications ??= {}).rules ??= [])[index].body = event.target.value))
                     }
                     slotProps={{ htmlInput: { 'aria-label': t('settings.ruleBody') } }}
                   />
@@ -720,7 +728,19 @@ export default function Config() {
   };
 
   return (
-    <Box sx={{ width: '100%', maxWidth: 960, mx: 'auto', py: 2, px: 1, display: 'flex', gap: 2, height: '100%', minHeight: 0 }}>
+    <Box
+      sx={{
+        width: '100%',
+        maxWidth: 960,
+        mx: 'auto',
+        py: 2,
+        px: 1,
+        display: 'flex',
+        gap: 2,
+        height: '100%',
+        minHeight: 0,
+      }}
+    >
       <Tabs
         orientation="vertical"
         variant="scrollable"

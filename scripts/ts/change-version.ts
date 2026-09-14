@@ -2,7 +2,7 @@
 * Copyright (c) 2026. caoccao.com Sam Cao
 * All rights reserved.
 
-* Licensed under the Apache License, Version 2.0 (the "License")
+* Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
 * You may obtain a copy of the License at
 
@@ -23,28 +23,29 @@
 // Files that do not exist yet, such as src-tauri before step 4.1, are reported and
 // skipped.
 
-import * as fs from "https://deno.land/std/fs/mod.ts";
-import * as path from "https://deno.land/std/path/mod.ts";
+import * as path from "@std/path";
 
-class ChangeVersion {
+export class ChangeVersion {
   private productionVersion: string;
   private rootDirPath: string;
   private snapshotVersion: string;
 
-  constructor(productionVersion: string, snapshotVersion: string) {
+  constructor(productionVersion: string, snapshotVersion: string, rootDirPath?: string) {
     this.productionVersion = productionVersion;
     this.snapshotVersion = snapshotVersion;
-    this.rootDirPath = path.join(path.dirname(path.fromFileUrl(import.meta.url)), "../../");
+    this.rootDirPath = rootDirPath ?? path.join(path.dirname(path.fromFileUrl(import.meta.url)), "../../");
   }
 
   private _change(filePath: string, patterns: Array<RegExp>, isSnapshot = true) {
     const sourceFilePath = path.join(this.rootDirPath, filePath);
-    if (fs.existsSync(sourceFilePath)) {
-      console.info(`Processing ${sourceFilePath}.`);
-    } else {
+    try {
+      Deno.statSync(sourceFilePath);
+    } catch (error) {
+      if (!(error instanceof Deno.errors.NotFound)) throw error;
       console.warn(`%c  ${sourceFilePath} is not found, skipped.`, "color: yellow");
       return;
     }
+    console.info(`Processing ${sourceFilePath}.`);
     const newVersion = isSnapshot ? this.snapshotVersion : this.productionVersion;
     const positionGroups: Array<{ start: number; end: number }> = [];
     const currentContent = Deno.readTextFileSync(sourceFilePath);
@@ -105,5 +106,7 @@ class ChangeVersion {
   }
 }
 
-const changeVersion = new ChangeVersion("0.1.0", "0.1.0");
-changeVersion.change();
+if (import.meta.main) {
+  const changeVersion = new ChangeVersion("0.1.0", "0.1.0");
+  changeVersion.change();
+}

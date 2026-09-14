@@ -61,8 +61,7 @@ pub fn app_version() -> &'static str {
 pub fn check() -> Result<UpdateCheckResult, String> {
   let current = app_version();
   log::info!("checking for a newer release than {current}");
-  let response = ureq::get(RELEASES_API_URL)
-    .set("User-Agent", crate::APP_NAME)
+  let response = release_request(RELEASES_API_URL, std::time::Duration::from_secs(20))
     .call()
     .map_err(|error| format!("the releases could not be fetched: {error}"))?;
   let releases: serde_json::Value = response
@@ -80,6 +79,10 @@ pub fn check() -> Result<UpdateCheckResult, String> {
     });
   }
   Ok(UpdateCheckResult::none())
+}
+
+fn release_request(url: &str, timeout: std::time::Duration) -> ureq::Request {
+  ureq::get(url).set("User-Agent", crate::APP_NAME).timeout(timeout)
 }
 
 /// Whether `latest` is a higher version than `current`.
@@ -137,7 +140,7 @@ fn without_ignored(outcome: UpdateCheckResult, ignored: &str) -> UpdateCheckResu
 pub(super) fn start(config: Arc<ConfigStore>, result: Arc<Mutex<Option<UpdateCheckResult>>>) {
   let update = config.get().update;
   if !is_due(&update, now_seconds()) {
-    *result.lock().unwrap() = Some(remembered(&update, app_version()));
+    *result.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(remembered(&update, app_version()));
     return;
   }
   std::thread::spawn(move || match check() {
@@ -149,11 +152,11 @@ pub(super) fn start(config: Arc<ConfigStore>, result: Arc<Mutex<Option<UpdateChe
       }
       let ignored = saved.update.ignore_version.clone();
       let _ = config.set_quietly(saved);
-      *result.lock().unwrap() = Some(without_ignored(outcome, &ignored));
+      *result.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(without_ignored(outcome, &ignored));
     }
     Err(error) => {
       log::warn!("the release check failed: {error}");
-      *result.lock().unwrap() = Some(UpdateCheckResult::none());
+      *result.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(UpdateCheckResult::none());
     }
   });
 }
@@ -230,5 +233,27 @@ mod tests {
     assert_eq!(without_ignored(found.clone(), "0.2.0"), UpdateCheckResult::none());
     assert_eq!(without_ignored(found.clone(), ""), found);
     assert_eq!(without_ignored(found.clone(), "0.1.9"), found);
+  }
+  #[test]
+  fn a_stalled_response_body_obeys_the_request_timeout() {
+    use std::io::Write;
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let address = listener.local_addr().unwrap();
+    let (release, wait) = std::sync::mpsc::channel();
+    let server = std::thread::spawn(move || {
+      let (mut socket, _) = listener.accept().unwrap();
+      socket
+        .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n")
+        .unwrap();
+      let _ = wait.recv_timeout(std::time::Duration::from_secs(2));
+    });
+    let start = std::time::Instant::now();
+    let response = release_request(&format!("http://{address}"), std::time::Duration::from_millis(100))
+      .call()
+      .unwrap();
+    assert!(response.into_json::<serde_json::Value>().is_err());
+    assert!(start.elapsed() < std::time::Duration::from_secs(2));
+    let _ = release.send(());
+    server.join().unwrap();
   }
 }

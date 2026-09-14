@@ -111,21 +111,9 @@ fn install_system_notification_identity() {
 /// An installed build gets its icon from the Start menu shortcut the bundle creates,
 /// so only a development build needs to say where the icon is.
 #[cfg(target_os = "windows")]
-fn register_system_notification_identity() -> anyhow::Result<()> {
-  let key =
-    windows_registry::CURRENT_USER.create(format!(r"SOFTWARE\Classes\AppUserModelId\{SYSTEM_NOTIFICATION_APP_ID}"))?;
-  key.set_expand_string("DisplayName", SYSTEM_NOTIFICATION_APP_ID)?;
-  key.set_string("IconBackgroundColor", "0")?;
-
-  if tauri::is_dev() {
-    let icon = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-      .join("icons")
-      .join("32x32.png");
-    if icon.is_file() {
-      key.set_expand_string("IconUri", icon.to_string_lossy())?;
-    }
-  }
-  Ok(())
+fn register_system_notification_identity() -> Result<(), String> {
+  let icon = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("icons/32x32.png");
+  hiveme_core::session::register_toast_identity(tauri::is_dev().then_some(icon.as_path()))
 }
 
 impl std::fmt::Debug for TauriToaster {

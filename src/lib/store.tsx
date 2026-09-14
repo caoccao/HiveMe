@@ -190,6 +190,8 @@ export const useAppStore = create<AppState>((set, get) => {
 
       configSaveInFlight = (async () => {
         while (pendingConfig) {
+          const subscriptions = pendingConfig.topics?.subscriptions ?? [];
+          if (subscriptions.some((row) => !(typeof row === 'string' ? row : row.filter).trim())) return false;
           const snapshot = pendingConfig;
           pendingConfig = null;
           try {
@@ -355,8 +357,7 @@ export const useAppStore = create<AppState>((set, get) => {
     setTopicFilter: (topicFilter) => set({ topicFilter }),
     setDialogNotification: (dialogNotification) => set({ dialogNotification }),
 
-    notifyInfo: (title) =>
-      set({ dialogNotification: { title, type: Protocol.DialogNotificationType.Info } }),
+    notifyInfo: (title) => set({ dialogNotification: { title, type: Protocol.DialogNotificationType.Info } }),
 
     notifyError: (error) =>
       set({ dialogNotification: { title: errorMessage(error), type: Protocol.DialogNotificationType.Error } }),

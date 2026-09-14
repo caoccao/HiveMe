@@ -23,7 +23,7 @@
 // backend log looks healthy while the user sees an empty rectangle. Only the rendered
 // output says whether the layout is there.
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
@@ -191,9 +191,12 @@ describe('the application window', () => {
     await userEvent.click(screen.getByRole('option', { name: 'Wald' }));
     expect(useAppStore.getState().config?.gui?.theme).toBe('Forest');
     await waitFor(() => expect(backendConfig.gui?.theme).toBe('Forest'));
-    expect(invoke).toHaveBeenCalledWith('set_config', expect.objectContaining({
-      config: expect.objectContaining({ gui: expect.objectContaining({ language: 'de', theme: 'Forest' }) }),
-    }));
+    expect(invoke).toHaveBeenCalledWith(
+      'set_config',
+      expect.objectContaining({
+        config: expect.objectContaining({ gui: expect.objectContaining({ language: 'de', theme: 'Forest' }) }),
+      })
+    );
     expect(useAppStore.getState().dialogNotification).toBeNull();
   });
 
@@ -215,4 +218,15 @@ describe('the application window', () => {
     await waitFor(() => expect(backendConfig.gui?.language).toBe('ja'));
     expect(backendConfig.gui?.theme).toBe('Forest');
   });
+});
+
+it('handles uppercase Ctrl+W on keydown and cancels the webview shortcut', async () => {
+  render(<App />);
+  await waitFor(() => expect(useAppStore.getState().config).not.toBeNull());
+  fireEvent.keyDown(document, { key: 'F10' });
+  await waitFor(() => expect(useAppStore.getState().tabSettingsStatus).toBe(Protocol.ControlStatus.Visible));
+  const event = new KeyboardEvent('keydown', { key: 'W', ctrlKey: true, bubbles: true, cancelable: true });
+  fireEvent(document, event);
+  expect(event.defaultPrevented).toBe(true);
+  expect(useAppStore.getState().tabSettingsStatus).toBe(Protocol.ControlStatus.Hidden);
 });

@@ -66,10 +66,9 @@ pub struct Notification {
 impl Notification {
   /// Appends the summary of what the rate limiter held back.
   #[must_use]
-  pub fn with_suppressed(mut self, suppressed: u32) -> Self {
-    if suppressed > 0 {
-      let plural = if suppressed == 1 { "" } else { "s" };
-      self.body = format!("{} and {suppressed} more message{plural}", self.body.trim_end());
+  pub fn with_suppressed(mut self, suffix: &str) -> Self {
+    if !suffix.is_empty() {
+      self.body = format!("{} {suffix}", self.body.trim_end());
     }
     self
   }
@@ -510,8 +509,14 @@ mod tests {
       title: "t".to_owned(),
       body: "boom".to_owned(),
     };
-    assert_eq!(notification.clone().with_suppressed(0).body, "boom");
-    assert_eq!(notification.clone().with_suppressed(1).body, "boom and 1 more message");
-    assert_eq!(notification.with_suppressed(4).body, "boom and 4 more messages");
+    assert_eq!(notification.clone().with_suppressed("").body, "boom");
+    assert_eq!(
+      notification.clone().with_suppressed("and 1 more message").body,
+      "boom and 1 more message"
+    );
+    assert_eq!(
+      notification.with_suppressed("and 4 more messages").body,
+      "boom and 4 more messages"
+    );
   }
 }

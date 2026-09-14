@@ -147,18 +147,33 @@ impl BrokerUrl {
       return Err(format!("'{raw}' has no host"));
     }
 
-    let (host, port) = match authority.rsplit_once(':') {
-      Some((host, port)) => {
-        let port = port
-          .parse::<u16>()
-          .map_err(|_| format!("'{port}' is not a port number"))?;
-        if port == 0 {
-          return Err("port 0 is not a broker port".to_owned());
-        }
-        (host, port)
+    let (host, written_port) = if let Some(rest) = authority.strip_prefix('[') {
+      let (host, suffix) = rest.split_once(']').ok_or("an IPv6 host needs a closing bracket")?;
+      host.parse::<std::net::Ipv6Addr>().map_err(|_| "invalid IPv6 host")?;
+      let port = if suffix.is_empty() {
+        None
+      } else {
+        Some(suffix.strip_prefix(':').ok_or("expected :port after the IPv6 host")?)
+      };
+      (host, port)
+    } else {
+      if authority.matches(':').count() > 1 {
+        return Err("enclose an IPv6 host in brackets".to_owned());
       }
-      None => (authority, scheme.default_port()),
+      match authority.rsplit_once(':') {
+        Some((host, port)) => (host, Some(port)),
+        None => (authority, None),
+      }
     };
+    let port = match written_port {
+      Some(port) => port
+        .parse::<u16>()
+        .map_err(|_| format!("'{port}' is not a port number"))?,
+      None => scheme.default_port(),
+    };
+    if port == 0 {
+      return Err("port 0 is not a broker port".to_owned());
+    }
     if host.is_empty() {
       return Err(format!("'{raw}' has no host"));
     }
@@ -251,15 +266,23 @@ impl BrokerUrlParts {
       .rsplit_once(':')
       .map(|(_, written)| written)
       .filter(|written| !written.is_empty() && written.bytes().all(|byte| byte.is_ascii_digit()))
-      .filter(|written| !written.starts_with('0'))
       .and_then(|written| written.parse::<u16>().ok())
+      .filter(|port| *port > 0)
       .unwrap_or_else(|| self.scheme.default_port())
   }
 }
 
 impl fmt::Display for BrokerUrl {
   fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(formatter, "{}://{}:{}{}", self.scheme, self.host, self.port, self.path)
+    if self.host.contains(':') {
+      write!(
+        formatter,
+        "{}://[{}]:{}{}",
+        self.scheme, self.host, self.port, self.path
+      )
+    } else {
+      write!(formatter, "{}://{}:{}{}", self.scheme, self.host, self.port, self.path)
+    }
   }
 }
 

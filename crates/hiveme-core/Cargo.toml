@@ -9,12 +9,13 @@ license.workspace = true
 repository.workspace = true
 
 [features]
+test-support = ["session", "dep:testcontainers", "dep:tempfile"]
 default = []
 # The message history; pulls in the bundled SQLite library.
 storage = ["dep:rusqlite"]
 # The backend both applications run on: broker connection, history, notification
 # rules, the config in memory, and the update check. See docs/specs/session.md.
-session = ["storage", "dep:ureq"]
+session = ["storage", "i18n", "dep:ureq"]
 # The languages of hmc: the catalogs in locales/, plural rules, and formatting. See
 # docs/specs/tui.md, "Languages".
 i18n = []
@@ -26,6 +27,8 @@ cloud-api = []
 websocket = ["rumqttc/websocket"]
 
 [dependencies]
+testcontainers = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
 chrono = { workspace = true }
 hostname = { workspace = true }
 log = { workspace = true }
@@ -43,8 +46,11 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 # The storage, session, and catalog tests need the features the applications turn on.
-hiveme-core = { workspace = true, features = ["i18n", "session"] }
+hiveme-core = { workspace = true, features = ["i18n", "session", "test-support"] }
 tempfile = { workspace = true }
 testcontainers = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-registry = { workspace = true }

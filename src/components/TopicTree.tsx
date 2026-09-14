@@ -58,7 +58,7 @@ export default function TopicTree() {
   // Merge it with the existing root so historical children and counts stay intact.
   const topics = useMemo(() => {
     if (storedTopics.some((node) => node.id === STARTUP_TOPIC)) {
-      return storedTopics.map((node) => node.id === STARTUP_TOPIC ? { ...node, topic: STARTUP_TOPIC } : node);
+      return storedTopics.map((node) => (node.id === STARTUP_TOPIC ? { ...node, topic: STARTUP_TOPIC } : node));
     }
     return [
       { id: STARTUP_TOPIC, label: STARTUP_TOPIC, topic: STARTUP_TOPIC, unread: 0, messages: 0, children: [] },

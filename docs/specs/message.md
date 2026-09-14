@@ -229,7 +229,7 @@ exists so that the envelope and the config do not have to change when it lands.
 
 ### What exists today
 
-- The `Enc`, `EncryptionConfig`, and `KeyEntry` types, included in both schemas.
+- The `Enc`, `Encryption`, and `KeyEntry` types, included in both schemas.
 - A parser that recognizes an encrypted envelope and returns
   `Message { enc: Some(_), payload: None }`.
 - A GUI bubble that renders a lock icon with "encrypted (key k-2026-09)" plus the
@@ -238,3 +238,7 @@ exists so that the envelope and the config do not have to change when it lands.
   shows a snackbar, both saying that encryption is not implemented yet. A half
   configured setup must not silently send plaintext.
 - No cryptography crate is a dependency yet.
+
+The reader tries the typed envelope before falling back to raw JSON. The frontend
+validates payload/header field shapes and respects a stored `json` or `text` tier,
+including JSON numeric spellings whose types cannot be distinguished by JavaScript.

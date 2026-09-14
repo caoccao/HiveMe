@@ -57,14 +57,15 @@ export default function Toolbar() {
   }, [setTabAboutStatus]);
 
   useEffect(() => {
-    const handleKeyUp = (event: KeyboardEvent) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (!event.altKey && !event.ctrlKey && !event.shiftKey && event.key === 'F10') {
+        event.preventDefault();
         event.stopPropagation();
         handleSelectTabSettings();
       }
     };
-    document.addEventListener('keyup', handleKeyUp);
-    return () => document.removeEventListener('keyup', handleKeyUp);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleSelectTabSettings]);
 
   const buttonSx = { width: 28, height: 28, margin: '2px', borderRadius: 1 };

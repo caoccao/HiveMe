@@ -16,7 +16,7 @@
 */
 
 import { describe, expect, it } from 'vitest';
-import { formatBytes, formatDuration, formatHex, formatTime, shrinkTopic } from './format';
+import { formatBytes, formatDuration, formatHex, formatTime } from './format';
 
 describe('formatBytes', () => {
   it('picks the largest unit that keeps the number readable', () => {
@@ -61,15 +61,5 @@ describe('formatHex', () => {
 describe('formatTime', () => {
   it('hands back anything it cannot read, rather than showing "Invalid Date"', () => {
     expect(formatTime('not a timestamp')).toBe('not a timestamp');
-  });
-});
-
-describe('shrinkTopic', () => {
-  it('leaves a topic that fits alone', () => {
-    expect(shrinkTopic('hiveme/info')).toBe('hiveme/info');
-  });
-
-  it('keeps the end of a topic that does not, because that is the specific part', () => {
-    expect(shrinkTopic('hiveme/build/ci/nightly', 10)).toBe('…i/nightly');
   });
 });

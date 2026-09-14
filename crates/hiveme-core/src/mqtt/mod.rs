@@ -47,7 +47,7 @@ use rumqttc::v5::mqttbytes::QoS;
 use rumqttc::v5::mqttbytes::v5::{
   ConnectReturnCode, Filter, Packet, PubAckReason, Publish, PublishProperties, SubscribeReasonCode,
 };
-use rumqttc::v5::{AsyncClient, ConnectionError, Event, EventLoop, MqttOptions};
+use rumqttc::v5::{AsyncClient, ConnectionError, Event, EventLoop, MqttOptions, Request};
 use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
@@ -68,13 +68,10 @@ const REQUEST_CAPACITY: usize = 128;
 /// A graceful shutdown must not wait indefinitely for an unreachable broker.
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// How many received messages may wait for the consumer.
-///
-/// Deep enough that a burst is absorbed, bounded so that a consumer that has stopped
-/// reading cannot grow the process without limit. The event loop drops rather than
-/// blocks when it is full, because blocking there would stop the keep alive and cost
-/// the connection.
-const INCOMING_CAPACITY: usize = 1_024;
+/// Warn when the lossless incoming queue grows beyond this many messages.
+/// Polling must continue to drive acknowledgements and keep alive during disk stalls.
+#[cfg(feature = "session")]
+pub(crate) const INCOMING_HIGH_WATER: usize = 1_024;
 
 /// The quality of service of a publish or a subscription.
 ///
@@ -306,7 +303,7 @@ impl From<PublishProperties> for IncomingProperties {
 /// waiting out the keep alive.
 pub struct MqttClient {
   inner: Arc<Inner>,
-  incoming: Option<mpsc::Receiver<IncomingMessage>>,
+  incoming: Option<mpsc::UnboundedReceiver<IncomingMessage>>,
   task: JoinHandle<()>,
   /// A clean connection with the same identity discards a persistent broker session.
   session_cleanup: Option<MqttOptions>,
@@ -356,7 +353,7 @@ impl MqttClient {
     );
 
     let (client, eventloop) = AsyncClient::new(connection.options.clone(), REQUEST_CAPACITY);
-    let (incoming_tx, incoming_rx) = mpsc::channel(INCOMING_CAPACITY);
+    let (incoming_tx, incoming_rx) = mpsc::unbounded_channel();
     let (status_tx, _) = watch::channel(Status::new(&connection));
 
     let inner = Arc::new(Inner {
@@ -449,7 +446,7 @@ impl MqttClient {
   /// There is one channel, so the first caller gets it and any later caller gets
   /// `None`. `hmc` never asks; `hmg` hands it to the task that stores messages and
   /// raises notifications.
-  pub fn take_incoming(&mut self) -> Option<mpsc::Receiver<IncomingMessage>> {
+  pub fn take_incoming(&mut self) -> Option<mpsc::UnboundedReceiver<IncomingMessage>> {
     self.incoming.take()
   }
 
@@ -493,6 +490,7 @@ impl MqttClient {
     })?;
 
     let receiver = {
+      // Hold ordering across channel backpressure: the FIFO must match accepted requests.
       let _order = self.inner.order.lock().await;
       let (sender, receiver) = oneshot::channel();
       self.inner.pending.lock().unwrap().publishes.push_back(PublishWaiter {
@@ -524,13 +522,10 @@ impl MqttClient {
       Ok(Err(_)) => Err(Error::ConnectionLost(
         "the client stopped before the broker acknowledged the message".to_owned(),
       )),
-      Err(_) => {
-        self.inner.pending.lock().unwrap().prune();
-        Err(Error::PublishTimeout {
-          topic: topic.to_owned(),
-          secs: self.inner.publish_timeout.as_secs(),
-        })
-      }
+      Err(_) => Err(Error::PublishTimeout {
+        topic: topic.to_owned(),
+        secs: self.inner.publish_timeout.as_secs(),
+      }),
     }
   }
 
@@ -745,10 +740,7 @@ impl Inner {
       Ok(Err(_)) => Err(Error::ConnectionLost(
         "the client stopped before the broker acknowledged the subscription".to_owned(),
       )),
-      Err(_) => {
-        self.pending.lock().unwrap().prune();
-        Err(Error::SubscribeTimeout(self.connect_timeout.as_secs()))
-      }
+      Err(_) => Err(Error::SubscribeTimeout(self.connect_timeout.as_secs())),
     }
   }
 
@@ -834,12 +826,20 @@ struct Pending {
 }
 
 impl Pending {
-  /// Forgets the callers that have stopped waiting, for example after a timeout.
-  fn prune(&mut self) {
-    self.publishes.retain(|waiter| !waiter.sender.is_closed());
-    self.publish_acks.retain(|_, waiter| !waiter.sender.is_closed());
-    self.subscriptions.retain(|waiter| !waiter.sender.is_closed());
-    self.subscribe_acks.retain(|_, waiter| !waiter.sender.is_closed());
+  /// Fail only requests rumqttc discarded, preserving requests queued during backoff.
+  fn lost_session(&mut self, publishes: usize, subscriptions: usize) {
+    let mut discarded = Self {
+      publishes: self.publishes.drain(..publishes.min(self.publishes.len())).collect(),
+      subscriptions: self
+        .subscriptions
+        .drain(..subscriptions.min(self.subscriptions.len()))
+        .collect(),
+      publish_acks: std::mem::take(&mut self.publish_acks),
+      subscribe_acks: std::mem::take(&mut self.subscribe_acks),
+      ..Self::default()
+    };
+    self.republishing.clear();
+    discarded.fail_all("the connection dropped and the broker had no session left");
   }
 
   /// A reconnect the broker resumed the session for.
@@ -897,13 +897,31 @@ impl Pending {
 async fn run(
   inner: Arc<Inner>,
   mut eventloop: EventLoop,
-  incoming: mpsc::Sender<IncomingMessage>,
+  incoming: mpsc::UnboundedSender<IncomingMessage>,
   role: Role,
   mut backoff: Backoff,
 ) {
   let reason = loop {
+    // A no-session CONNACK clears only this pending list, not the request channel.
+    let discarded_publishes = eventloop
+      .pending
+      .iter()
+      .filter(|request| matches!(request, Request::Publish(p) if p.pkid == 0))
+      .count();
+    let discarded_subscriptions = eventloop
+      .pending
+      .iter()
+      .filter(|request| matches!(request, Request::Subscribe(_)))
+      .count();
     match eventloop.poll().await {
       Ok(event) => {
+        if matches!(&event, Event::Incoming(Packet::ConnAck(ack)) if !ack.session_present) {
+          inner
+            .pending
+            .lock()
+            .unwrap()
+            .lost_session(discarded_publishes, discarded_subscriptions);
+        }
         if handle(&inner, &incoming, event, role) {
           break None;
         }
@@ -943,7 +961,7 @@ async fn run(
 }
 
 /// Acts on one event. Answers whether the event loop should stop.
-fn handle(inner: &Arc<Inner>, incoming: &mpsc::Sender<IncomingMessage>, event: Event, role: Role) -> bool {
+fn handle(inner: &Arc<Inner>, incoming: &mpsc::UnboundedSender<IncomingMessage>, event: Event, role: Role) -> bool {
   match event {
     Event::Incoming(Packet::ConnAck(ack)) => {
       if ack.code != ConnectReturnCode::Success {
@@ -968,14 +986,6 @@ fn handle(inner: &Arc<Inner>, incoming: &mpsc::Sender<IncomingMessage>, event: E
         let mut pending = inner.pending.lock().unwrap();
         if ack.session_present {
           pending.resuming();
-        } else {
-          // The client holds what it could not send across a drop and puts it back on
-          // the wire when the session comes back. Without the session it throws all of
-          // it away, so every caller still waiting is waiting for nothing.
-          pending.fail_all(
-            "the connection dropped before the broker acknowledged the message, \
-             and the broker had no session left to send it again",
-          );
         }
       }
       inner.set_connected();
@@ -985,12 +995,8 @@ fn handle(inner: &Arc<Inner>, incoming: &mpsc::Sender<IncomingMessage>, event: E
     }
     Event::Incoming(Packet::Publish(publish)) => {
       let message = IncomingMessage::from_publish(publish);
-      if let Err(mpsc::error::TrySendError::Full(message)) = incoming.try_send(message) {
-        let dropped = inner.dropped.fetch_add(1, Ordering::Relaxed) + 1;
-        log::warn!(
-          "the incoming message channel is full, dropped the message on {} ({dropped} so far)",
-          message.topic
-        );
+      if incoming.send(message).is_err() {
+        inner.dropped.fetch_add(1, Ordering::Relaxed);
       }
     }
     Event::Incoming(Packet::PubAck(ack)) => {
@@ -1088,9 +1094,14 @@ fn resubscribe(inner: &Arc<Inner>, role: Role) {
 /// Whether retrying this error could ever work.
 fn is_terminal(error: &ConnectionError) -> bool {
   match error {
-    // A refusal is a decision about the credentials or the client id, and it will be
-    // the same decision next time.
-    ConnectionError::ConnectionRefused(_) => true,
+    ConnectionError::ConnectionRefused(code) => !matches!(
+      code,
+      ConnectReturnCode::ServerBusy
+        | ConnectReturnCode::ServerUnavailable
+        | ConnectReturnCode::ServiceUnavailable
+        | ConnectReturnCode::QuotaExceeded
+        | ConnectReturnCode::ConnectionRateExceeded
+    ),
     // The trust store cannot grow a certificate by being asked again.
     ConnectionError::Tls(_) => true,
     // Whatever answered is not an MQTT broker.
@@ -1445,7 +1456,7 @@ mod tests {
   }
 
   #[test]
-  fn pruning_forgets_the_callers_that_gave_up() {
+  fn timed_out_requests_keep_their_fifo_positions() {
     let mut pending = Pending::default();
     let (sender, receiver) = oneshot::channel();
     pending.publishes.push_back(PublishWaiter {
@@ -1460,8 +1471,76 @@ mod tests {
       sender: kept,
     });
     drop(receiver);
-    pending.prune();
-    assert_eq!(pending.publishes.len(), 1);
-    assert_eq!(pending.publishes[0].topic, "hiveme/warn");
+    assert_eq!(pending.sent(1).unwrap().topic, "hiveme/info");
+    assert_eq!(pending.sent(2).unwrap().topic, "hiveme/warn");
+  }
+  #[test]
+  fn transient_refusals_retry_but_credentials_and_protocol_failures_stop() {
+    for code in [
+      ConnectReturnCode::ServerBusy,
+      ConnectReturnCode::ServerUnavailable,
+      ConnectReturnCode::ServiceUnavailable,
+      ConnectReturnCode::QuotaExceeded,
+      ConnectReturnCode::ConnectionRateExceeded,
+    ] {
+      assert!(!is_terminal(&ConnectionError::ConnectionRefused(code)), "{code:?}");
+    }
+    for code in [
+      ConnectReturnCode::BadUserNamePassword,
+      ConnectReturnCode::NotAuthorized,
+      ConnectReturnCode::Banned,
+      ConnectReturnCode::ClientIdentifierNotValid,
+      ConnectReturnCode::UnsupportedProtocolVersion,
+    ] {
+      assert!(is_terminal(&ConnectionError::ConnectionRefused(code)), "{code:?}");
+    }
+  }
+
+  #[test]
+  fn session_loss_preserves_requests_queued_after_the_disconnect() {
+    let mut pending = Pending::default();
+    let mut discarded = waiting(&mut pending, "discarded", Qos::AtLeastOnce);
+    let mut retained = waiting(&mut pending, "during-backoff", Qos::AtLeastOnce);
+    pending.lost_session(1, 0);
+    assert!(discarded.try_recv().unwrap().is_err());
+    let waiter = pending.sent(2).unwrap();
+    assert_eq!(waiter.topic, "during-backoff");
+    assert!(retained.try_recv().is_err());
+    waiter.sender.send(Ok(())).unwrap();
+    assert!(retained.try_recv().unwrap().is_ok());
+  }
+
+  #[test]
+  fn an_abandoned_inflight_publish_is_still_recognized_on_retransmission() {
+    let mut pending = Pending::default();
+    let abandoned = waiting(&mut pending, "abandoned", Qos::AtLeastOnce);
+    let waiter = pending.sent(1).unwrap();
+    pending.acknowledging(1, waiter);
+    drop(abandoned);
+    let _next = waiting(&mut pending, "next", Qos::AtLeastOnce);
+    pending.resuming();
+    assert!(pending.sent(1).is_none());
+    assert_eq!(pending.sent(2).unwrap().topic, "next");
+  }
+
+  #[tokio::test]
+  async fn a_backlog_larger_than_the_old_capacity_is_delivered_in_order() {
+    let mut config = Config::new_for_this_device();
+    config.broker.url = "mqtt://localhost:1883".to_owned();
+    let client = MqttClient::start_unvalidated(&config, Role::Gui).unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    for i in 0..4096 {
+      let publish = Publish::new("hiveme/backlog", QoS::AtLeastOnce, i.to_string().into_bytes(), None);
+      assert!(!handle(
+        &client.inner,
+        &tx,
+        Event::Incoming(Packet::Publish(publish)),
+        Role::Gui
+      ));
+    }
+    for i in 0..4096 {
+      assert_eq!(rx.try_recv().unwrap().payload, i.to_string().as_bytes());
+    }
+    assert_eq!(client.dropped_messages(), 0);
   }
 }

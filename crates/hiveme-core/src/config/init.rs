@@ -39,8 +39,8 @@ use crate::error::{Error, Result};
 
 /// The version of the setup string this build writes.
 ///
-/// A reader refuses a version it does not know rather than guessing at fields, because
-/// a half understood broker is worse than a clear error.
+/// Readers accept positive future versions when the known fields are valid, ignoring
+/// additional fields they do not understand. Version zero is invalid.
 pub const BROKER_INIT_VERSION: u32 = 1;
 
 /// What applying a setup string did to the shared config file.
@@ -128,6 +128,7 @@ fn merge_changes(target: &mut Value, before: &Value, after: Value) {
 #[serde(default, rename_all = "camelCase")]
 pub struct BrokerInit {
   /// The format version. See [`BROKER_INIT_VERSION`].
+  #[schemars(range(min = 1))]
   pub v: u32,
   /// `<cluster>.s1.eu.hivemq.cloud:8883` for a HiveMQ Cloud cluster, as the console
   /// shows it. A URL that names no scheme is read as TLS MQTT.
@@ -181,13 +182,6 @@ impl BrokerInit {
     }
     let init: Self = serde_json::from_str(trimmed)
       .map_err(|source| Error::BrokerInit(format!("it is not the expected JSON: {source}")))?;
-    if init.v > BROKER_INIT_VERSION {
-      return Err(Error::BrokerInit(format!(
-        "it is version {} and this build of HiveMe reads version {BROKER_INIT_VERSION}; \
-         update HiveMe, or copy the string again from a matching version of hmg",
-        init.v
-      )));
-    }
     init.validate()?;
     Ok(init)
   }
@@ -201,24 +195,10 @@ impl BrokerInit {
 
   /// Rejects a string the applications could not act on.
   pub fn validate(&self) -> Result<()> {
-    let mut issues = Vec::new();
-    match super::BrokerUrl::parse(&self.url) {
-      Ok(url) => {
-        if url.is_hivemq_cloud() && !url.scheme.is_secure() {
-          issues.push(format!(
-            "url uses {} but HiveMQ Cloud accepts TLS only, use mqtts",
-            url.scheme
-          ));
-        }
-      }
-      Err(reason) => issues.push(format!("url: {reason}")),
+    if self.v == 0 {
+      return Err(Error::BrokerInit("version must be a positive integer".to_owned()));
     }
-    if self.username.trim().is_empty() {
-      issues.push("username is empty".to_owned());
-    }
-    if self.password.is_empty() {
-      issues.push("password is empty".to_owned());
-    }
+    let issues = super::login_issues(&self.url, &self.username, !self.password.is_empty(), "");
     if issues.is_empty() {
       Ok(())
     } else {
@@ -275,7 +255,7 @@ pub fn json_schema() -> serde_json::Value {
   if let Some(object) = schema.as_object_mut() {
     object.insert(
       "$id".to_owned(),
-      serde_json::Value::String("https://github.com/caoccao/HiveMe/schemas/broker-init.schema.json".to_owned()),
+      serde_json::Value::String("https://hiveme.dev/schemas/broker-init/v1.json".to_owned()),
     );
     object.insert(
       "title".to_owned(),
@@ -288,6 +268,25 @@ pub fn json_schema() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn setup_version_zero_is_rejected() {
+    let mut setup = cloud();
+    setup.v = 0;
+    assert!(setup.validate().is_err());
+    assert!(BrokerInit::parse(&setup.to_json()).is_err());
+  }
+
+  #[test]
+  fn setup_and_config_share_login_validation() {
+    let mut setup = cloud();
+    setup.url = "ws://abc.hivemq.cloud".to_owned();
+    let error = setup.validate().unwrap_err().to_string();
+    assert!(error.contains("use mqtts or wss"));
+    let mut config = Config::new_for_this_device();
+    setup.apply_to(&mut config);
+    assert!(config.validate().unwrap_err().to_string().contains("use mqtts or wss"));
+  }
 
   fn cloud() -> BrokerInit {
     BrokerInit {
@@ -562,10 +561,21 @@ mod tests {
   }
 
   #[test]
-  fn a_string_from_a_newer_build_is_refused_rather_than_guessed_at() {
-    let json = r#"{"v":2,"url":"mqtts://a.s1.eu.hivemq.cloud:8883","username":"u","password":"p"}"#;
-    let error = BrokerInit::parse(json).unwrap_err();
-    assert!(error.to_string().contains("version 2"), "{error}");
+  fn a_future_setup_accepts_known_fields_and_ignores_extensions() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("HiveMe.json");
+    for version in [2, 99, u32::MAX] {
+      let json = serde_json::json!({"v": version, "url": "mqtts://a.s1.eu.hivemq.cloud:8883",
+        "username": "u", "password": "p", "language": "ja", "futureOption": {"enabled": true}});
+      let setup = BrokerInit::parse(&json.to_string()).unwrap();
+      assert_eq!(setup.v, version);
+      let (file, _) = ConfigFile::initialize(&path, &setup).unwrap();
+      assert_eq!(file.config().broker.username, "u");
+      assert_eq!(file.config().gui.language, "ja");
+      assert!(file.config().broker.url.starts_with("mqtts://a."));
+    }
+    // Forward compatibility does not make malformed known fields usable.
+    assert!(BrokerInit::parse(r#"{"v":2,"url":false,"username":"u","password":"p"}"#).is_err());
   }
 
   #[test]

@@ -221,10 +221,6 @@ More detail lives in [specs/hivemq-cloud.md](specs/hivemq-cloud.md) and
 
 * The Cargo target directory is the repository root `target/`, because `src-tauri` is
   a workspace member rather than a standalone package.
-* `src-tauri` is a workspace member, which is why the target directory is the
-  repository root `target/` rather than `src-tauri/target/`. It used to be commented
-  out in
-  `Cargo.toml` so that `cargo build --workspace` succeeds.
 * `schemas/` and `src/generated/` are generated and committed. Never edit them by
   hand.
 * Everything `hmg` does between the broker and the window is the shared session in
@@ -439,3 +435,7 @@ themselves untouched: `codesign --verify` still passes on both.
 * [Zustand](https://zustand.docs.pmnd.rs/)
 * [react-i18next](https://react.i18next.com/)
 * [Vite](https://vite.dev/)
+
+Frontend checks: `pnpm lint` enforces TypeScript and React hook rules;
+`pnpm format:check` verifies Prettier formatting (`pnpm format` applies it).
+The Docker suites share `hiveme_core::test_support`, enabled only for tests.

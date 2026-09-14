@@ -202,9 +202,9 @@ impl Config {
     if self.topics.subscriptions.is_empty() {
       issues.push("topics.subscriptions is empty, hmg would receive nothing".to_owned());
     }
-    for subscription in &self.topics.subscriptions {
+    for (index, subscription) in self.topics.subscriptions.iter().enumerate() {
       if let Err(reason) = crate::topic::validate_filter(subscription.filter()) {
-        issues.push(format!("topics.subscriptions: {reason}"));
+        issues.push(format!("topics.subscriptions[{index}]: {reason}"));
       }
     }
 
@@ -235,27 +235,12 @@ impl Config {
 
   /// What would stop the CONNECT packet being sent at all.
   fn login_issues(&self) -> Vec<String> {
-    let mut issues = Vec::new();
-    match BrokerUrl::parse(&self.broker.url) {
-      Ok(url) => {
-        if url.is_hivemq_cloud() && !url.scheme.is_secure() {
-          issues.push(format!(
-            "broker.url uses {} but HiveMQ Cloud accepts TLS only, use mqtts or wss",
-            url.scheme
-          ));
-        }
-      }
-      Err(reason) => issues.push(format!("broker.url: {reason}")),
-    }
-    if self.broker.username.trim().is_empty() {
-      issues.push("broker.username is empty".to_owned());
-    }
-    if self.broker.password.is_empty() && self.broker.password_ref.is_none() && var(PASSWORD_VARIABLE).is_none() {
-      issues.push(format!(
-        "broker.password is empty, set it, set broker.passwordRef, or set {PASSWORD_VARIABLE}"
-      ));
-    }
-    issues
+    login_issues(
+      &self.broker.url,
+      &self.broker.username,
+      !self.broker.password.is_empty() || self.broker.password_ref.is_some() || var(PASSWORD_VARIABLE).is_some(),
+      "broker.",
+    )
   }
 
   /// A copy safe to log or to show in a bug report.
@@ -287,7 +272,7 @@ impl Config {
     self.resolve_topic("")
   }
 
-  /// The absolute filters `hmg` subscribes to.
+  /// The absolute filters `hmg` and interactive `hmc` subscribe to.
   pub fn subscription_filters(&self) -> Vec<String> {
     self
       .topics
@@ -307,13 +292,7 @@ impl Config {
     } else {
       self.broker.client_id_prefix.trim()
     };
-    let device: String = self
-      .device
-      .id
-      .chars()
-      .filter(|c| c.is_ascii_alphanumeric())
-      .take(8)
-      .collect();
+    let device: String = self.device.id.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
     let base = format!("{prefix}-{app}-{device}");
     if unique {
       let suffix = uuid::Uuid::now_v7().simple().to_string();
@@ -322,6 +301,26 @@ impl Config {
       base
     }
   }
+}
+
+/// Shared login validation for settings and portable setup strings.
+fn login_issues(url: &str, username: &str, has_password: bool, prefix: &str) -> Vec<String> {
+  let mut issues = Vec::new();
+  match BrokerUrl::parse(url) {
+    Ok(url) if url.is_hivemq_cloud() && !url.scheme.is_secure() => issues.push(format!(
+      "{prefix}url uses {} but HiveMQ Cloud accepts TLS only, use mqtts or wss",
+      url.scheme
+    )),
+    Ok(_) => {}
+    Err(reason) => issues.push(format!("{prefix}url: {reason}")),
+  }
+  if username.trim().is_empty() {
+    issues.push(format!("{prefix}username is empty"));
+  }
+  if !has_password {
+    issues.push(format!("{prefix}password is empty"));
+  }
+  issues
 }
 
 /// This installation's identity.
@@ -362,7 +361,7 @@ pub struct Broker {
   /// The first segment of the MQTT client identifier.
   pub client_id_prefix: String,
   pub keep_alive_secs: u16,
-  /// `hmg` only. `hmc` always connects with a clean start and no session.
+  /// `hmg` and interactive `hmc`. One-shot `hmc` uses a clean start and no session.
   pub session_expiry_secs: u32,
   pub connect_timeout_secs: u64,
   pub tls: Tls,
@@ -442,7 +441,7 @@ impl Default for Tls {
   }
 }
 
-/// Exponential backoff for the `hmg` connection.
+/// Exponential backoff for `hmg` and interactive `hmc`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Reconnect {
@@ -463,7 +462,7 @@ impl Default for Reconnect {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Topics {
-  /// What `hmg` subscribes to, relative to `hiveme`.
+  /// What `hmg` and interactive `hmc` subscribe to, relative to `hiveme`.
   pub subscriptions: Vec<Subscription>,
 }
 
@@ -984,6 +983,12 @@ impl ConfigFile {
           file.save()?;
           return Ok((file, true));
         }
+        if file.config.device.id.trim().is_empty() && file.is_read_only() {
+          log::warn!(
+            "{} has no device.id; identity repair was skipped because its version is newer than this build",
+            path.display()
+          );
+        }
         Ok((file, false))
       }
       Err(Error::ConfigNotFound(_)) => {
@@ -1165,15 +1170,27 @@ fn write_atomically(path: &Path, text: &str) -> Result<()> {
       path: path.to_path_buf(),
       source,
     }
+  })?;
+  #[cfg(unix)]
+  std::fs::File::open(if directory.as_os_str().is_empty() {
+    Path::new(".")
+  } else {
+    directory
   })
+  .and_then(|directory| directory.sync_all())
+  .map_err(|source| Error::ConfigWrite {
+    path: directory.to_path_buf(),
+    source,
+  })?;
+  Ok(())
 }
 
-/// The JSON schema of the config, as `cargo xtask schema` writes it.
 /// The JSON schema of the setup string, written to `schemas/broker-init.schema.json`.
 pub fn broker_init_json_schema() -> Value {
   init::json_schema()
 }
 
+/// The JSON schema of the config, as `cargo xtask schema` writes it.
 pub fn json_schema() -> Value {
   let mut schema = serde_json::to_value(schemars::schema_for!(Config)).expect("the config schema serializes");
   if let Some(object) = schema.as_object_mut() {

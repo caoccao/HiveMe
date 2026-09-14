@@ -111,7 +111,9 @@ describe('the port a URL will use', () => {
   });
 
   it('is the protocol default when the URL carries none, which is why it is shown', () => {
-    expect(effectivePort({ protocol: BrokerProtocol.Mqtts, address: CONSOLE.mqtt })).toBe(defaultPort(BrokerProtocol.Mqtts));
+    expect(effectivePort({ protocol: BrokerProtocol.Mqtts, address: CONSOLE.mqtt })).toBe(
+      defaultPort(BrokerProtocol.Mqtts)
+    );
     expect(effectivePort({ protocol: BrokerProtocol.Mqtt, address: CONSOLE.mqtt })).toBe(1883);
     expect(effectivePort({ protocol: BrokerProtocol.Wss, address: 'host/mqtt' })).toBe(8884);
     expect(effectivePort({ protocol: BrokerProtocol.Ws, address: 'host' })).toBe(8083);

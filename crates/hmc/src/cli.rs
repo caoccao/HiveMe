@@ -36,10 +36,13 @@ use hiveme_core::i18n::{Locale, t, t_with};
 use crate::failure::{Failure, Result};
 
 /// The levels `--level` accepts, which are the ones `hiveme_core::Level` knows.
-const LEVELS: [&str; 5] = ["debug", "info", "success", "warn", "error"];
+fn known_levels() -> impl Iterator<Item = &'static str> {
+  static LEVELS: [hiveme_core::Level; 5] = hiveme_core::Level::known();
+  LEVELS.iter().map(hiveme_core::Level::as_str)
+}
 
 /// Each argument of [`Cli`] and the `help.*` key that describes it.
-const ARGUMENT_HELP: [(&str, &str); 11] = [
+const ARGUMENT_HELP: [(&str, &str); 12] = [
   ("message", "help.message"),
   ("init", "help.init"),
   ("tui", "help.tui"),
@@ -49,6 +52,7 @@ const ARGUMENT_HELP: [(&str, &str); 11] = [
   ("level", "help.level"),
   ("qos", "help.qos"),
   ("retain", "help.retain"),
+  ("no_retain", "help.noRetain"),
   ("config", "help.config"),
   ("verbose", "help.verbose"),
 ];
@@ -67,11 +71,11 @@ pub struct Cli {
   pub message: Option<String>,
 
   /// Initialize the shared config from a setup string, then exit
-  #[arg(long, value_name = "JSON", conflicts_with_all = ["message", "topic", "json", "title", "level", "qos", "retain"])]
+  #[arg(long, value_name = "JSON", conflicts_with_all = ["message", "topic", "json", "title", "level", "qos", "retain", "no_retain"])]
   pub init: Option<String>,
 
   /// Open the terminal UI, even when stdin is not a terminal
-  #[arg(long, conflicts_with_all = ["message", "init", "topic", "json", "title", "level", "qos", "retain"])]
+  #[arg(long, conflicts_with_all = ["message", "init", "topic", "json", "title", "level", "qos", "retain", "no_retain"])]
   pub tui: bool,
 
   /// Topic relative to hiveme; leading slashes are ignored [default: hiveme]
@@ -87,7 +91,7 @@ pub struct Cli {
   pub title: Option<String>,
 
   /// debug | info | success | warn | error [default: info; independent of topic]
-  #[arg(short = 'l', long, value_name = "LEVEL", value_parser = PossibleValuesParser::new(LEVELS).map(|level| level.to_ascii_lowercase()), ignore_case = true, hide_possible_values = true)]
+  #[arg(short = 'l', long, value_name = "LEVEL", value_parser = PossibleValuesParser::new(known_levels()).map(|level| level.to_ascii_lowercase()), ignore_case = true, hide_possible_values = true)]
   pub level: Option<String>,
 
   /// 0 | 1 | 2 [default: publish.qos]
@@ -97,6 +101,10 @@ pub struct Cli {
   /// Set the retain flag
   #[arg(short = 'r', long)]
   pub retain: bool,
+
+  /// Clear the retain flag
+  #[arg(long, conflicts_with = "retain")]
+  pub no_retain: bool,
 
   /// Config file path
   #[arg(short = 'c', long, value_name = "PATH")]
@@ -115,6 +123,10 @@ pub struct Body {
 }
 
 impl Cli {
+  pub fn retained(&self, default: bool) -> bool {
+    !self.no_retain && (self.retain || default)
+  }
+
   /// Whether this run opens the terminal UI rather than publishing.
   ///
   /// `--tui` always does. Otherwise the command line has to be empty of everything a
@@ -130,7 +142,8 @@ impl Cli {
         && self.title.is_none()
         && self.level.is_none()
         && self.qos.is_none()
-        && !self.retain)
+        && !self.retain
+        && !self.no_retain)
   }
 
   /// Parses the command line, printing help, the version, or a usage error in
@@ -529,7 +542,7 @@ mod tests {
   fn a_level_the_message_format_does_not_define_is_refused() {
     let error = parse(&["hmc", "-l", "critical", "boom"]).unwrap_err();
     assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
-    for level in LEVELS {
+    for level in known_levels() {
       for input in [
         level.to_owned(),
         level.to_uppercase(),

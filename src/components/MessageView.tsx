@@ -15,7 +15,7 @@
 * limitations under the License.
 */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, ButtonGroup, Chip, Menu, MenuItem, Tooltip, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -67,7 +67,11 @@ export function JsonTree({ value, name, depth = 0 }: { value: unknown; name?: st
   if (!isBranch) {
     return (
       <Box sx={{ display: 'flex', gap: 0.5, pl: depth * 1.5, fontFamily: 'monospace', fontSize: '0.72rem' }}>
-        {name !== undefined && <Box component="span" sx={{ opacity: 0.7 }}>{name}:</Box>}
+        {name !== undefined && (
+          <Box component="span" sx={{ opacity: 0.7 }}>
+            {name}:
+          </Box>
+        )}
         <Box component="span">{JSON.stringify(value)}</Box>
       </Box>
     );
@@ -89,8 +93,7 @@ export function JsonTree({ value, name, depth = 0 }: { value: unknown; name?: st
           {Array.isArray(value) ? `[${entries.length}]` : `{${entries.length}}`}
         </Box>
       </Box>
-      {open &&
-        entries.map(([key, item]) => <JsonTree key={key} name={key} value={item} depth={depth + 1} />)}
+      {open && entries.map(([key, item]) => <JsonTree key={key} name={key} value={item} depth={depth + 1} />)}
     </Box>
   );
 }
@@ -106,9 +109,7 @@ export function Bubble({ row, selectedTopic }: { row: Protocol.MessageRow; selec
   const payload = envelope ? payloadOf(envelope) : null;
   const sender = envelope ? senderOf(envelope) : null;
   const name = row.outgoing ? '' : senderLabel(sender);
-  const relativeTopic = row.topic === selectedTopic ? ''
-    : row.topic.startsWith(selectedTopic + '/') ? row.topic.slice(selectedTopic.length + 1)
-    : row.topic;
+  const relativeTopic = relativeTopicOf(row.topic, selectedTopic);
   const level = displayedLevel(row.level);
   const severity = levelColor(level);
 
@@ -136,8 +137,22 @@ export function Bubble({ row, selectedTopic }: { row: Protocol.MessageRow; selec
         }}
       >
         {name && (
-          <Box component="header" sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 0.75, px: 2.5, mb: 0.5, color: 'text.secondary', overflowWrap: 'anywhere' }}>
-            <Typography variant="caption" sx={{ fontWeight: 600 }}>{name}</Typography>
+          <Box
+            component="header"
+            sx={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'baseline',
+              gap: 0.75,
+              px: 2.5,
+              mb: 0.5,
+              color: 'text.secondary',
+              overflowWrap: 'anywhere',
+            }}
+          >
+            <Typography variant="caption" sx={{ fontWeight: 600 }}>
+              {name}
+            </Typography>
           </Box>
         )}
         <Box
@@ -152,11 +167,14 @@ export function Bubble({ row, selectedTopic }: { row: Protocol.MessageRow; selec
             lineHeight: 1.6,
             overflowWrap: 'anywhere',
             '& .MuiTypography-body2': { fontSize: 'inherit', lineHeight: 'inherit' },
-            bgcolor: severity === 'default'
-              ? row.outgoing
-                ? theme.palette.mode === 'dark' ? theme.palette.grey[800] : theme.palette.common.black
-                : 'action.hover'
-              : alpha(theme.palette[severity].main, theme.palette.mode === 'dark' ? 0.24 : 0.12),
+            bgcolor:
+              severity === 'default'
+                ? row.outgoing
+                  ? theme.palette.mode === 'dark'
+                    ? theme.palette.grey[800]
+                    : theme.palette.common.black
+                  : 'action.hover'
+                : alpha(theme.palette[severity].main, theme.palette.mode === 'dark' ? 0.24 : 0.12),
             color: severity === 'default' && row.outgoing ? 'common.white' : 'text.primary',
           })}
         >
@@ -221,7 +239,11 @@ export function Bubble({ row, selectedTopic }: { row: Protocol.MessageRow; selec
           }}
         >
           {relativeTopic && (
-            <Typography className="message-topic" variant="caption" sx={{ color: 'text.disabled', overflowWrap: 'anywhere', minWidth: 0 }}>
+            <Typography
+              className="message-topic"
+              variant="caption"
+              sx={{ color: 'text.disabled', overflowWrap: 'anywhere', minWidth: 0 }}
+            >
               {relativeTopic}
             </Typography>
           )}
@@ -259,10 +281,7 @@ export function Bubble({ row, selectedTopic }: { row: Protocol.MessageRow; selec
             sx={{ '& .MuiButton-root': { minWidth: 24, p: '2px 4px', borderColor: 'divider' } }}
           >
             <Tooltip title={t('messages.copyBody')}>
-              <Button
-                aria-label={t('messages.copyBody')}
-                onClick={() => copy(row.body, t('messages.copiedBody'))}
-              >
+              <Button aria-label={t('messages.copyBody')} onClick={() => copy(row.body, t('messages.copiedBody'))}>
                 <ContentCopyOutlinedIcon sx={{ fontSize: 16 }} />
               </Button>
             </Tooltip>
@@ -287,12 +306,18 @@ export function Bubble({ row, selectedTopic }: { row: Protocol.MessageRow; selec
           transformOrigin={{ vertical: 'top', horizontal: 'right' }}
           slotProps={{ list: { disablePadding: true }, paper: { sx: { border: 1, borderColor: 'divider' } } }}
         >
-          <MenuItem divider onClick={() => copy(row.body, t('messages.copiedBody'))}>{t('messages.copyBody')}</MenuItem>
+          <MenuItem divider onClick={() => copy(row.body, t('messages.copiedBody'))}>
+            {t('messages.copyBody')}
+          </MenuItem>
           <MenuItem onClick={() => copy(row.raw, t('messages.copiedJson'))}>{t('messages.copyJson')}</MenuItem>
         </Menu>
       </Box>
     </Box>
   );
+}
+
+export function relativeTopicOf(topic: string, selected: string): string {
+  return topic === selected ? '' : topic.startsWith(selected + '/') ? topic.slice(selected.length + 1) : topic;
 }
 
 export default function MessageView() {
@@ -306,9 +331,11 @@ export default function MessageView() {
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
+  const prependRef = useRef<{ topic: string; first: number; offset: number; total: number } | null>(null);
 
   const virtualizer = useVirtualizer({
     count: messages.length,
+    getItemKey: (index) => messages[index].rowId,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 88,
     overscan: 8,
@@ -322,9 +349,31 @@ export default function MessageView() {
     const distanceToBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
     stickRef.current = distanceToBottom <= STICK_THRESHOLD_PX;
     if (element.scrollTop <= LOAD_OLDER_THRESHOLD_PX && hasOlder && selectedTopic) {
+      const first = messages[0]?.rowId;
+      if (first !== undefined)
+        prependRef.current = {
+          topic: selectedTopic,
+          first,
+          offset: element.scrollTop,
+          total: virtualizer.getTotalSize(),
+        };
       loadOlderMessages(selectedTopic);
     }
-  }, [hasOlder, loadOlderMessages, selectedTopic]);
+  }, [hasOlder, loadOlderMessages, selectedTopic, messages, virtualizer]);
+
+  useLayoutEffect(() => {
+    const anchor = prependRef.current;
+    if (!anchor) return;
+    if (anchor.topic !== selectedTopic) {
+      prependRef.current = null;
+      return;
+    }
+    if (messages.findIndex((row) => row.rowId === anchor.first) > 0) {
+      virtualizer.scrollToOffset(anchor.offset + virtualizer.getTotalSize() - anchor.total);
+      prependRef.current = null;
+      stickRef.current = false;
+    } else if (!hasOlder) prependRef.current = null;
+  }, [messages, selectedTopic, hasOlder, virtualizer]);
 
   // New messages scroll into view only while the user is at the bottom; someone
   // reading older history is not dragged away from it.
@@ -374,7 +423,13 @@ export default function MessageView() {
                   key={row.rowId}
                   data-index={item.index}
                   ref={virtualizer.measureElement}
-                  sx={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${item.start}px)` }}
+                  sx={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${item.start}px)`,
+                  }}
                 >
                   {showDay && (
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center' }}>

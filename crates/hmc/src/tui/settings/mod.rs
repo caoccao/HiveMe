@@ -311,15 +311,35 @@ impl<S: Service> App<S> {
   pub fn settings_typing(&self) -> bool {
     match self.settings.focus {
       Focus::Field(field) => {
-        self.settings.popup.is_none() && matches!(self.settings_form().kind(field), Some(Kind::Input { .. }))
+        self.settings.popup.is_none()
+          && matches!(
+            field,
+            Field::Url
+              | Field::Username
+              | Field::Password
+              | Field::ClientIdPrefix
+              | Field::KeepAlive
+              | Field::SessionExpiry
+              | Field::ConnectTimeout
+              | Field::InitialDelay
+              | Field::MaxDelay
+              | Field::SubscriptionFilter(_)
+              | Field::RuleId(_)
+              | Field::RuleTopic(_)
+              | Field::RuleTitle(_)
+              | Field::RuleBody(_)
+              | Field::MaxMessagesPerTopic
+              | Field::RetentionDays
+          )
       }
       Focus::Categories => false,
     }
   }
 
   /// Fills the text fields of the panel from the config where it holds something new.
-  fn sync_settings_inputs(&mut self) {
-    for field in self.settings_form().inputs() {
+  fn sync_settings_inputs(&mut self) -> Form {
+    let form = self.settings_form();
+    for field in form.inputs() {
       let value = match field {
         Field::Url => self.config.broker.url.clone(),
         _ => text_value(&self.config, field).unwrap_or_default(),
@@ -347,6 +367,7 @@ impl<S: Service> App<S> {
         },
       );
     }
+    form
   }
 
   /// A text field changed: the config follows it.
@@ -420,7 +441,12 @@ impl<S: Service> App<S> {
 
   /// A key or a click in the Settings tab.
   pub(in crate::tui) fn perform_settings(&mut self, action: Action, now: Instant) {
-    self.sync_settings_inputs();
+    let form = self.sync_settings_inputs();
+    let structure = (
+      self.settings.category,
+      self.config.topics.subscriptions.len(),
+      self.config.notifications.rules.len(),
+    );
     if let (Some(highlighted), Focus::Field(field)) = (self.settings.popup, self.settings.focus) {
       let last = self.settings_choices(field).0.len().saturating_sub(1);
       let page = usize::from(self.settings.viewport.0.max(2) - 1);
@@ -459,7 +485,6 @@ impl<S: Service> App<S> {
       }
     }
 
-    let form = self.settings_form();
     let fields = form.fields();
     let position = |field: Field| fields.iter().position(|candidate| *candidate == field);
     match (self.settings.focus, action) {
@@ -552,8 +577,18 @@ impl<S: Service> App<S> {
     }
 
     // A row that was removed takes its focus with it.
+    let changed_structure = structure
+      != (
+        self.settings.category,
+        self.config.topics.subscriptions.len(),
+        self.config.notifications.rules.len(),
+      );
     if let Focus::Field(field) = self.settings.focus
-      && self.settings_form().kind(field).is_none()
+      && (if changed_structure {
+        self.settings_form().kind(field).is_none()
+      } else {
+        form.kind(field).is_none()
+      })
     {
       self.settings.focus = Focus::Categories;
     }
@@ -625,7 +660,7 @@ fn toggle(config: &mut Config, field: Field) {
 
 /// Draws the Settings tab.
 pub fn render<S: Service>(app: &mut App<S>, frame: &mut Frame, area: Rect) {
-  app.sync_settings_inputs();
+  let form = app.sync_settings_inputs();
   let locale = app.locale;
   let theme = app.theme;
   let labels: Vec<String> = Category::ALL
@@ -676,7 +711,6 @@ pub fn render<S: Service>(app: &mut App<S>, frame: &mut Frame, area: Rect) {
     return;
   }
 
-  let form = app.settings_form();
   let layout = form::layout(&form, inner.width, &app.glyphs);
   let state = &mut app.settings;
   state.viewport = (inner.height, layout.height);
@@ -835,5 +869,38 @@ mod tests {
     assert!(is_broker_usable(&config));
     config.broker.url = "  ".to_owned();
     assert!(!is_broker_usable(&config));
+  }
+  #[test]
+  fn ui_twins_match_the_frontend_fixture() {
+    let cases: serde_json::Value =
+      serde_json::from_str(include_str!("../../../../hiveme-core/tests/fixtures/ui_twins.json")).unwrap();
+    for (name, colors) in cases["palettes"].as_object().unwrap() {
+      let theme = serde_json::from_value(serde_json::Value::String(name.clone())).unwrap();
+      let (primary, secondary) = crate::tui::theme::palette(theme);
+      for (actual, expected) in [(primary, &colors["primary"]), (secondary, &colors["secondary"])] {
+        let ratatui::style::Color::Rgb(r, g, b) = actual else {
+          panic!("RGB palette");
+        };
+        assert_eq!(format!("#{r:02x}{g:02x}{b:02x}"), expected.as_str().unwrap());
+      }
+    }
+    for (tag, label) in cases["languages"].as_object().unwrap() {
+      assert_eq!(
+        appearance::autonym(hiveme_core::i18n::Locale::resolve(tag)),
+        label.as_str().unwrap()
+      );
+    }
+    for item in cases["setup"].as_array().unwrap() {
+      assert_eq!(
+        cli_setup_command(item["json"].as_str().unwrap()),
+        item["command"].as_str().unwrap()
+      );
+    }
+    for item in cases["topics"].as_array().unwrap() {
+      assert_eq!(
+        crate::tui::messages::relative_topic(item["topic"].as_str().unwrap(), item["selected"].as_str().unwrap()),
+        item["relative"].as_str().unwrap()
+      );
+    }
   }
 }

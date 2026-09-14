@@ -109,8 +109,8 @@ export default function About() {
             <Card elevation={0} sx={{ ...cardSx, flex: 1, minWidth: 0 }}>
               <CardActionArea onClick={() => openUrl(GITHUB_URL)} sx={{ height: '100%' }}>
                 <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Avatar sx={{ bgcolor: '#24292f', width: 48, height: 48 }}>
-                    <GitHubIcon sx={{ color: '#fff' }} />
+                  <Avatar sx={{ bgcolor: 'grey.900', width: 48, height: 48 }}>
+                    <GitHubIcon sx={{ color: 'common.white' }} />
                   </Avatar>
                   <Box sx={{ minWidth: 0, flex: 1 }}>
                     <Typography variant="caption" color="text.secondary" sx={labelSx}>

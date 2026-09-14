@@ -382,6 +382,11 @@ fn every_validation_rule_rejects_its_own_mistake() {
       |c: &mut Config| c.topics.subscriptions = vec![Subscription::Relative("a/#/b".to_owned())],
       "topics.subscriptions",
     ),
+    case(
+      "a keep alive below five seconds",
+      |c: &mut Config| c.broker.keep_alive_secs = 4,
+      "broker.keepAliveSecs",
+    ),
     case("a QoS above 2", |c: &mut Config| c.publish.qos = 3, "publish.qos"),
     case(
       "two rules with one id",
@@ -619,8 +624,11 @@ fn the_two_applications_get_different_client_identifiers() {
   let config = valid();
   let gui = config.client_id("hmg", false);
   let cli = config.client_id("hmc", true);
-  assert_eq!(gui, "hiveme-hmg-0f7a1c2e");
-  assert!(cli.starts_with("hiveme-hmc-0f7a1c2e-"), "{cli}");
+  assert_eq!(gui, format!("hiveme-hmg-{}", config.device.id.replace('-', "")));
+  assert!(
+    cli.starts_with(&format!("hiveme-hmc-{}-", config.device.id.replace('-', ""))),
+    "{cli}"
+  );
   assert_ne!(cli, config.client_id("hmc", true), "each run gets its own identifier");
   assert_eq!(gui, config.client_id("hmg", false), "the GUI identifier is stable");
 }
@@ -754,5 +762,66 @@ fn temporarily_set(name: &str, value: Option<&str>, body: impl FnOnce()) {
       Some(previous) => std::env::set_var(name, previous),
       None => std::env::remove_var(name),
     }
+  }
+}
+
+#[test]
+fn client_ids_distinguish_existing_uuid_v7_devices_with_the_same_timestamp() {
+  let mut a = valid();
+  a.device.id = "01993abc-1234-7000-8000-000000000001".to_owned();
+  let mut b = a.clone();
+  b.device.id = "01993abc-1234-7000-8000-000000000002".to_owned();
+  assert_ne!(a.client_id("hmg", false), b.client_id("hmg", false));
+  assert_ne!(
+    Config::new_for_this_device().client_id("hmg", false),
+    Config::new_for_this_device().client_id("hmg", false)
+  );
+}
+
+#[test]
+fn malformed_versions_are_migration_errors() {
+  for version in [
+    serde_json::json!("1"),
+    serde_json::json!(-1),
+    serde_json::json!(4294967297_u64),
+    serde_json::Value::Null,
+  ] {
+    let text = serde_json::json!({"version": version}).to_string();
+    assert!(matches!(
+      ConfigFile::from_text(Path::new("unused.json"), &text),
+      Err(hiveme_core::Error::ConfigMigrate { .. })
+    ));
+  }
+}
+
+#[test]
+fn subscription_errors_identify_the_row() {
+  let mut config = valid();
+  config
+    .topics
+    .subscriptions
+    .push(Subscription::Relative("a/#/b".to_owned()));
+  assert!(
+    config
+      .validate()
+      .unwrap_err()
+      .to_string()
+      .contains("topics.subscriptions[1]")
+  );
+}
+
+#[test]
+fn bracketed_ipv6_urls_round_trip_with_default_and_explicit_ports() {
+  for (text, port) in [
+    ("mqtt://[::1]", 1883),
+    ("mqtt://[::1]:08883", 8883),
+    ("ws://[2001:db8::1]/mqtt", 8083),
+  ] {
+    let url = hiveme_core::config::BrokerUrl::parse(text).unwrap();
+    assert_eq!(url.port, port);
+    assert_eq!(hiveme_core::config::BrokerUrl::parse(&url.to_string()).unwrap(), url);
+  }
+  for text in ["mqtt://::1", "mqtt://[bad]", "mqtt://[::1]x", "mqtt://[::1"] {
+    assert!(hiveme_core::config::BrokerUrl::parse(text).is_err(), "{text}");
   }
 }

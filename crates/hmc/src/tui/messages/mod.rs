@@ -30,6 +30,8 @@ mod topic_tree;
 
 pub use composer::{ComposerState, Control};
 pub use message_view::ViewState;
+#[cfg(test)]
+pub use message_view::relative_topic;
 pub use topic_tree::TreeState;
 
 use std::time::Instant;
@@ -292,7 +294,7 @@ impl<S: Service> App<S> {
 pub fn render<S: Service>(app: &mut App<S>, frame: &mut Frame, area: Rect) {
   app.messages_tab.area = area;
   let theme = app.theme;
-  let left_width = area.width * app.messages_tab.split / 100;
+  let left_width = (u32::from(area.width) * u32::from(app.messages_tab.split) / 100) as u16;
   let left = Rect::new(area.x, area.y, left_width, area.height);
   let right = Rect::new(area.x + left_width, area.y, area.width - left_width, area.height);
   topic_tree::render(app, frame, left);

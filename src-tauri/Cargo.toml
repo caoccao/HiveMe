@@ -40,7 +40,6 @@ tokio = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 tauri-winrt-notification = { workspace = true }
-windows-registry = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

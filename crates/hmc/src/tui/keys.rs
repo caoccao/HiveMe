@@ -156,6 +156,9 @@ pub fn action(key: KeyEvent, context: Context) -> Option<Action> {
     match key.code {
       KeyCode::Char('q' | 'Q' | 'c' | 'C') => return Some(Action::Quit),
       KeyCode::Char('w' | 'W') => return Some(Action::CloseCurrentTab),
+      KeyCode::Char('h' | 'H') if context.typing => {
+        return Some(Action::Edit(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE)));
+      }
       KeyCode::Char('h' | 'H') => return Some(Action::TogglePassword),
       KeyCode::Char('/') => return Some(Action::Help),
       // Without the keyboard protocol `Ctrl+/` is the byte 0x1F, which crossterm reads
@@ -383,9 +386,15 @@ mod tests {
   }
 
   #[test]
-  fn ctrl_h_shows_or_hides_the_password() {
+  fn ctrl_h_deletes_in_text_and_toggles_the_password_while_browsing() {
+    for letter in ['h', 'H'] {
+      assert_eq!(
+        action(key(KeyCode::Char(letter), KeyModifiers::CONTROL), TYPING),
+        Some(Action::Edit(plain(KeyCode::Backspace)))
+      );
+    }
     assert_eq!(
-      action(key(KeyCode::Char('h'), KeyModifiers::CONTROL), TYPING),
+      action(key(KeyCode::Char('h'), KeyModifiers::CONTROL), BROWSING),
       Some(Action::TogglePassword)
     );
   }

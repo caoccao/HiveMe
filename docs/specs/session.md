@@ -63,9 +63,11 @@ SHUTDOWN_TIMEOUT = 10 s
   does, loads or creates the file, opens `HiveMe.db` beside it, and compiles the
   rules. A config that cannot be read is kept as a load error, the session runs on
   defaults, and nothing is written until `set_config` is called, which is the user
-  saying to. A history that cannot be opened is the one failure that stops startup,
-  as it is in `hmg` today. The failure is logged with the database path before it is
-  returned.
+  saying to. Corrupt or incompatible history is deleted, including its SQLite journal
+  files, and recreated once so both applications can start with empty history. The
+  config is preserved and no history migration is performed. Locking, permissions,
+  and other I/O failures do not trigger deletion; remaining failures are logged with
+  the database path and returned.
 - `with_parts` builds a session on a config store and a history the caller already
   has, which is how the tests run a session on an in-memory store.
 - `SessionApp` is `Gui` or `Tui`. It selects the MQTT role (`Role::Gui` or
@@ -308,8 +310,8 @@ notice survives a restart. Nothing is downloaded or installed.
 
 | `SessionApp` | `Role` | Client id | Session |
 |--------------|--------|-----------|---------|
-| `Gui` | `Role::Gui` | `<prefix>-hmg-<8 of device.id>` | persistent across network interruptions, ended on quit |
-| `Tui` | `Role::Tui` | `<prefix>-hmc-<8 of device.id>-<8 random>` | the same behavior; the suffix keeps several interactive `hmc` processes apart |
+| `Gui` | `Role::Gui` | `<prefix>-hmg-<device.id alphanumeric>` | persistent across network interruptions, ended on quit |
+| `Tui` | `Role::Tui` | `<prefix>-hmc-<device.id alphanumeric>-<8 random>` | the same behavior; the suffix keeps several interactive `hmc` processes apart |
 
 One-shot `hmc` does not use the session; it keeps `Role::Cli`. The full table is in
 [hivemq-cloud.md](hivemq-cloud.md#role).
@@ -418,3 +420,14 @@ store each one once, new to exactly one of them. Built in phase 6: two sessions,
 and `Tui`, on one config and database each raise a message from another device once and
 show its notification once, and a message one of them sends is raised once by each, by
 the other as this device's message.
+
+The initial connection raises Connecting immediately, and every
+connection error updates status. Saved settings return success even when reconnecting
+fails. Config writes serialize under a separate writer mutex and replace the in-memory
+snapshot only after disk persistence, so readers do not wait on fsync. History insertion
+and pruning run on blocking workers; a separate ordered worker shows notifications.
+Messages processed while notifications are paused stay silent after resuming, even
+when the notification worker was busy with an earlier toast.
+The incoming pump parses each payload once. The release request, including reading its
+body, has a 20-second timeout. Poisoned internal notification/update locks remain usable.
+Raw publish timeouts retain their bounded echo claims because the packet may still arrive.

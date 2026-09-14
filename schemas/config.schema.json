@@ -47,7 +47,7 @@
         },
         "sessionExpirySecs": {
           "default": 3600,
-          "description": "`hmg` only. `hmc` always connects with a clean start and no session.",
+          "description": "`hmg` and interactive `hmc`. One-shot `hmc` uses a clean start and no session.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -369,7 +369,7 @@
       "type": "object"
     },
     "Reconnect": {
-      "description": "Exponential backoff for the `hmg` connection.",
+      "description": "Exponential backoff for `hmg` and interactive `hmc`.",
       "properties": {
         "initialDelayMs": {
           "default": 1000,
@@ -552,7 +552,7 @@
           "default": [
             "#"
           ],
-          "description": "What `hmg` subscribes to, relative to `hiveme`.",
+          "description": "What `hmg` and interactive `hmc` subscribe to, relative to `hiveme`.",
           "items": {
             "$ref": "#/$defs/Subscription"
           },

@@ -258,6 +258,8 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Encryption | [message.md](message.md#encryption) | `hiveme-core::crypto` | 6 | designed, types and parsing in place |
 | REST API client | [hivemq-cloud.md](hivemq-cloud.md#rest-api) | `hiveme-core::cloud` | 6 | designed |
 | Frontend localization in nine languages | [gui.md](gui.md#languages) | `src/i18n`, `src/components`, `src/lib/format.ts` | 6 | done |
+| Review 01 fixes: connection identity/retries, indexed history, responsive UIs, shared helpers and regression coverage | [config.md](config.md), [session.md](session.md), [gui.md](gui.md), [tui.md](tui.md) | workspace | Review 01 | done |
+| Startup recreates corrupt or incompatible development history while preserving config | [gui.md](gui.md#storage), [session.md](session.md) | `hiveme-core::storage` | Review 01 | done |
 
 The rows below are the phases of [the terminal UI plan](../plans/plan-terminal-ui.md).
 Their phase numbers are that plan's, not the initialization plan's.
@@ -458,8 +460,7 @@ The entries below are against [the terminal UI plan](../plans/plan-terminal-ui.m
     one-shot publisher now would only grow the binary; decision 1 of the plan is met in
     phase 3. `development.md` and [tui.md](tui.md#build-and-run) say so.
 25. Phase 1: `Session` gains `with_parts`, to build a session on a config store and a
-    store a caller already has, `config_directory` for `open_config_file`, and the
-    `SHUTDOWN_TIMEOUT` both applications bound their quit with. `hiveme_core::Error`
+    store a caller already has, and `SHUTDOWN_TIMEOUT` both applications bound their quit with. `hiveme_core::Error`
     gains `InvalidTopic` beside the four variants the plan names, so the publish error
     for a topic the MQTT rules refuse keeps its wording. `set_notifications_paused`
     also raises a `Status` event, as session.md's event table says.

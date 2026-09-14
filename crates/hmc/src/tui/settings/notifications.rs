@@ -91,6 +91,7 @@ pub fn form<S: Service>(app: &App<S>) -> Form {
         Size::Fit,
       )),
     },
+    Row::hint(t(locale, "settings.rawNotificationHint")),
     Row::controls(vec![
       header("settings.ruleId", Size::Fill(2)),
       header("settings.ruleTopic", Size::Fill(3)),
@@ -203,7 +204,10 @@ pub fn press<S: Service>(app: &mut App<S>, field: Field, now: Instant) {
       app.edit_config(now, |config| {
         let rules = &mut config.notifications.rules;
         rules.push(Rule {
-          id: format!("rule-{}", rules.len() + 1),
+          id: (rules.len() + 1..)
+            .map(|index| format!("rule-{index}"))
+            .find(|id| rules.iter().all(|rule| &rule.id != id))
+            .expect("finite rules leave a free id"),
           topic: "info".to_owned(),
           absolute: false,
           level: Level::Info,

@@ -74,8 +74,13 @@ pub enum Reading {
   },
 }
 
+#[cfg(test)]
+thread_local! { static READ_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+
 /// Reads a row with the same lenient reader that stored it.
 pub fn read(row: &MessageRow) -> Reading {
+  #[cfg(test)]
+  READ_COUNT.with(|count| count.set(count.get() + 1));
   if row.tier == "bytes" {
     return Reading::Bytes {
       hex: row.raw.clone(),
@@ -299,7 +304,7 @@ fn tree_lines(
 /// least 18 cells.
 pub fn widest_bubble(width: u16) -> u16 {
   let usable = width.saturating_sub(2 * MARGIN);
-  (usable * 4 / 5).max(MIN_BUBBLE_WIDTH).min(usable)
+  ((u32::from(usable) * 4 / 5) as u16).max(MIN_BUBBLE_WIDTH).min(usable)
 }
 
 /// The shape of one row that does not depend on its neighbors.
@@ -334,7 +339,8 @@ pub struct ViewState {
   pub detail: Option<Detail>,
   /// Where the list was drawn on the last frame.
   pub viewport: Rect,
-  shapes: HashMap<i64, (u16, u64, Shape)>,
+  shapes: HashMap<i64, (u16, u64, Shape, Reading, Vec<ContentLine>)>,
+  days: HashMap<i64, String>,
   /// Bumped when anything a shape depends on changes for every row: the language.
   generation: u64,
 }
@@ -350,6 +356,7 @@ impl Default for ViewState {
       // Until the first frame, a guess the size of the smallest terminal's list.
       viewport: Rect::new(0, 0, 54, 8),
       shapes: HashMap::new(),
+      days: HashMap::new(),
       generation: 0,
     }
   }
@@ -368,16 +375,18 @@ impl ViewState {
   pub fn invalidate(&mut self) {
     self.generation += 1;
     self.shapes.clear();
+    self.days.clear();
   }
 
   /// Forgets one row's height, after its trees were opened or closed.
   pub fn invalidate_row(&mut self, row_id: i64) {
     self.shapes.remove(&row_id);
+    self.days.remove(&row_id);
   }
 
   fn shape(&mut self, row: &MessageRow, look: &Look) -> Shape {
     let width = self.viewport.width;
-    if let Some((cached_width, generation, shape)) = self.shapes.get(&row.row_id)
+    if let Some((cached_width, generation, shape, ..)) = self.shapes.get(&row.row_id)
       && *cached_width == width
       && *generation == self.generation
     {
@@ -399,21 +408,32 @@ impl ViewState {
     };
     if self.shapes.len() > 4096 {
       self.shapes.clear();
+      self.days.clear();
     }
-    self.shapes.insert(row.row_id, (width, self.generation, shape));
+    self
+      .shapes
+      .insert(row.row_id, (width, self.generation, shape, reading, lines));
     shape
   }
 
   /// Whether a day separator comes before the row at `index`.
-  fn starts_day(rows: &[MessageRow], index: usize, locale: Locale) -> bool {
-    index == 0 || day_of(locale, &rows[index - 1].ts) != day_of(locale, &rows[index].ts)
+  fn day(&mut self, row: &MessageRow, locale: Locale) -> &str {
+    self.days.entry(row.row_id).or_insert_with(|| day_of(locale, &row.ts))
+  }
+
+  fn starts_day(&mut self, rows: &[MessageRow], index: usize, locale: Locale) -> bool {
+    if index == 0 {
+      return true;
+    }
+    let previous = self.day(&rows[index - 1], locale).to_owned();
+    previous != self.day(&rows[index], locale)
   }
 
   /// The lines the row at `index` takes: the day separator, the sender, the bubble with
   /// its borders, and the reserved metadata row.
   fn height(&mut self, rows: &[MessageRow], index: usize, look: &Look) -> u16 {
     let shape = self.shape(&rows[index], look);
-    u16::from(Self::starts_day(rows, index, look.locale)) + u16::from(shape.header) + shape.content + 2 + 1
+    u16::from(self.starts_day(rows, index, look.locale)) + u16::from(shape.header) + shape.content + 2 + 1
   }
 
   /// The lines from `(index, skip)` to the end, counted up to `limit`.
@@ -787,14 +807,14 @@ fn draw_row(
       .render(Rect::new(0, y, area.width, 1), buffer);
     y += 1;
   }
-  let reading = read(row);
+  let (_, _, _, reading, lines) = view.shapes.get(&row.row_id).expect("shape prepared before drawing");
   let x = if row.outgoing {
     area.width.saturating_sub(MARGIN + shape.bubble_width)
   } else {
     MARGIN
   };
   if shape.header
-    && let Some(name) = sender_label(&reading)
+    && let Some(name) = sender_label(reading)
   {
     let room = usize::from(area.width.saturating_sub(x + 2));
     Line::styled(
@@ -819,12 +839,6 @@ fn draw_row(
     .border_style(border_style)
     .style(fill)
     .render(bubble, buffer);
-  let lines = content(
-    &reading,
-    look,
-    usize::from(shape.bubble_width.saturating_sub(4)),
-    view.expansion.get(&row.row_id),
-  );
   for (index, line) in lines.iter().enumerate().take(usize::from(shape.content)) {
     line.line.clone().render(
       Rect::new(x + 2, y + 1 + index as u16, shape.bubble_width.saturating_sub(4), 1),
@@ -833,7 +847,7 @@ fn draw_row(
   }
 
   if focused {
-    let spans = metadata(row, &reading, look);
+    let spans = metadata(row, reading, look);
     let line = Line::from(spans);
     // Aligned to the bubble's right edge, and running past it to the right when the
     // bubble is narrower than the row.
@@ -877,7 +891,9 @@ pub fn render<S: Service>(app: &mut App<S>, frame: &mut Frame, area: Rect) {
   for (index, y, height) in placed {
     let row = &rows[index];
     let shape = view.shape(row, &look);
-    let day = ViewState::starts_day(rows, index, look.locale).then(|| day_of(look.locale, &row.ts));
+    let day = view
+      .starts_day(rows, index, look.locale)
+      .then(|| view.day(row, look.locale).to_owned());
     let focused = list_focused && view.focused == Some(row.row_id);
     let mut buffer = Buffer::empty(Rect::new(0, 0, area.width, height));
     buffer.set_style(buffer.area, theme.base());
@@ -957,5 +973,27 @@ mod tests {
     assert_eq!(widest_bubble(102), 80);
     assert_eq!(widest_bubble(20), 18);
     assert_eq!(widest_bubble(10), 8, "never wider than the list");
+  }
+  #[test]
+  fn drawing_an_unchanged_bubble_reuses_its_parsed_content() {
+    let raw = crate::tui::tests::row(1, "hiveme");
+    let mut view = ViewState::default();
+    let look = Look {
+      locale: Locale::EnUs,
+      glyphs: Glyphs::UNICODE,
+      theme: Theme::from_gui(&hiveme_core::config::Gui::default()),
+      selected: "hiveme",
+    };
+    let shape = view.shape(&raw, &look);
+    let before = READ_COUNT.with(|count| count.get());
+    for _ in 0..8 {
+      let mut buffer = Buffer::empty(Rect::new(0, 0, 54, shape.content + 4));
+      let shape = view.shape(&raw, &look);
+      draw_row(&mut buffer, &raw, None, shape, &look, &view, false);
+    }
+    assert_eq!(READ_COUNT.with(|count| count.get()), before);
+    view.invalidate_row(raw.row_id);
+    view.shape(&raw, &look);
+    assert_eq!(READ_COUNT.with(|count| count.get()), before + 1);
   }
 }

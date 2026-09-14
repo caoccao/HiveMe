@@ -52,10 +52,23 @@ afterEach(async () => {
 
 function message(rowId: number, topic: string, body = String(rowId)): MessageRow {
   return {
-    rowId, topic, id: 'shared-envelope', body, raw: body, rawLength: body.length,
-    ts: '2026-09-13T12:00:00Z', receivedTs: '2026-09-13T12:00:00Z',
-    senderId: null, senderName: null, app: null, tier: 'text', level: null,
-    title: null, qos: 1, retain: false, outgoing: false,
+    rowId,
+    topic,
+    id: 'shared-envelope',
+    body,
+    raw: body,
+    rawLength: body.length,
+    ts: '2026-09-13T12:00:00Z',
+    receivedTs: '2026-09-13T12:00:00Z',
+    senderId: null,
+    senderName: null,
+    app: null,
+    tier: 'text',
+    level: null,
+    title: null,
+    qos: 1,
+    retain: false,
+    outgoing: false,
   };
 }
 
@@ -87,14 +100,21 @@ describe('recursive topic history', () => {
 
   it('keeps live descendants that arrive while the first page is loading', async () => {
     let finish!: (rows: MessageRow[]) => void;
-    vi.mocked(Service.getMessages).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    vi.mocked(Service.getMessages).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
     const selecting = useAppStore.getState().selectTopic('hiveme');
     useAppStore.getState().receiveMessage(message(2, 'hiveme/child', 'latest delivery'));
     useAppStore.getState().receiveMessage(message(3, 'hiveme/child/deep'));
     finish([message(1, 'hiveme'), message(2, 'hiveme/child')]);
     await selecting;
     expect(useAppStore.getState().messages.get('hiveme')).toEqual([
-      message(1, 'hiveme'), message(2, 'hiveme/child', 'latest delivery'), message(3, 'hiveme/child/deep'),
+      message(1, 'hiveme'),
+      message(2, 'hiveme/child', 'latest delivery'),
+      message(3, 'hiveme/child/deep'),
     ]);
   });
 
@@ -105,20 +125,35 @@ describe('recursive topic history', () => {
       hasOlder: new Map([['hiveme', true]]),
     });
     let finish!: (rows: MessageRow[]) => void;
-    vi.mocked(Service.getMessages).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    vi.mocked(Service.getMessages).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
     const paging = useAppStore.getState().loadOlderMessages('hiveme');
     useAppStore.getState().receiveMessage(message(7, 'hiveme/deep/child'));
     finish([message(1, 'hiveme/other'), message(4, 'hiveme')]);
     await paging;
     expect(Service.getMessages).toHaveBeenCalledWith('hiveme', 5, MESSAGE_PAGE_SIZE);
-    expect(useAppStore.getState().messages.get('hiveme')?.map((row) => row.rowId)).toEqual([1, 4, 5, 6, 7]);
+    expect(
+      useAppStore
+        .getState()
+        .messages.get('hiveme')
+        ?.map((row) => row.rowId)
+    ).toEqual([1, 4, 5, 6, 7]);
     expect(useAppStore.getState().hasOlder.get('hiveme')).toBe(false);
   });
 
   it('ignores a stale page that finishes after clearing its topic', async () => {
     let finishOld!: (rows: MessageRow[]) => void;
     vi.mocked(Service.getMessages)
-      .mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishOld = resolve;
+          })
+      )
       .mockResolvedValueOnce([message(2, 'hiveme/child')]);
     const selecting = useAppStore.getState().selectTopic('hiveme');
     await useAppStore.getState().clearSelectedTopic();
@@ -134,7 +169,11 @@ describe('recursive topic history', () => {
     useAppStore.setState({
       selectedTopic: 'hiveme/child',
       loadedTopics: new Set(['hiveme', 'hiveme/child', 'hiveme/child/deep']),
-      messages: new Map([['hiveme', [root, child, grandchild]], ['hiveme/child', [child, grandchild]], ['hiveme/child/deep', [grandchild]]]),
+      messages: new Map([
+        ['hiveme', [root, child, grandchild]],
+        ['hiveme/child', [child, grandchild]],
+        ['hiveme/child/deep', [grandchild]],
+      ]),
     });
     vi.mocked(Service.getMessages).mockResolvedValueOnce([grandchild]);
     await useAppStore.getState().clearSelectedTopic();
@@ -151,17 +190,24 @@ describe('recursive topic history', () => {
 describe('automatic settings saves', () => {
   it('applies every edit immediately but writes once after the last 500 ms pause', async () => {
     const store = useAppStore.getState();
-    store.updateConfig((config) => { config.broker!.username = 'first'; });
+    store.updateConfig((config) => {
+      config.broker!.username = 'first';
+    });
     await vi.advanceTimersByTimeAsync(400);
-    store.updateConfig((config) => { config.gui!.language = 'de'; });
+    store.updateConfig((config) => {
+      config.gui!.language = 'de';
+    });
     expect(i18n.resolvedLanguage).toBe('de');
     expect(useAppStore.getState().config?.broker?.username).toBe('first');
     await vi.advanceTimersByTimeAsync(499);
     expect(Service.setConfig).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
-    expect(Service.setConfig).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
-      broker: { username: 'first' }, gui: { language: 'de' },
-    }));
+    expect(Service.setConfig).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        broker: { username: 'first' },
+        gui: { language: 'de' },
+      })
+    );
     expect(useAppStore.getState().dialogNotification).toBeNull();
   });
 
@@ -169,16 +215,32 @@ describe('automatic settings saves', () => {
     let finishFirst!: (config: Config) => void;
     let finishSecond!: (config: Config) => void;
     vi.mocked(Service.setConfig)
-      .mockImplementationOnce(() => new Promise((resolve) => { finishFirst = resolve; }))
-      .mockImplementationOnce(() => new Promise((resolve) => { finishSecond = resolve; }));
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishFirst = resolve;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishSecond = resolve;
+          })
+      );
 
     const store = useAppStore.getState();
-    store.updateConfig((config) => { config.gui!.language = 'de'; });
+    store.updateConfig((config) => {
+      config.gui!.language = 'de';
+    });
     const firstSnapshot = useAppStore.getState().config!;
     const saving = store.flushConfig();
 
-    store.updateConfig((config) => { config.gui!.language = 'ja'; });
-    store.updateConfig((config) => { config.broker!.username = 'latest'; });
+    store.updateConfig((config) => {
+      config.gui!.language = 'ja';
+    });
+    store.updateConfig((config) => {
+      config.broker!.username = 'latest';
+    });
     await vi.advanceTimersByTimeAsync(500);
     expect(Service.setConfig).toHaveBeenCalledTimes(1);
 
@@ -192,7 +254,9 @@ describe('automatic settings saves', () => {
     // A caller such as Copy CLI setup must wait for the entire queue.
     const flushing = store.flushConfig();
     let done = false;
-    void flushing.then(() => { done = true; });
+    void flushing.then(() => {
+      done = true;
+    });
     await vi.advanceTimersByTimeAsync(0);
     expect(done).toBe(false);
     const latest = useAppStore.getState().config!;
@@ -207,17 +271,24 @@ describe('automatic settings saves', () => {
   it('keeps failed edits visible and saves the whole configuration on the next edit', async () => {
     vi.mocked(Service.setConfig).mockRejectedValueOnce(new Error('Disk is read-only'));
     const store = useAppStore.getState();
-    store.updateConfig((config) => { config.gui!.language = 'fr'; });
+    store.updateConfig((config) => {
+      config.gui!.language = 'fr';
+    });
     expect(await store.flushConfig()).toBe(false);
     expect(useAppStore.getState().config?.gui?.language).toBe('fr');
     expect(i18n.resolvedLanguage).toBe('fr');
     expect(useAppStore.getState().dialogNotification?.title).toBe('Disk is read-only');
     expect(await store.flushConfig()).toBe(false);
 
-    store.updateConfig((config) => { config.broker!.username = 'corrected'; });
+    store.updateConfig((config) => {
+      config.broker!.username = 'corrected';
+    });
     expect(await store.flushConfig()).toBe(true);
-    expect(Service.setConfig).toHaveBeenLastCalledWith(expect.objectContaining({
-      broker: { username: 'corrected' }, gui: { language: 'fr' },
-    }));
+    expect(Service.setConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        broker: { username: 'corrected' },
+        gui: { language: 'fr' },
+      })
+    );
   });
 });

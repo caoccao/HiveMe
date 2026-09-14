@@ -192,7 +192,11 @@ impl TreeState {
       }
     }
     let mut out = Vec::new();
-    walk(&visible(topics, self.filter.text()), 0, None, self, &mut out);
+    if self.filter.text().trim().is_empty() {
+      walk(topics, 0, None, self, &mut out);
+    } else {
+      walk(&visible(topics, self.filter.text()), 0, None, self, &mut out);
+    }
     out
   }
 

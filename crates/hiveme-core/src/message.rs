@@ -102,20 +102,26 @@ impl Level {
   }
 
   /// Every level this build knows, in display order.
-  pub fn known() -> [Self; 5] {
+  pub const fn known() -> [Self; 5] {
     [Self::Debug, Self::Info, Self::Success, Self::Warn, Self::Error]
   }
 }
 
 impl std::fmt::Display for Level {
   fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    formatter.write_str(&self.as_str().to_lowercase())
+    match self {
+      Self::Other(value) => formatter.write_str(&value.to_lowercase()),
+      _ => formatter.write_str(self.as_str()),
+    }
   }
 }
 
 impl Serialize for Level {
   fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(&self.as_str().to_lowercase())
+    match self {
+      Self::Other(value) => serializer.serialize_str(&value.to_lowercase()),
+      _ => serializer.serialize_str(self.as_str()),
+    }
   }
 }
 
@@ -454,17 +460,13 @@ fn truncate(text: &str, limit: usize) -> String {
 
 /// Reads an MQTT payload, degrading through the tiers rather than failing.
 pub fn parse(bytes: &[u8]) -> Parsed {
+  if let Ok(message) = serde_json::from_slice::<Message>(bytes)
+    && message.validate().is_ok()
+  {
+    return Parsed::Envelope(Box::new(message));
+  }
   match serde_json::from_slice::<serde_json::Value>(bytes) {
-    Ok(value) => {
-      if looks_like_envelope(&value) {
-        match serde_json::from_value::<Message>(value.clone()) {
-          Ok(message) if message.validate().is_ok() => return Parsed::Envelope(Box::new(message)),
-          // A document that claims to be an envelope but is malformed is still shown.
-          _ => return Parsed::RawJson(value),
-        }
-      }
-      Parsed::RawJson(value)
-    }
+    Ok(value) => Parsed::RawJson(value),
     Err(_) => match std::str::from_utf8(bytes) {
       Ok(text) => Parsed::RawText(text.to_owned()),
       Err(_) => Parsed::RawBytes(bytes.to_vec()),
@@ -472,13 +474,35 @@ pub fn parse(bytes: &[u8]) -> Parsed {
   }
 }
 
-/// An object with an integer `v` and either `payload` or `enc` claims to be an envelope.
-fn looks_like_envelope(value: &serde_json::Value) -> bool {
-  let Some(object) = value.as_object() else {
-    return false;
-  };
-  object.get("v").is_some_and(serde_json::Value::is_u64)
-    && (object.contains_key("payload") || object.contains_key("enc"))
+/// Builds the same envelope for the CLI and both interactive composers.
+pub fn build_envelope(
+  config: &crate::config::Config,
+  app: &str,
+  body: &str,
+  title: Option<&str>,
+  level: Option<&str>,
+) -> Message {
+  let mut message = Message::new_text(Sender::from_device(&config.device, app), body)
+    .with_level(level.map(Level::parse).unwrap_or_default());
+  if let Some(title) = title.map(str::trim).filter(|title| !title.is_empty()) {
+    message = message.with_title(title);
+  }
+  message
+}
+
+/// Checks raw JSON while preserving the original bytes.
+pub fn raw_json_payload(text: &str) -> Result<Vec<u8>, serde_json::Error> {
+  serde_json::from_str::<serde_json::Value>(text)?;
+  Ok(text.as_bytes().to_vec())
+}
+
+/// Raw JSON has no HiveMe envelope version property.
+pub fn raw_json_properties() -> MessageProperties {
+  MessageProperties {
+    content_type: CONTENT_TYPE,
+    user_properties: Vec::new(),
+    message_expiry_interval: None,
+  }
 }
 
 /// The JSON schema of the message envelope, as `cargo xtask schema` writes it.

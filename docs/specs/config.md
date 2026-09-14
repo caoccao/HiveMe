@@ -155,11 +155,11 @@ value the applications use when the key is absent.
 | `version` | integer | yes | 1 | Config schema version. The loader migrates older versions. |
 | `device.id` | UUID string | yes | generated | Stable identity of this installation. Used as `sender.id` and to derive client identifiers. |
 | `device.name` | string | no | hostname | Shown in the GUI as the sender name. |
-| `broker.url` | string | yes | none | `[<scheme>://]<host>[:<port>][/<path>]`. The schemes are `mqtts` (port 8883), `mqtt` (1883), `wss` (8884, path `/mqtt`), and `ws` (8083); `ssl` and `tcp` are accepted as aliases of `mqtts` and `mqtt`. A URL that names no scheme is read as `mqtts`, so a cluster can be written the way the HiveMQ Cloud console shows it. The port defaults per scheme. Credentials in the URL are rejected: they belong in the fields below. The Settings of `hmg` and of the terminal UI show the scheme as a protocol list and the rest as written, and save the two joined, `mqtts://host:8883`; see [gui.md](gui.md#settings). |
+| `broker.url` | string | yes | none | `[<scheme>://]<host>[:<port>][/<path>]`. The schemes are `mqtts` (port 8883), `mqtt` (1883), `wss` (8884, path `/mqtt`), and `ws` (8083); `ssl` and `tcp` are accepted as aliases of `mqtts` and `mqtt`. A URL that names no scheme is read as `mqtts`, so a cluster can be written the way the HiveMQ Cloud console shows it. The port defaults per scheme. IPv6 literals use brackets, such as `mqtt://[::1]:1883`; leading zeros in a port are accepted. Credentials in the URL are rejected: they belong in the fields below. The Settings of `hmg` and of the terminal UI show the scheme as a protocol list and the rest as written, and save the two joined, `mqtts://host:8883`; see [gui.md](gui.md#settings). |
 | `broker.username` | string | yes | none | HiveMQ Cloud credential username. |
 | `broker.password` | string | yes | none | May be empty when `passwordRef` is set. |
 | `broker.passwordRef` | object or null | no | null | `{ "type": "Env", "name": "<VARIABLE>" }` is implemented. `{ "type": "Keychain", "service": "HiveMe", "account": "<username>" }` is reserved for phase 6 and reports that it is not implemented rather than failing silently. |
-| `broker.clientIdPrefix` | string | no | `hiveme` | Client id is `<prefix>-<app>-<first 8 hex of device.id>` plus a random suffix for `hmc`, in both of its modes. |
+| `broker.clientIdPrefix` | string | no | `hiveme` | Client id is `<prefix>-<app>-<alphanumeric characters of device.id>` plus a random suffix for `hmc`, in both of its modes. |
 | `broker.keepAliveSecs` | integer | no | 30 | MQTT keep alive, at least 5. |
 | `broker.sessionExpirySecs` | integer | no | 3600 | `hmg` session retention during network interruptions; explicit disconnect and quit discard the session. One-shot `hmc` always uses 0; interactive `hmc` uses this value. |
 | `broker.connectTimeoutSecs` | integer | no | 10 | |
@@ -173,7 +173,7 @@ value the applications use when the key is absent.
 | `publish.timeoutSecs` | integer | no | 10 | How long `hmc` waits for the acknowledgement. |
 | `notifications.enabled` | boolean | no | true | Master switch. |
 | `notifications.notifyOwnMessages` | boolean | no | false | When false, messages whose `sender.id` equals `device.id` never notify. |
-| `notifications.rules[]` | object[] | no | the three built-ins | See [gui.md](gui.md#notifications). |
+| `notifications.rules[]` | object[] | no | the three built-ins | Raw JSON and plain text default to info for rule matching. See [gui.md](gui.md#notifications). |
 | `gui.displayMode` | `Auto`, `Light`, `Dark` | no | `Auto` | `Auto` follows `prefers-color-scheme` in `hmg` and the terminal's own colors in interactive `hmc`; see [tui.md](tui.md#theme). |
 | `gui.theme` | theme name | no | `Ocean` | One of the twenty palette names listed in [gui.md](gui.md#theme). Honored by both applications. |
 | `gui.language` | BCP 47 tag | no | `en-US` | Supports `de`, `en-US`, `es`, `fr`, `it`, `ja`, `zh-CN`, `zh-HK`, and `zh-TW`. Regional tags resolve to a bundled locale; unsupported tags fall back to English. Read by `hmg` and by `hmc`, and written by `hmc --init` from the setup string. See [GUI languages](gui.md#languages), [CLI languages](cli.md#languages), and [tui.md](tui.md#languages). |
@@ -247,7 +247,7 @@ UTF-8.
 
 ## Versioning and compatibility
 
-- `version` is an integer, and every writer emits it. A document without one is read
+- `version` is an unsigned 32-bit integer; malformed or out-of-range values are rejected. Every writer emits it. A document without one is read
   as the current version and logs a warning, so that a hand written file still loads.
 - A value this build does not know in a closed enum, such as a `gui.theme` added by a
   later release, falls back to that field's default with a warning rather than making
@@ -292,7 +292,7 @@ and runs it to initialize the shared config.
 
 | Field | Config path | Notes |
 |-------|-------------|-------|
-| `v` | — | The format version, 1. A reader refuses a version it does not know rather than guessing at fields. |
+| `v` | — | The writer emits 1. Readers accept positive future versions with valid known fields, ignore additional fields, and reject zero. |
 | `url` | `broker.url` | Must be `mqtts` for a `hivemq.cloud` host, which accepts TLS only. Naming no scheme means `mqtts`, so the URL the console shows can be pasted in as it stands. |
 | `username` | `broker.username` | Required. |
 | `password` | `broker.password` | Required, plain text, because the CONNECT packet needs it in plain text. |
@@ -342,3 +342,8 @@ See [cli.md](cli.md#setting-up) and [development.md](../development.md#testing-a
   `cloudApi.token`. The Settings tab does display the password, because the user
   edits it there, and so does the setup string, because `hmc` needs it.
 - A setup string is redacted before it reaches a log, the same way a config is.
+
+Setup strings are written with `v: 1`; positive future versions are accepted when the known fields validate, and version zero is rejected. Their schema identifier is
+`https://hiveme.dev/schemas/broker-init/v1.json`. Config writes sync the parent
+directory on Unix after the atomic rename. Subscription errors identify the row
+index; a newer, read-only config without a device identity logs why repair was skipped.

@@ -20,7 +20,6 @@ export const AUTHOR_NAME = 'Sam Cao';
 export const AUTHOR_URL = 'https://github.com/caoccao';
 export const GITHUB_URL = 'https://github.com/caoccao/HiveMe';
 export const RELEASES_URL = 'https://github.com/caoccao/HiveMe/releases';
-export const HIVEMQ_CONSOLE_URL = 'https://console.hivemq.cloud/';
 
 /** How many messages one page of history holds. Mirrors `DEFAULT_PAGE_SIZE` in the core. */
 export const MESSAGE_PAGE_SIZE = 200;

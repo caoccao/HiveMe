@@ -254,3 +254,5 @@ export enum DialogNotificationType {
   Info,
   Error,
 }
+
+// Stored history tier is authoritative when rendering raw JSON/text.

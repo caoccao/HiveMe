@@ -500,6 +500,7 @@ fn the_switches_the_rules_and_their_levels_change_the_notifications_block() {
     "[✓] Raise OS notifications",
     "[ ] Notify about messages this device sent",
     "─ Rules ─",
+    "Raw text and JSON use the Info level.",
     "[Add a rule]",
     "Topic filter",
     "Title template",
@@ -787,4 +788,37 @@ fn the_about_tab_draws_the_name_the_cards_and_the_table_and_opens_the_links() {
   press(&mut app, key(KeyCode::Char('?')));
   let help = render(&mut app, 120, 40).join("\n");
   assert!(help.contains("Open the link"), "{help}");
+}
+
+#[test]
+fn adding_a_rule_after_deletion_skips_an_id_that_is_still_in_use() {
+  let mut config = configured("en-US");
+  config.notifications.rules[2].id = "rule-4".to_owned();
+  let (_service, mut app, _receivers) = settings_on(config, Category::Notifications);
+  press_action(&mut app, Action::SettingsField(Field::AddRule));
+  assert_eq!(app.config.notifications.rules.last().unwrap().id, "rule-5");
+  let ids: std::collections::HashSet<_> = app.config.notifications.rules.iter().map(|rule| &rule.id).collect();
+  assert_eq!(ids.len(), app.config.notifications.rules.len());
+}
+
+#[tokio::test]
+async fn a_blank_subscription_draft_waits_for_a_valid_filter_before_saving() {
+  let (service, mut app, mut receivers) = settings_on(configured("en-US"), Category::Topics);
+  clear(&mut app, Field::SubscriptionFilter(0));
+  app.on_tick(Instant::now() + SAVE_DELAY);
+  tokio::task::yield_now().await;
+  assert!(service.saved.lock().unwrap().is_empty());
+  type_text(&mut app, "build/#");
+  app.on_tick(Instant::now() + SAVE_DELAY);
+  let outcome = tokio::time::timeout(Duration::from_secs(1), receivers.outcomes.recv())
+    .await
+    .unwrap()
+    .unwrap();
+  app.on_outcome(outcome, Instant::now());
+  let saved = service.saved.lock().unwrap();
+  assert_eq!(saved.len(), 1);
+  assert_eq!(
+    saved[0].topics.subscriptions,
+    vec![Subscription::Relative("build/#".to_owned())]
+  );
 }

@@ -15,7 +15,7 @@
 * limitations under the License.
 */
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ThemeProvider, alpha, createTheme } from '@mui/material/styles';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
@@ -23,7 +23,31 @@ import i18n, { changeLanguage } from '../i18n';
 import { useAppStore } from '../lib/store';
 import type { MessageRow } from '../lib/protocol';
 import { Tier } from '../lib/protocol';
-import { Bubble, JsonTree } from './MessageView';
+import MessageView, { Bubble, JsonTree } from './MessageView';
+
+const virtual = vi.hoisted(() => ({
+  scrollToOffset: vi.fn(),
+  scrollToIndex: vi.fn(),
+  element: null as (() => HTMLElement | null) | null,
+  key: null as ((index: number) => number) | null,
+}));
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: (options: {
+    count: number;
+    getScrollElement: () => HTMLElement | null;
+    getItemKey: (index: number) => number;
+  }) => {
+    virtual.element = options.getScrollElement;
+    virtual.key = options.getItemKey;
+    return {
+      getTotalSize: () => options.count * 88,
+      getVirtualItems: () => [],
+      scrollToOffset: virtual.scrollToOffset,
+      scrollToIndex: virtual.scrollToIndex,
+      measureElement: vi.fn(),
+    };
+  },
+}));
 
 vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({ writeText: vi.fn(async () => undefined) }));
 beforeEach(() => vi.clearAllMocks());
@@ -112,11 +136,24 @@ describe('message sender and topic labels', () => {
   });
 
   it.each([
-    JSON.stringify({ v: 1, id: 'anonymous', ts: '2026-09-12T09:41:23Z', sender: { app: 'hmg' }, payload: { body: 'Anonymous message' } }),
+    JSON.stringify({
+      v: 1,
+      id: 'anonymous',
+      ts: '2026-09-12T09:41:23Z',
+      sender: { app: 'hmg' },
+      payload: { body: 'Anonymous message' },
+    }),
     JSON.stringify({ body: 'Raw JSON' }),
     'Raw text',
   ])('shows only the topic when the payload has no sender identity: %s', (raw) => {
-    const message = row({ raw, rawLength: raw.length, topic: 'hiveme/a/b/c', senderId: null, senderName: null, app: null });
+    const message = row({
+      raw,
+      rawLength: raw.length,
+      topic: 'hiveme/a/b/c',
+      senderId: null,
+      senderName: null,
+      app: null,
+    });
     const { rerender } = render(<Bubble selectedTopic="hiveme/a" row={message} />);
     expect(screen.getByRole('article').querySelector('header')).toBeNull();
     expect(screen.getByRole('article').querySelector('footer .message-topic')).toHaveTextContent(/^b\/c$/);
@@ -143,9 +180,11 @@ describe('message severity colors', () => {
     const theme = createTheme({ palette: { mode } });
     render(
       <ThemeProvider theme={theme}>
-        {['info', 'warn', 'error', 'debug', 'success'].flatMap((level) => [false, true].map((outgoing) => (
-          <Bubble selectedTopic="hiveme" key={`${level}-${outgoing}`} row={row({ level, outgoing })} />
-        )))}
+        {['info', 'warn', 'error', 'debug', 'success'].flatMap((level) =>
+          [false, true].map((outgoing) => (
+            <Bubble selectedTopic="hiveme" key={`${level}-${outgoing}`} row={row({ level, outgoing })} />
+          ))
+        )}
       </ThemeProvider>
     );
     const bubbles = screen.getAllByRole('article').map((article) => article.querySelector('.message-bubble')!);
@@ -156,13 +195,19 @@ describe('message severity colors', () => {
         color: theme.palette.common.white,
       });
     }
-    for (const [index, severity] of [[2, 'warning'], [4, 'error'], [8, 'success']] as const) {
+    for (const [index, severity] of [
+      [2, 'warning'],
+      [4, 'error'],
+      [8, 'success'],
+    ] as const) {
       for (const bubble of bubbles.slice(index, index + 2)) {
         expect(bubble).toHaveStyle({
           backgroundColor: alpha(theme.palette[severity].main, mode === 'dark' ? 0.24 : 0.12),
           borderColor: theme.palette[severity].main,
         });
-        expect(bubble.parentElement!.querySelector('.MuiChip-root')).toHaveClass(`MuiChip-color${severity[0].toUpperCase() + severity.slice(1)}`);
+        expect(bubble.parentElement!.querySelector('.MuiChip-root')).toHaveClass(
+          `MuiChip-color${severity[0].toUpperCase() + severity.slice(1)}`
+        );
       }
     }
   });
@@ -183,7 +228,9 @@ describe('the tiers', () => {
       ts: '2026-09-12T09:41:23.512Z',
       payload: { body: 'from a newer writer', level: 'catastrophe' },
     });
-    render(<Bubble selectedTopic="hiveme" row={row({ raw, rawLength: raw.length, level: 'catastrophe', title: null })} />);
+    render(
+      <Bubble selectedTopic="hiveme" row={row({ raw, rawLength: raw.length, level: 'catastrophe', title: null })} />
+    );
     expect(screen.getByText('catastrophe (Info)')).toBeInTheDocument();
   });
 
@@ -206,13 +253,21 @@ describe('the tiers', () => {
       enc: { alg: 'A256GCM', kid: 'k-2026-09', iv: 'u2m1xwK7Ck3NoMbz' },
       ciphertext: '8Qy0m5jI1n1F0y7b',
     });
-    render(<Bubble selectedTopic="hiveme" row={row({ raw, rawLength: raw.length, body: 'encrypted (key k-2026-09)', title: null })} />);
+    render(
+      <Bubble
+        selectedTopic="hiveme"
+        row={row({ raw, rawLength: raw.length, body: 'encrypted (key k-2026-09)', title: null })}
+      />
+    );
     expect(screen.getByText('encrypted (key k-2026-09)')).toBeInTheDocument();
   });
 
   it('shows a raw text payload verbatim', () => {
     render(
-      <Bubble selectedTopic="hiveme" row={row({ tier: Tier.Text, raw: 'plain text from some other tool', body: 'x', title: null })} />
+      <Bubble
+        selectedTopic="hiveme"
+        row={row({ tier: Tier.Text, raw: 'plain text from some other tool', body: 'x', title: null })}
+      />
     );
     expect(screen.getByText('plain text from some other tool')).toBeInTheDocument();
   });
@@ -220,8 +275,11 @@ describe('the tiers', () => {
   it('localizes encrypted previews instead of displaying the stored English placeholder', async () => {
     await changeLanguage('de');
     const raw = JSON.stringify({
-      v: 1, id: 'encrypted', ts: '2026-09-12T09:41:23Z',
-      enc: { alg: 'A256GCM', kid: 'key-42', iv: 'nonce' }, ciphertext: 'ciphertext',
+      v: 1,
+      id: 'encrypted',
+      ts: '2026-09-12T09:41:23Z',
+      enc: { alg: 'A256GCM', kid: 'key-42', iv: 'nonce' },
+      ciphertext: 'ciphertext',
       payload: { body: 'Ignore plaintext when encryption is present' },
     });
     render(<Bubble selectedTopic="hiveme" row={row({ raw, body: 'encrypted (key key-42)', level: 'warn' })} />);
@@ -233,13 +291,20 @@ describe('the tiers', () => {
 
   it('keeps user messages and unknown levels verbatim while translating the fallback level', async () => {
     await changeLanguage('ja');
-    render(<Bubble selectedTopic="hiveme" row={row({ tier: Tier.Text, raw: 'Original text', level: 'custom-level' })} />);
+    render(
+      <Bubble selectedTopic="hiveme" row={row({ tier: Tier.Text, raw: 'Original text', level: 'custom-level' })} />
+    );
     expect(screen.getByText('Original text')).toBeInTheDocument();
     expect(screen.getByText('custom-level（情報）')).toBeInTheDocument();
   });
 
   it('shows a payload that is not text as hex with its size', () => {
-    render(<Bubble selectedTopic="hiveme" row={row({ tier: Tier.Bytes, raw: 'fffe00', rawLength: 3, body: '3 bytes', title: null })} />);
+    render(
+      <Bubble
+        selectedTopic="hiveme"
+        row={row({ tier: Tier.Bytes, raw: 'fffe00', rawLength: 3, body: '3 bytes', title: null })}
+      />
+    );
     expect(screen.getByText('3 bytes')).toBeInTheDocument();
     expect(screen.getByText('ff fe 00')).toBeInTheDocument();
   });
@@ -314,5 +379,58 @@ describe('the JSON tree', () => {
   it('counts the entries of an array', () => {
     render(<JsonTree value={['a', 'b', 'c']} />);
     expect(screen.getByText('[3]')).toBeInTheDocument();
+  });
+});
+
+describe('history reading position', () => {
+  it('anchors the same row after older rows are prepended and stops following the bottom', () => {
+    const loadOlderMessages = vi.fn();
+    const existing = [row({ rowId: 201 }), row({ rowId: 202 })];
+    useAppStore.setState({
+      selectedTopic: 'hiveme',
+      messages: new Map([['hiveme', existing]]),
+      hasOlder: new Map([['hiveme', true]]),
+      loadOlderMessages,
+    });
+    render(<MessageView />);
+    const scroller = virtual.element!()!;
+    Object.defineProperties(scroller, {
+      scrollTop: { value: 20, writable: true },
+      scrollHeight: { value: 1000, configurable: true },
+      clientHeight: { value: 400 },
+    });
+    fireEvent.scroll(scroller);
+    expect(loadOlderMessages).toHaveBeenCalledWith('hiveme');
+    virtual.scrollToIndex.mockClear();
+    act(() =>
+      useAppStore.setState({ messages: new Map([['hiveme', [row({ rowId: 199 }), row({ rowId: 200 }), ...existing]]]) })
+    );
+    expect(virtual.scrollToOffset).toHaveBeenLastCalledWith(20 + 2 * 88);
+    expect(virtual.key!(2)).toBe(201);
+    expect(virtual.scrollToIndex).not.toHaveBeenCalled();
+    act(() =>
+      useAppStore.setState({
+        messages: new Map([['hiveme', [...useAppStore.getState().messages.get('hiveme')!, row({ rowId: 203 })]]]),
+      })
+    );
+    expect(virtual.scrollToIndex).not.toHaveBeenCalled();
+  });
+
+  it('discards an outstanding history anchor when switching topics', () => {
+    useAppStore.setState({
+      selectedTopic: 'hiveme',
+      messages: new Map([['hiveme', [row({ rowId: 10 })]]]),
+      hasOlder: new Map([['hiveme', true]]),
+      loadOlderMessages: vi.fn(),
+    });
+    render(<MessageView />);
+    fireEvent.scroll(virtual.element!()!);
+    act(() =>
+      useAppStore.setState({
+        selectedTopic: 'other',
+        messages: new Map([['other', [row({ rowId: 3 }), row({ rowId: 10 })]]]),
+      })
+    );
+    expect(virtual.scrollToOffset).not.toHaveBeenCalled();
   });
 });

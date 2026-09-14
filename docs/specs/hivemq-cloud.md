@@ -72,14 +72,14 @@ The only difference between the applications is the role they connect as.
 
 | Concern | one-shot `hmc` (`Role::Cli`) | `hmg` (`Role::Gui`) | interactive `hmc` (`Role::Tui`) |
 |---------|------------------------------|---------------------|---------------------------------|
-| Client id | `<prefix>-hmc-<8 of device.id>-<8 random>` | `<prefix>-hmg-<8 of device.id>` | `<prefix>-hmc-<8 of device.id>-<8 random>` |
+| Client id | `<prefix>-hmc-<device.id alphanumeric>-<8 random>` | `<prefix>-hmg-<device.id alphanumeric>` | `<prefix>-hmc-<device.id alphanumeric>-<8 random>` |
 | Clean start | yes | no | no; the identifier is new, so the only session to resume is this run's own |
 | Session expiry | 0 | `broker.sessionExpirySecs` during network interruptions; discarded on explicit disconnect or quit | as `hmg`, for the life of the process |
 | Reconnect | none; the first drop ends the connection | exponential backoff with jitter | as `hmg` |
 | Subscriptions | none | `topics.subscriptions` | `topics.subscriptions` |
 
 `<prefix>` is `broker.clientIdPrefix`, `hiveme` by default. The device segment is the
-first eight alphanumeric characters of `device.id`. Every `hmc` run adds a random
+full alphanumeric part of `device.id`, including its random bits. Every `hmc` run adds a random
 suffix, because a broker disconnects the older of two connections that share an
 identifier and `hmc` runs overlap with each other and with a running `hmg`.
 
@@ -177,9 +177,19 @@ each one up in its own translation table, which is what lets the badge read
 because several installations share a cluster, and a cluster restart would otherwise
 bring them all back at the same instant. A successful connection resets the sequence.
 
-These errors are never retried, because retrying them cannot work: a CONNACK refusal
-(the credentials or the client id), a TLS failure, an answer that is not a CONNACK, and
+These errors are never retried, because retrying them cannot work: a permanent CONNACK refusal
+(the credentials, client id, or protocol), a TLS failure, an answer that is not a CONNACK, and
 the client handle being dropped.
+
+Busy, unavailable, quota-exceeded, and connection-rate refusals are retried with backoff.
+
+Incoming messages use a lossless in-memory queue, with a warning at 1,024 pending
+messages. A sustained consumer stall can grow memory; the event loop continues
+servicing acknowledgements and keep alive.
+
+Timed-out publish and subscribe requests keep their FIFO positions until sent.
+A reconnect without a session fails only requests discarded by the MQTT client;
+requests queued during backoff retain their own acknowledgements.
 
 When a reconnect comes back with no session, which is what the broker reports when the
 session expired or the cluster was replaced, the remembered subscriptions are sent

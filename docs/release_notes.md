@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+* Installations created together now have distinct MQTT client IDs. Transient broker
+  refusals retry, timed-out publishes keep acknowledgement ownership, and queued
+  messages survive bursts beyond 1,024 deliveries.
+* History paging and topic counts use indexed queries and maintained counters. Echo
+  reconciliation preserves outgoing alignment and unread counts. Disk writes and OS
+  notifications run outside the message runtime; window geometry saves on focus loss
+  and exit.
+* Older GUI history keeps its reading position. The terminal UI caches bubble content,
+  avoids idle redraws, recovers missed events, accepts Ctrl+H as Backspace in text
+  fields, and handles very wide terminals and long text fields.
+* Both settings panels keep unfinished subscription filters editable and generate
+  unique rule IDs. Raw payload notification behavior is explained in all nine languages,
+  and notification rate-limit summaries follow the saved language.
+* `hmc --no-retain` overrides a retained-publish default. IPv6 broker addresses and
+  leading-zero ports work consistently. Invalid version fields receive clear errors.
+* Corrupt or incompatible development history is reset automatically so the GUI and
+  terminal UI open with empty history. Config settings are preserved; no migration is
+  performed. Compatible future database layouts retain their data and version stamp.
+* The GUI reports remaining storage failures with a native error dialog, uses a content
+  security policy, and no longer requests clipboard read access. Keyboard shortcuts
+  work with Caps Lock and suppress the webview's default handling.
+
 * The Settings tab saves before the broker has been filled in. A theme, a language, or
   a notification rule used to be refused on a fresh install until an address, a
   username, and a password had been typed in as well. Connecting still reports an

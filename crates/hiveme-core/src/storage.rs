@@ -36,6 +36,13 @@ use crate::config::History;
 use crate::error::{Error, Result};
 use crate::message::{Level, Parsed};
 
+const HISTORY_SQL: &str = "SELECT m.id, t.topic, m.msg_id, m.ts, m.received_ts, m.sender_id, m.sender_name, m.app,
+                m.tier, m.level, m.title, m.body, m.raw, m.qos, m.retain, m.outgoing
+         FROM messages m NOT INDEXED CROSS JOIN topics t ON t.id = m.topic_id
+         WHERE m.id < COALESCE(?4, 9223372036854775807)
+           AND m.topic_id IN (SELECT id FROM topics WHERE topic = ?1 OR (topic >= ?2 AND topic < ?3))
+         ORDER BY m.id DESC LIMIT ?5";
+
 /// The version of the database schema this build writes.
 pub const SCHEMA_VERSION: i64 = 1;
 
@@ -121,6 +128,18 @@ impl NewMessage {
   /// are two messages, and only a HiveMe envelope can claim otherwise.
   pub fn from_payload(topic: impl Into<String>, raw: Vec<u8>, qos: u8, retain: bool, outgoing: bool) -> Self {
     let parsed = crate::message::parse(&raw);
+    Self::from_parsed(topic, raw, &parsed, qos, retain, outgoing)
+  }
+
+  /// Builds a row from the parse already used for rule evaluation.
+  pub fn from_parsed(
+    topic: impl Into<String>,
+    raw: Vec<u8>,
+    parsed: &Parsed,
+    qos: u8,
+    retain: bool,
+    outgoing: bool,
+  ) -> Self {
     let received_ts = now();
     let mut message = Self {
       topic: topic.into(),
@@ -139,10 +158,10 @@ impl NewMessage {
       retain,
       outgoing,
     };
-    if let Parsed::Envelope(envelope) = &parsed {
+    if let Parsed::Envelope(envelope) = parsed {
       message.msg_id = envelope.id.clone();
       message.ts = envelope.ts.clone();
-      message.level = Some(envelope.level().to_string());
+      message.level = Some(envelope.level().as_str().to_owned());
       if let Some(payload) = envelope.payload.as_ref() {
         message.title = payload.title.clone();
       }
@@ -197,8 +216,38 @@ pub struct Store {
   path: PathBuf,
 }
 
+/// Only a corrupt file or an incompatible layout justifies discarding history.
+enum OpenError {
+  Recreate(Error),
+  Keep(Error),
+}
+
+impl OpenError {
+  fn into_error(self) -> Error {
+    match self {
+      Self::Recreate(error) | Self::Keep(error) => error,
+    }
+  }
+}
+
+fn opening_failed(operation: &str, source: rusqlite::Error) -> OpenError {
+  let corrupt = matches!(
+    source.sqlite_error_code(),
+    Some(rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase)
+  );
+  let error = failed(operation, source);
+  if corrupt {
+    OpenError::Recreate(error)
+  } else {
+    OpenError::Keep(error)
+  }
+}
+
 impl Store {
-  /// Opens, creating the file and the schema when they are not there.
+  /// Opens history, recreating corrupt or incompatible unpublished databases.
+  ///
+  /// Config files are untouched. Permission, locking, and other I/O failures do not
+  /// discard history. Recovery closes the failed connection and retries only once.
   pub fn open(path: &Path) -> Result<Self> {
     if let Some(directory) = path.parent()
       && !directory.as_os_str().is_empty()
@@ -208,15 +257,40 @@ impl Store {
         source,
       })?;
     }
-    let connection = Connection::open(path).map_err(|source| failed("open the database", source))?;
+    match Self::open_once(path) {
+      Ok(store) => Ok(store),
+      Err(OpenError::Keep(error)) => Err(error),
+      Err(OpenError::Recreate(error)) => {
+        log::warn!("recreating the message history at {}: {error}", path.display());
+        // open_once has dropped its connection. Remove journals before the main file
+        // so none of the discarded database's pages can enter its replacement.
+        for suffix in ["-wal", "-shm", "-journal", ""] {
+          let mut file = path.as_os_str().to_os_string();
+          file.push(suffix);
+          if let Err(source) = std::fs::remove_file(&file)
+            && source.kind() != std::io::ErrorKind::NotFound
+          {
+            return Err(Error::Storage {
+              operation: "remove unusable history".to_owned(),
+              reason: format!("{}: {source}", Path::new(&file).display()),
+            });
+          }
+        }
+        Self::open_once(path).map_err(OpenError::into_error)
+      }
+    }
+  }
+
+  fn open_once(path: &Path) -> std::result::Result<Self, OpenError> {
+    let connection = Connection::open(path).map_err(|source| opening_failed("open the database", source))?;
     connection
       .busy_timeout(BUSY_TIMEOUT)
-      .map_err(|source| failed("set its busy timeout", source))?;
+      .map_err(|source| opening_failed("set its busy timeout", source))?;
     let store = Self {
       connection: Mutex::new(connection),
       path: path.to_path_buf(),
     };
-    store.migrate()?;
+    store.initialize_schema()?;
     Ok(store)
   }
 
@@ -227,7 +301,7 @@ impl Store {
       connection: Mutex::new(connection),
       path: PathBuf::from(":memory:"),
     };
-    store.migrate()?;
+    store.initialize_schema().map_err(OpenError::into_error)?;
     Ok(store)
   }
 
@@ -238,19 +312,77 @@ impl Store {
 
   /// How large the database file is, for the status bar. Zero when it has no file.
   pub fn size_bytes(&self) -> u64 {
-    std::fs::metadata(&self.path).map(|meta| meta.len()).unwrap_or(0)
+    ["", "-wal", "-shm"]
+      .iter()
+      .map(|suffix| {
+        let mut path = self.path.as_os_str().to_os_string();
+        path.push(suffix);
+        std::fs::metadata(Path::new(&path)).map(|meta| meta.len()).unwrap_or(0)
+      })
+      .sum()
   }
 
-  /// Creates the schema, or brings an older one forward.
+  /// Creates the unpublished application schema; no format migrations are performed.
   ///
   /// Version 0 means a database this build has not stamped, whether it is brand new or
   /// was written before `schema_version` existed, so the tables are created with
   /// `IF NOT EXISTS` and the version is written afterward.
-  fn migrate(&self) -> Result<()> {
+  fn initialize_schema(&self) -> std::result::Result<(), OpenError> {
     let connection = self.lock();
+    // Validate an existing development database before any PRAGMA or CREATE writes.
+    // The app is unpublished: incompatible layouts are recreated, never migrated.
+    for (table, required) in [
+      ("schema_version", &["version"][..]),
+      (
+        "topics",
+        &["id", "topic", "first_seen_ts", "last_seen_ts", "unread", "messages"][..],
+      ),
+      (
+        "messages",
+        &[
+          "id",
+          "topic_id",
+          "msg_id",
+          "ts",
+          "received_ts",
+          "sender_id",
+          "sender_name",
+          "app",
+          "tier",
+          "level",
+          "title",
+          "body",
+          "raw",
+          "qos",
+          "retain",
+          "outgoing",
+          "unread",
+        ][..],
+      ),
+    ] {
+      let mut statement = connection
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|source| opening_failed("inspect its tables", source))?;
+      let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|source| opening_failed("inspect its tables", source))?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|source| opening_failed("inspect its tables", source))?;
+      if !columns.is_empty()
+        && let Some(missing) = required
+          .iter()
+          .find(|required| !columns.iter().any(|column| column == **required))
+      {
+        return Err(OpenError::Recreate(Error::Storage {
+          operation: "open the database".to_owned(),
+          reason: format!("the existing {table} table lacks {missing}"),
+        }));
+      }
+    }
     connection
       .execute_batch(
         "PRAGMA journal_mode = WAL;
+         PRAGMA synchronous = NORMAL;
          PRAGMA foreign_keys = ON;
          CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS topics (
@@ -258,7 +390,8 @@ impl Store {
            topic         TEXT NOT NULL UNIQUE,
            first_seen_ts TEXT NOT NULL,
            last_seen_ts  TEXT NOT NULL,
-           unread        INTEGER NOT NULL DEFAULT 0
+           unread        INTEGER NOT NULL DEFAULT 0,
+           messages      INTEGER NOT NULL DEFAULT 0
          );
          CREATE TABLE IF NOT EXISTS messages (
            id          INTEGER PRIMARY KEY,
@@ -277,25 +410,30 @@ impl Store {
            qos         INTEGER NOT NULL,
            retain      INTEGER NOT NULL,
            outgoing    INTEGER NOT NULL,
+           unread      INTEGER NOT NULL DEFAULT 0,
            UNIQUE(topic_id, msg_id)
          );
          CREATE INDEX IF NOT EXISTS messages_topic_id_id ON messages(topic_id, id);
-         CREATE INDEX IF NOT EXISTS messages_received_ts ON messages(received_ts);",
+         CREATE INDEX IF NOT EXISTS messages_received_ts ON messages(received_ts);
+         CREATE TRIGGER IF NOT EXISTS messages_insert_counts AFTER INSERT ON messages BEGIN
+           UPDATE topics SET messages = messages + 1, unread = unread + NEW.unread WHERE id = NEW.topic_id;
+         END;
+         CREATE TRIGGER IF NOT EXISTS messages_delete_counts AFTER DELETE ON messages BEGIN
+           UPDATE topics SET messages = messages - 1, unread = unread - OLD.unread WHERE id = OLD.topic_id;
+         END;
+         CREATE TRIGGER IF NOT EXISTS messages_read_counts AFTER UPDATE OF unread ON messages BEGIN
+           UPDATE topics SET unread = unread + NEW.unread - OLD.unread WHERE id = NEW.topic_id;
+         END;",
       )
-      .map_err(|source| failed("create its tables", source))?;
+      .map_err(|source| opening_failed("create its tables", source))?;
 
     let version: i64 = connection
       .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| row.get(0))
       .optional()
-      .map_err(|source| failed("read its schema version", source))?
+      .map_err(|source| opening_failed("read its schema version", source))?
       .unwrap_or(0);
-    if version > SCHEMA_VERSION {
-      return Err(Error::Storage {
-        operation: "open the database".to_owned(),
-        reason: format!("it is at schema version {version}, and this build only knows {SCHEMA_VERSION}"),
-      });
-    }
-    if version != SCHEMA_VERSION {
+    // A future version with all known columns remains usable; keep its stamp.
+    if version == 0 {
       connection
         .execute("DELETE FROM schema_version", [])
         .and_then(|_| {
@@ -304,7 +442,7 @@ impl Store {
             params![SCHEMA_VERSION],
           )
         })
-        .map_err(|source| failed("stamp its schema version", source))?;
+        .map_err(|source| opening_failed("stamp its schema version", source))?;
     }
     Ok(())
   }
@@ -314,6 +452,7 @@ impl Store {
   /// The unread count only moves for a message that is new and came from the broker;
   /// what this installation sent has been seen by definition.
   pub fn insert(&self, message: &NewMessage) -> Result<Insertion> {
+    let level = message.level.as_ref().map(|level| level.to_lowercase());
     let mut connection = self.lock();
     // Immediate, so that two processes on one database never both find a message missing
     // and both insert it: the second waits out the first under the busy timeout and then
@@ -372,18 +511,21 @@ impl Store {
         };
         transaction
           .execute(
-            "UPDATE messages SET qos = ?2, retain = ?3, outgoing = ?4 WHERE id = ?1",
-            params![row_id, qos, retain, outgoing],
+            "UPDATE messages SET qos = ?2, retain = ?3, outgoing = ?4,
+               unread = CASE WHEN ?4 THEN 0 ELSE unread END,
+               app = COALESCE(app, ?5), sender_id = COALESCE(sender_id, ?6), sender_name = COALESCE(sender_name, ?7)
+             WHERE id = ?1",
+            params![
+              row_id,
+              qos,
+              retain,
+              outgoing,
+              message.app,
+              message.sender_id,
+              message.sender_name
+            ],
           )
           .map_err(|source| failed("update a message", source))?;
-        if message.outgoing && !was_outgoing {
-          transaction
-            .execute(
-              "UPDATE topics SET unread = MAX(0, unread - 1) WHERE id = ?1",
-              params![topic_id],
-            )
-            .map_err(|source| failed("reconcile an outgoing message", source))?;
-        }
         (row_id, false, outgoing, qos, retain)
       }
       None => {
@@ -391,8 +533,8 @@ impl Store {
           .execute(
             "INSERT INTO messages (
                topic_id, msg_id, ts, received_ts, sender_id, sender_name, app,
-               tier, level, title, body, raw, qos, retain, outgoing
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+               tier, level, title, body, raw, qos, retain, outgoing, unread
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![
               topic_id,
               message.msg_id,
@@ -402,22 +544,18 @@ impl Store {
               message.sender_name,
               message.app,
               message.tier,
-              message.level.as_ref().map(|level| level.to_lowercase()),
+              level,
               message.title,
               message.body,
               message.raw,
               message.qos,
               message.retain,
               message.outgoing,
+              !message.outgoing,
             ],
           )
           .map_err(|source| failed("store a message", source))?;
         let row_id = transaction.last_insert_rowid();
-        if !message.outgoing {
-          transaction
-            .execute("UPDATE topics SET unread = unread + 1 WHERE id = ?1", params![topic_id])
-            .map_err(|source| failed("count an unread message", source))?;
-        }
         (row_id, true, message.outgoing, message.qos, message.retain)
       }
     };
@@ -436,7 +574,7 @@ impl Store {
         sender_name: message.sender_name.clone(),
         app: message.app.clone(),
         tier: message.tier.clone(),
-        level: message.level.as_ref().map(|level| level.to_lowercase()),
+        level,
         title: message.title.clone(),
         body: message.body.clone(),
         raw: message.raw.clone(),
@@ -453,11 +591,7 @@ impl Store {
   pub fn topics(&self) -> Result<Vec<TopicRow>> {
     let connection = self.lock();
     let mut statement = connection
-      .prepare(
-        "SELECT t.topic, t.first_seen_ts, t.last_seen_ts, t.unread, COUNT(m.id)
-         FROM topics t LEFT JOIN messages m ON m.topic_id = t.id
-         GROUP BY t.id ORDER BY t.topic",
-      )
+      .prepare("SELECT topic, first_seen_ts, last_seen_ts, unread, messages FROM topics ORDER BY topic")
       .map_err(|source| failed("list its topics", source))?;
     let rows = statement
       .query_map([], |row| {
@@ -485,14 +619,7 @@ impl Store {
     let (descendants, after_descendants) = descendant_topic_bounds(topic);
     let connection = self.lock();
     let mut statement = connection
-      .prepare(
-        "SELECT m.id, t.topic, m.msg_id, m.ts, m.received_ts, m.sender_id, m.sender_name, m.app,
-                m.tier, m.level, m.title, m.body, m.raw, m.qos, m.retain, m.outgoing
-         FROM messages m JOIN topics t ON t.id = m.topic_id
-         WHERE (t.topic = ?1 OR (t.topic >= ?2 AND t.topic < ?3))
-           AND (?4 IS NULL OR m.id < ?4)
-         ORDER BY m.id DESC LIMIT ?5",
-      )
+      .prepare(HISTORY_SQL)
       .map_err(|source| failed("read a topic's history", source))?;
     let rows = statement
       .query_map(
@@ -529,7 +656,7 @@ impl Store {
     let connection = self.lock();
     connection
       .execute(
-        "UPDATE topics SET unread = 0 WHERE topic = ?1 OR (topic >= ?2 AND topic < ?3)",
+        "UPDATE messages SET unread = 0 WHERE unread != 0 AND topic_id IN (SELECT id FROM topics WHERE topic = ?1 OR (topic >= ?2 AND topic < ?3))",
         params![topic, descendants, after_descendants],
       )
       .map_err(|source| failed("mark a topic read", source))?;
@@ -541,16 +668,17 @@ impl Store {
   /// The node stays in the tree because the user is still subscribed to it and asked
   /// to forget the messages, not the topic.
   pub fn clear_topic(&self, topic: &str) -> Result<u64> {
-    let connection = self.lock();
-    let deleted = connection
+    let mut connection = self.lock();
+    let transaction = connection
+      .transaction_with_behavior(TransactionBehavior::Immediate)
+      .map_err(|source| failed("begin clearing a topic", source))?;
+    let deleted = transaction
       .execute(
         "DELETE FROM messages WHERE topic_id IN (SELECT id FROM topics WHERE topic = ?1)",
         params![topic],
       )
       .map_err(|source| failed("clear a topic", source))?;
-    connection
-      .execute("UPDATE topics SET unread = 0 WHERE topic = ?1", params![topic])
-      .map_err(|source| failed("clear a topic", source))?;
+    transaction.commit().map_err(|source| failed("clear a topic", source))?;
     Ok(deleted as u64)
   }
 
@@ -576,6 +704,7 @@ impl Store {
           "DELETE FROM messages WHERE id IN (
              SELECT id FROM (
                SELECT id, ROW_NUMBER() OVER (PARTITION BY topic_id ORDER BY id DESC) AS rank FROM messages
+               WHERE topic_id IN (SELECT id FROM topics WHERE messages > ?1)
              ) WHERE rank > ?1
            )",
           params![history.max_messages_per_topic],
@@ -592,16 +721,6 @@ impl Store {
         )
         .map_err(|source| failed("prune by age", source))?;
       pruned.by_age = deleted as u64;
-    }
-    if pruned.total() > 0 {
-      transaction
-        .execute(
-          "UPDATE topics SET unread = MIN(unread, (
-             SELECT COUNT(*) FROM messages WHERE messages.topic_id = topics.id AND messages.outgoing = 0
-           ))",
-          [],
-        )
-        .map_err(|source| failed("bring the unread counts down with the messages", source))?;
     }
     transaction.commit().map_err(|source| failed("prune", source))?;
     Ok(pruned)
@@ -668,4 +787,190 @@ fn failed(operation: &str, source: rusqlite::Error) -> Error {
 /// Now, in the same RFC 3339 shape a message envelope carries.
 fn now() -> String {
   chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
+#[cfg(test)]
+mod review_tests {
+  use super::*;
+
+  #[test]
+  fn a_large_subtree_pages_by_primary_key_without_a_temporary_sort() {
+    let store = Store::in_memory().unwrap();
+    {
+      let connection = store.lock();
+      connection
+        .execute_batch(
+          "INSERT INTO topics (topic, first_seen_ts, last_seen_ts) VALUES ('hiveme/child','now','now');
+        WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<100000)
+        INSERT INTO messages(topic_id,msg_id,ts,received_ts,tier,body,raw,qos,retain,outgoing,unread)
+        SELECT 1,CAST(x AS TEXT),'now','now','text','body',X'00',1,0,0,1 FROM n;",
+        )
+        .unwrap();
+      let mut query = connection
+        .prepare(&format!("EXPLAIN QUERY PLAN {HISTORY_SQL}"))
+        .unwrap();
+      let plan = query
+        .query_map(params!["hiveme", "hiveme/", "hiveme0", 99000, 200], |row| {
+          row.get::<_, String>(3)
+        })
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap()
+        .join("\n");
+      assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+      assert!(plan.contains("INTEGER PRIMARY KEY"), "{plan}");
+    }
+    let start = std::time::Instant::now();
+    let rows = store.messages("hiveme", Some(99000), 200).unwrap();
+    assert_eq!(rows.len(), 200);
+    assert_eq!(rows.last().unwrap().row_id, 98999);
+    assert!(start.elapsed() < Duration::from_secs(5));
+    assert_eq!(store.topics().unwrap()[0].messages, 100000);
+    store
+      .prune(&History {
+        max_messages_per_topic: 100,
+        retention_days: 0,
+      })
+      .unwrap();
+    assert_eq!(
+      (store.topics().unwrap()[0].messages, store.topics().unwrap()[0].unread),
+      (100, 100)
+    );
+    store.clear_topic("hiveme/child").unwrap();
+    assert_eq!(
+      (store.topics().unwrap()[0].messages, store.topics().unwrap()[0].unread),
+      (0, 0)
+    );
+  }
+  #[test]
+  fn an_incompatible_development_layout_is_recreated_and_can_store_new_history() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("HiveMe.db");
+    let connection = Connection::open(&path).unwrap();
+    connection
+      .execute_batch(
+        "CREATE TABLE topics(id INTEGER PRIMARY KEY, topic TEXT, unread INTEGER);
+      CREATE TABLE messages(id INTEGER PRIMARY KEY, body TEXT);
+      INSERT INTO messages(body) VALUES ('old development history');",
+      )
+      .unwrap();
+    drop(connection);
+    assert_fresh_usable_history(&path);
+  }
+
+  fn assert_fresh_usable_history(path: &Path) {
+    let store = Store::open(path).expect("unusable history is recreated");
+    assert!(store.topics().unwrap().is_empty());
+    assert!(store.messages("hiveme", None, 10).unwrap().is_empty());
+    let message = NewMessage::from_payload("hiveme", b"new history".to_vec(), 1, false, false);
+    store.insert(&message).unwrap();
+    assert_eq!(
+      (store.topics().unwrap()[0].messages, store.topics().unwrap()[0].unread),
+      (1, 1)
+    );
+    drop(store);
+    let reopened = Store::open(path).unwrap();
+    assert_eq!(reopened.messages("hiveme", None, 10).unwrap()[0].body, "new history");
+    assert_eq!(
+      reopened
+        .lock()
+        .query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0))
+        .unwrap(),
+      "ok"
+    );
+  }
+
+  #[test]
+  fn a_non_database_file_and_its_stale_journals_are_recreated() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("HiveMe.db");
+    for suffix in ["", "-wal", "-shm", "-journal"] {
+      std::fs::write(directory.path().join(format!("HiveMe.db{suffix}")), b"not a database").unwrap();
+    }
+    assert_fresh_usable_history(&path);
+    assert!(!directory.path().join("HiveMe.db-journal").exists());
+  }
+
+  #[test]
+  fn a_corrupt_sqlite_schema_page_is_recreated() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("HiveMe.db");
+    drop(Store::open(&path).unwrap());
+    let mut bytes = std::fs::read(&path).unwrap();
+    bytes[100] = 0xff; // Invalid b-tree page type, after the valid SQLite file header.
+    std::fs::write(&path, bytes).unwrap();
+    assert_fresh_usable_history(&path);
+  }
+
+  #[test]
+  fn compatible_future_history_keeps_its_messages_and_version() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("HiveMe.db");
+    let store = Store::open(&path).unwrap();
+    store
+      .insert(&NewMessage::from_payload(
+        "hiveme",
+        b"preserved".to_vec(),
+        1,
+        false,
+        false,
+      ))
+      .unwrap();
+    store.lock().execute_batch("UPDATE schema_version SET version = 99; CREATE TABLE future_extension(value TEXT); INSERT INTO future_extension VALUES ('preserved too');").unwrap();
+    drop(store);
+    let reopened = Store::open(&path).unwrap();
+    assert_eq!(reopened.messages("hiveme", None, 10).unwrap()[0].body, "preserved");
+    let connection = reopened.lock();
+    assert_eq!(
+      connection
+        .query_row("SELECT version FROM schema_version", [], |row| row.get::<_, i64>(0))
+        .unwrap(),
+      99
+    );
+    assert_eq!(
+      connection
+        .query_row("SELECT value FROM future_extension", [], |row| row.get::<_, String>(0))
+        .unwrap(),
+      "preserved too"
+    );
+  }
+
+  #[test]
+  fn a_locked_database_is_not_deleted() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("HiveMe.db");
+    let store = Store::open(&path).unwrap();
+    store
+      .insert(&NewMessage::from_payload(
+        "hiveme",
+        b"preserved".to_vec(),
+        1,
+        false,
+        false,
+      ))
+      .unwrap();
+    drop(store);
+    let connection = Connection::open(&path).unwrap();
+    connection
+      .execute_batch("PRAGMA journal_mode = DELETE; BEGIN EXCLUSIVE;")
+      .unwrap();
+    let before = std::fs::read(&path).unwrap();
+    assert!(Store::open(&path).unwrap_err().to_string().contains("locked"));
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    connection.execute_batch("ROLLBACK").unwrap();
+    assert_eq!(
+      Store::open(&path).unwrap().messages("hiveme", None, 10).unwrap()[0].body,
+      "preserved"
+    );
+  }
+
+  #[test]
+  fn an_unopenable_path_is_not_removed() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("HiveMe.db");
+    std::fs::create_dir(&path).unwrap();
+    std::fs::write(path.join("keep"), b"preserved").unwrap();
+    assert!(Store::open(&path).is_err());
+    assert_eq!(std::fs::read(path.join("keep")).unwrap(), b"preserved");
+  }
 }

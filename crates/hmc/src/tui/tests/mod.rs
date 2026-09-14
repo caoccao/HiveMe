@@ -58,18 +58,7 @@ use super::settings::{Category, Field, Focus};
 use super::theme::Glyphs;
 use super::{Exit, drive, layout};
 
-/// Records every toast instead of showing it.
-#[derive(Default)]
-struct Recorder {
-  shown: Mutex<Vec<(String, String)>>,
-}
-
-impl Toaster for Recorder {
-  fn show(&self, title: &str, body: &str) -> std::result::Result<(), String> {
-    self.shown.lock().unwrap().push((title.to_owned(), body.to_owned()));
-    Ok(())
-  }
-}
+use hiveme_core::test_support::Recorder;
 
 /// A session whose answers the test decides.
 struct Scripted {
@@ -89,6 +78,7 @@ struct Scripted {
   save_error: Mutex<Option<String>>,
   skipped: Mutex<Vec<String>>,
   cleared: Mutex<Vec<String>>,
+  write_gate: Mutex<()>,
   /// Every publish asked for: the tree topic, the body, and the options.
   published: Mutex<Vec<(String, String, PublishOptions)>>,
   /// Why the broker refuses the next publishes, when it does.
@@ -114,6 +104,7 @@ impl Scripted {
       save_error: Mutex::new(None),
       skipped: Mutex::new(Vec::new()),
       cleared: Mutex::new(Vec::new()),
+      write_gate: Mutex::new(()),
       published: Mutex::new(Vec::new()),
       publish_error: Mutex::new(None),
     })
@@ -263,10 +254,12 @@ impl Service for Scripted {
   }
 
   fn mark_read(&self, topic: &str) -> Result<()> {
+    let _gate = self.write_gate.lock().unwrap();
     self.store.mark_read(topic)
   }
 
   fn clear_topic(&self, topic: &str) -> Result<u64> {
+    let _gate = self.write_gate.lock().unwrap();
     self.cleared.lock().unwrap().push(topic.to_owned());
     self.store.clear_topic(topic)
   }
@@ -345,7 +338,7 @@ impl Service for Scripted {
   }
 }
 
-fn row(row_id: i64, topic: &str) -> MessageRow {
+pub(super) fn row(row_id: i64, topic: &str) -> MessageRow {
   MessageRow {
     row_id,
     topic: topic.to_owned(),
@@ -916,7 +909,7 @@ async fn a_first_run_opens_on_the_broker_url_and_saves_what_is_typed_once() {
     password.contains('*') && !password.contains('p'),
     "the password is hidden: {row}"
   );
-  press(&mut app, chord(KeyCode::Char('h'), KeyModifiers::CONTROL));
+  app.perform(Action::TogglePassword, Instant::now());
   assert!(render(&mut app, 80, 24).join("\n").contains("Hide the password"));
   press(&mut app, key(KeyCode::Enter));
   let outcome = receivers.outcomes.recv().await.unwrap();
@@ -947,6 +940,11 @@ fn clearing_the_topic_reloads_it_and_an_echo_never_doubles_a_row() {
   assert_eq!(ids, vec![1, 2]);
 
   press(&mut app, key(KeyCode::F(4)));
+  let deadline = Instant::now() + Duration::from_secs(2);
+  while !app.selected_messages().is_empty() && Instant::now() < deadline {
+    app.on_tick(Instant::now());
+    std::thread::yield_now();
+  }
   assert_eq!(*service.cleared.lock().unwrap(), vec!["hiveme".to_owned()]);
   assert!(
     app.selected_messages().is_empty(),
@@ -1115,4 +1113,62 @@ async fn the_real_session_drives_the_frame() {
   let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
   let exit = drive(&mut app, &mut terminal, &mut receiver, &mut receivers, || {}).await;
   assert_eq!(exit, Exit::Clean, "a session that never connected ends at once");
+}
+
+#[test]
+fn lag_recovery_reloads_the_tree_and_selected_rows() {
+  let service = Scripted::in_language("en-US");
+  let (mut app, _) = open_app(&service);
+  service.keep("hiveme/missed", b"missed while lagging", false);
+  app.recover_lag(Instant::now());
+  assert_eq!(app.selected_messages().len(), 1);
+  assert_eq!(app.selected_messages()[0].topic, "hiveme/missed");
+  assert_eq!(app.topics[0].messages, 1);
+}
+
+#[test]
+fn idle_ticks_request_no_redraw_and_expiration_does() {
+  let service = Scripted::in_language("en-US");
+  let (mut app, _) = open_app(&service);
+  let now = Instant::now();
+  for _ in 0..100 {
+    app.on_tick(now);
+    std::thread::yield_now();
+  }
+  assert!(!app.on_tick(now));
+  app.notify_error("temporary".to_owned(), now);
+  assert!(app.on_tick(now + Duration::from_secs(10)));
+  assert!(app.snackbar.is_none());
+}
+
+#[test]
+fn very_wide_terminals_do_not_overflow_the_split_or_bubble_width() {
+  let service = Scripted::in_language("en-US");
+  let (mut app, _) = open_app(&service);
+  app.messages_tab.split = 60;
+  render(&mut app, 2000, 24);
+}
+
+#[test]
+fn slow_history_writes_leave_input_and_drawing_responsive() {
+  let service = Scripted::in_language("en-US");
+  let (mut app, _receivers) = open_app(&service);
+  let blocked_write = service.write_gate.lock().unwrap();
+  let start = Instant::now();
+  app.select_topic("hiveme", start);
+  app.clear_selected_topic(start);
+  app.perform(Action::Help, start);
+  assert!(app.help);
+  assert!(!render(&mut app, 80, 24).is_empty());
+  assert!(
+    start.elapsed() < Duration::from_millis(500),
+    "UI must not wait for the held write gate"
+  );
+  assert!(service.cleared.lock().unwrap().is_empty());
+  drop(blocked_write);
+  let deadline = Instant::now() + Duration::from_secs(2);
+  while service.cleared.lock().unwrap().is_empty() && Instant::now() < deadline {
+    std::thread::yield_now();
+  }
+  assert_eq!(*service.cleared.lock().unwrap(), ["hiveme"]);
 }

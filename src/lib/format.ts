@@ -91,11 +91,3 @@ export function formatHex(hex: string, groupsPerLine = 16): string {
   }
   return lines.join('\n');
 }
-
-/** Shortens a long topic for a tab label or a tooltip-free chip. */
-export function shrinkTopic(topic: string, maximum = 40): string {
-  if (topic.length <= maximum) {
-    return topic;
-  }
-  return `…${topic.slice(topic.length - maximum + 1)}`;
-}

@@ -15,6 +15,7 @@
 * limitations under the License.
 */
 
+import i18n from '../i18n';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -98,7 +99,12 @@ describe('the subscription editor', () => {
   });
 
   it('keeps a blank row editable until the user replaces or removes it', () => {
-    expect(fromDrafts([{ filter: '  ', absolute: false }, { filter: 'info', absolute: false }])).toEqual(['', 'info']);
+    expect(
+      fromDrafts([
+        { filter: '  ', absolute: false },
+        { filter: 'info', absolute: false },
+      ])
+    ).toEqual(['', 'info']);
   });
 });
 
@@ -131,9 +137,11 @@ describe('the settings tab', () => {
     await userEvent.clear(screen.getByLabelText('URL'));
     await userEvent.type(screen.getByLabelText('URL'), shown);
     expect(useAppStore.getState().config?.broker?.url).toBe(saved);
-    await waitFor(() => expect(Service.setConfig).toHaveBeenLastCalledWith(
-      expect.objectContaining({ broker: expect.objectContaining({ url: saved }) })
-    ));
+    await waitFor(() =>
+      expect(Service.setConfig).toHaveBeenLastCalledWith(
+        expect.objectContaining({ broker: expect.objectContaining({ url: saved }) })
+      )
+    );
   });
 
   it('starts a broker that has none on TLS MQTT, which is the only one the cloud accepts', async () => {
@@ -194,7 +202,9 @@ describe('the settings tab', () => {
   it('has no Save, Revert, or Open config button and does not save on mount', async () => {
     render(<Config />);
     expect(screen.queryByRole('button', { name: /Save|Revert|config file/i })).not.toBeInTheDocument();
-    await act(async () => { await useAppStore.getState().flushConfig(); });
+    await act(async () => {
+      await useAppStore.getState().flushConfig();
+    });
     expect(Service.setConfig).not.toHaveBeenCalled();
   });
 
@@ -238,18 +248,22 @@ describe('the settings tab', () => {
     await userEvent.type(screen.getByLabelText('Username'), '-edited');
     await userEvent.click(screen.getByRole('tab', { name: 'Update' }));
     expect(useAppStore.getState().config?.broker?.username).toBe('hiveme-sam-edited');
-    await waitFor(() => expect(Service.setConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ broker: expect.objectContaining({ username: 'hiveme-sam-edited' }) })
-    ));
+    await waitFor(() =>
+      expect(Service.setConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ broker: expect.objectContaining({ username: 'hiveme-sam-edited' }) })
+      )
+    );
   });
 
   it('finishes an automatic save after the settings tab is closed', async () => {
     const view = await renderBroker();
     await userEvent.type(screen.getByLabelText('Username'), '-edited');
     view.unmount();
-    await waitFor(() => expect(Service.setConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ broker: expect.objectContaining({ username: 'hiveme-sam-edited' }) })
-    ));
+    await waitFor(() =>
+      expect(Service.setConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ broker: expect.objectContaining({ username: 'hiveme-sam-edited' }) })
+      )
+    );
   });
 
   it('flushes current edits before copying the complete CLI setup command', async () => {
@@ -259,16 +273,24 @@ describe('the settings tab', () => {
     await userEvent.type(screen.getByLabelText('Password'), '-edited');
     await userEvent.click(screen.getByRole('button', { name: 'Copy CLI setup' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(`hmc --init '${setup}'`));
-    expect(useAppStore.getState().dialogNotification?.title).toBe('CLI setup command copied. Paste it into your terminal and run it.');
+    expect(useAppStore.getState().dialogNotification?.title).toBe(
+      'CLI setup command copied. Paste it into your terminal and run it.'
+    );
     expect(Service.setConfig).toHaveBeenCalledWith(
       expect.objectContaining({ broker: expect.objectContaining({ password: 's3cret-edited' }) })
     );
-    expect(vi.mocked(Service.setConfig).mock.invocationCallOrder[0])
-      .toBeLessThan(vi.mocked(Service.getBrokerInit).mock.invocationCallOrder[0]);
+    expect(vi.mocked(Service.setConfig).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(Service.getBrokerInit).mock.invocationCallOrder[0]
+    );
   });
 
   it('keeps quotes and shell characters in credentials inside the JSON argument', async () => {
-    const setup = { v: 1, url: CONFIG.broker?.url, username: "O'Brien’s account", password: "'‘’‚‛\"$HOME`echo`; & | \\ password" };
+    const setup = {
+      v: 1,
+      url: CONFIG.broker?.url,
+      username: "O'Brien’s account",
+      password: '\'‘’‚‛"$HOME`echo`; & | \\ password',
+    };
     vi.mocked(Service.getBrokerInit).mockResolvedValueOnce(JSON.stringify(setup));
     await renderBroker();
     await userEvent.click(screen.getByRole('button', { name: 'Copy CLI setup' }));
@@ -320,4 +342,30 @@ describe('the settings tab', () => {
 
     expect(screen.getAllByText(/not implemented yet/)).toHaveLength(2);
   });
+});
+
+it('adding a rule after a deletion chooses an unused ID', async () => {
+  const config = structuredClone(CONFIG);
+  config.notifications!.rules = [{ ...CONFIG.notifications!.rules![0], id: 'rule-2' }];
+  useAppStore.setState({ config });
+  render(<Config />);
+  await userEvent.click(screen.getByRole('tab', { name: 'Notifications' }));
+  expect(screen.getByText(i18n.t('settings.rawNotificationHint'))).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: i18n.t('settings.addRule') }));
+  const ids = useAppStore.getState().config!.notifications!.rules!.map((rule) => rule.id);
+  expect(new Set(ids).size).toBe(ids.length);
+});
+
+it('keeps a blank subscription editable without attempting an invalid autosave', async () => {
+  useAppStore.getState().updateConfig((config) => {
+    config.topics!.subscriptions = [''];
+  });
+  expect(await useAppStore.getState().flushConfig()).toBe(false);
+  expect(Service.setConfig).not.toHaveBeenCalled();
+  expect(useAppStore.getState().dialogNotification).toBeNull();
+  useAppStore.getState().updateConfig((config) => {
+    config.topics!.subscriptions = ['#'];
+  });
+  expect(await useAppStore.getState().flushConfig()).toBe(true);
+  expect(Service.setConfig).toHaveBeenCalledOnce();
 });

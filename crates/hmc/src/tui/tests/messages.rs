@@ -760,103 +760,81 @@ fn the_messages_tab_renders_in_german_japanese_and_chinese_at_the_smallest_size(
 /// published by the one-shot mode appears live and raises the badge until selected.
 #[test]
 fn against_a_real_broker_the_composer_and_one_shot_hmc_meet_in_the_view() {
-  use testcontainers::core::{IntoContainerPort, WaitFor};
-  use testcontainers::runners::AsyncRunner;
-  use testcontainers::{GenericImage, ImageExt};
+  hiveme_core::test_support::with_broker(
+    "against_a_real_broker_the_composer_and_one_shot_hmc_meet_in_the_view",
+    |broker| async move {
+      let host = broker.host.clone();
+      let port = broker.port;
+      let directory = tempfile::tempdir().unwrap();
+      let path = directory.path().join("HiveMe.json");
+      let mut config = Config::new_for_this_device();
+      config.device.name = "test-runner".to_owned();
+      config.broker.url = format!("mqtt://{host}:{port}");
+      config.broker.username = "hiveme".to_owned();
+      config.broker.password = "test".to_owned();
+      config.broker.connect_timeout_secs = 20;
+      config.publish.timeout_secs = 20;
+      std::fs::write(&path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
 
-  if std::env::var("HIVEME_SKIP_DOCKER").as_deref() == Ok("1") {
-    eprintln!("skipping the broker test: HIVEME_SKIP_DOCKER=1");
-    return;
-  }
-  let runtime = tokio::runtime::Builder::new_multi_thread()
-    .enable_all()
-    .build()
-    .unwrap();
-  runtime.block_on(async {
-    let container = match GenericImage::new("hivemq/hivemq-ce", "latest")
-      .with_wait_for(WaitFor::message_on_stdout("Started HiveMQ"))
-      .with_startup_timeout(Duration::from_secs(180))
-      .start()
-      .await
-    {
-      Ok(container) => container,
-      Err(reason) => {
-        eprintln!("skipping the broker test: the HiveMQ CE container did not start ({reason})");
-        return;
+      let toasts = Arc::new(Recorder::default());
+      let session = Session::open(Some(&path), SessionApp::Tui, toasts).unwrap();
+      let (mut app, mut receivers) = App::new(session.clone(), Glyphs::UNICODE, false, false);
+      session.connect().await.expect("the session connects");
+      app.set_status(session.status(), Instant::now());
+      assert!(app.composer_enabled());
+
+      app.messages_tab.focus = Focus::Composer(Control::Editor);
+      type_text(&mut app, "Hello from the terminal");
+      press(&mut app, key(KeyCode::Enter));
+      let outcome = tokio::time::timeout(Duration::from_secs(30), receivers.outcomes.recv())
+        .await
+        .expect("the broker acknowledges")
+        .unwrap();
+      assert!(matches!(outcome, Outcome::Sent { .. }), "{outcome:?}");
+      app.on_outcome(outcome, Instant::now());
+
+      // The echo arrives on the session's own subscription and collapses into the row.
+      let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+      while session.status().messages_received == 0 && tokio::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(50)).await;
       }
-    };
-    let host = container.get_host().await.unwrap().to_string();
-    let port = container.get_host_port_ipv4(1883.tcp()).await.unwrap();
-
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("HiveMe.json");
-    let mut config = Config::new_for_this_device();
-    config.device.name = "test-runner".to_owned();
-    config.broker.url = format!("mqtt://{host}:{port}");
-    config.broker.username = "hiveme".to_owned();
-    config.broker.password = "test".to_owned();
-    config.broker.connect_timeout_secs = 20;
-    config.publish.timeout_secs = 20;
-    std::fs::write(&path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
-
-    let toasts = Arc::new(Recorder::default());
-    let session = Session::open(Some(&path), SessionApp::Tui, toasts).unwrap();
-    let (mut app, mut receivers) = App::new(session.clone(), Glyphs::UNICODE, false, false);
-    session.connect().await.expect("the session connects");
-    app.set_status(session.status(), Instant::now());
-    assert!(app.composer_enabled());
-
-    app.messages_tab.focus = Focus::Composer(Control::Editor);
-    type_text(&mut app, "Hello from the terminal");
-    press(&mut app, key(KeyCode::Enter));
-    let outcome = tokio::time::timeout(Duration::from_secs(30), receivers.outcomes.recv())
-      .await
-      .expect("the broker acknowledges")
-      .unwrap();
-    assert!(matches!(outcome, Outcome::Sent { .. }), "{outcome:?}");
-    app.on_outcome(outcome, Instant::now());
-
-    // The echo arrives on the session's own subscription and collapses into the row.
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
-    while session.status().messages_received == 0 && tokio::time::Instant::now() < deadline {
-      tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    assert!(session.status().messages_received >= 1, "the echo came back");
-    while let Ok(event) = receivers.events.try_recv() {
-      app.on_session_event(event, Instant::now());
-    }
-    assert_eq!(session.messages("hiveme", None, 200).unwrap().len(), 1, "stored once");
-    assert_eq!(app.selected_messages().len(), 1, "shown once");
-    assert!(render(&mut app, 120, 40).join("\n").contains("Hello from the terminal"));
-
-    // The one-shot mode, in this process, publishes to hiveme/ci.
-    let cli = crate::cli::Cli::parse_in(
-      Locale::EnUs,
-      ["hmc", "--config", path.to_str().unwrap(), "-t", "ci", "Disk full"].map(std::ffi::OsString::from),
-    );
-    crate::run::run(cli, Locale::EnUs)
-      .await
-      .expect("the one-shot publish works");
-
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
-    while !app.selected_messages().iter().any(|row| row.body == "Disk full") {
-      assert!(tokio::time::Instant::now() < deadline, "the message never arrived");
-      match tokio::time::timeout(Duration::from_millis(200), receivers.events.recv()).await {
-        Ok(Ok(event)) => app.on_session_event(event, Instant::now()),
-        _ => continue,
+      assert!(session.status().messages_received >= 1, "the echo came back");
+      while let Ok(event) = receivers.events.try_recv() {
+        app.on_session_event(event, Instant::now());
       }
-    }
-    let screen = render(&mut app, 120, 40).join("\n");
-    assert!(screen.contains("Disk full") && screen.contains("ci (1)"), "{screen}");
+      assert_eq!(session.messages("hiveme", None, 200).unwrap().len(), 1, "stored once");
+      assert_eq!(app.selected_messages().len(), 1, "shown once");
+      assert!(render(&mut app, 120, 40).join("\n").contains("Hello from the terminal"));
 
-    let (x, y) = target(&app, &Action::SelectTopic("hiveme/ci".to_owned()));
-    press(&mut app, click(x + 3, y));
-    assert!(
-      !render(&mut app, 120, 40).join("\n").contains("ci (1)"),
-      "selected, so read"
-    );
+      // The one-shot mode, in this process, publishes to hiveme/ci.
+      let cli = crate::cli::Cli::parse_in(
+        Locale::EnUs,
+        ["hmc", "--config", path.to_str().unwrap(), "-t", "ci", "Disk full"].map(std::ffi::OsString::from),
+      );
+      crate::run::run(cli, Locale::EnUs, None)
+        .await
+        .expect("the one-shot publish works");
 
-    let _ = tokio::time::timeout(SHUTDOWN_TIMEOUT, session.shutdown()).await;
-    drop(container);
-  });
+      let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+      while !app.selected_messages().iter().any(|row| row.body == "Disk full") {
+        assert!(tokio::time::Instant::now() < deadline, "the message never arrived");
+        match tokio::time::timeout(Duration::from_millis(200), receivers.events.recv()).await {
+          Ok(Ok(event)) => app.on_session_event(event, Instant::now()),
+          _ => continue,
+        }
+      }
+      let screen = render(&mut app, 120, 40).join("\n");
+      assert!(screen.contains("Disk full") && screen.contains("ci (1)"), "{screen}");
+
+      let (x, y) = target(&app, &Action::SelectTopic("hiveme/ci".to_owned()));
+      press(&mut app, click(x + 3, y));
+      assert!(
+        !render(&mut app, 120, 40).join("\n").contains("ci (1)"),
+        "selected, so read"
+      );
+
+      let _ = tokio::time::timeout(SHUTDOWN_TIMEOUT, session.shutdown()).await;
+      drop(broker);
+    },
+  );
 }

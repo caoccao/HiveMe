@@ -16,7 +16,10 @@
   { "raw": "host:", "fallback": "mqtts", "protocol": "mqtts", "address": "host:", "url": "mqtts://host:", "port": 8883 },
   { "raw": "host:80ab", "fallback": "mqtts", "protocol": "mqtts", "address": "host:80ab", "url": "mqtts://host:80ab", "port": 8883 },
   { "raw": "host:99999", "fallback": "mqtts", "protocol": "mqtts", "address": "host:99999", "url": "mqtts://host:99999", "port": 8883 },
-  { "raw": "host:0883", "fallback": "mqtts", "protocol": "mqtts", "address": "host:0883", "url": "mqtts://host:0883", "port": 8883 },
+  { "raw": "host:0883", "fallback": "mqtts", "protocol": "mqtts", "address": "host:0883", "url": "mqtts://host:0883", "port": 883 },
   { "raw": "", "fallback": "mqtts", "protocol": "mqtts", "address": "", "url": "", "port": 8883 },
-  { "raw": "   ", "fallback": "wss", "protocol": "wss", "address": "", "url": "", "port": 8884 }
+  { "raw": "   ", "fallback": "wss", "protocol": "wss", "address": "", "url": "", "port": 8884 },
+  { "raw": "mqtt://host:08883", "fallback": "mqtts", "protocol": "mqtt", "address": "host:08883", "url": "mqtt://host:08883", "port": 8883 },
+  { "raw": "mqtt://[::1]", "fallback": "mqtts", "protocol": "mqtt", "address": "[::1]", "url": "mqtt://[::1]", "port": 1883 },
+  { "raw": "mqtt://[::1]:08883", "fallback": "mqtts", "protocol": "mqtt", "address": "[::1]:08883", "url": "mqtt://[::1]:08883", "port": 8883 }
 ]

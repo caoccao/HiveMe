@@ -43,7 +43,7 @@ fn main() -> ExitCode {
   // The help is written in the language of the config, so the config is looked at
   // before clap is, and before logging is set up, which makes that look silent.
   let arguments: Vec<OsString> = std::env::args_os().collect();
-  let locale = run::configured_locale(cli::config_argument(&arguments).as_deref());
+  let (locale, cached) = run::configured_locale(cli::config_argument(&arguments).as_deref());
 
   // clap prints its own usage errors and exits 2, which is the code the specification
   // gives them, so a parse failure never reaches the mapping below.
@@ -55,7 +55,7 @@ fn main() -> ExitCode {
   }
 
   init_logging(cli.verbose);
-  exit(runtime(locale).and_then(|runtime| runtime.block_on(run::run(cli, locale))))
+  exit(runtime(locale).and_then(|runtime| runtime.block_on(run::run(cli, locale, cached))))
 }
 
 /// The exit code of a run, with the one line a failure writes to stderr.

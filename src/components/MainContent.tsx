@@ -110,28 +110,32 @@ export default function MainContent() {
   );
 
   useEffect(() => {
-    const handleKeyUp = (event: KeyboardEvent) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.ctrlKey && !event.altKey && !event.shiftKey) {
         if (event.key >= '1' && event.key <= '9') {
           const index = Number.parseInt(event.key, 10) - 1;
           if (index >= 0 && index < tabControls.length) {
+            event.preventDefault();
             event.stopPropagation();
             setTabIndex(index);
           }
-        } else if (event.key === 'w') {
+        } else if (event.key.toLowerCase() === 'w') {
+          event.preventDefault();
           event.stopPropagation();
           closeTab(tabIndex);
         } else if (event.key === 'Tab') {
+          event.preventDefault();
           event.stopPropagation();
           setTabIndex((previous) => (previous >= tabControls.length - 1 ? 0 : previous + 1));
         }
       } else if (event.ctrlKey && !event.altKey && event.shiftKey && event.key === 'Tab') {
+        event.preventDefault();
         event.stopPropagation();
         setTabIndex((previous) => (previous > 0 ? previous - 1 : tabControls.length - 1));
       }
     };
-    document.addEventListener('keyup', handleKeyUp);
-    return () => document.removeEventListener('keyup', handleKeyUp);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, [closeTab, tabIndex, tabControls.length]);
 
   useEffect(() => {
@@ -237,6 +241,7 @@ export default function MainContent() {
                         aria-label={t('tabs.close')}
                         sx={{ ml: 0.5, p: 0.25 }}
                         onClick={(event) => {
+                          event.preventDefault();
                           event.stopPropagation();
                           closeTab(control.index);
                         }}

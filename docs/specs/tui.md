@@ -374,7 +374,7 @@ Keys:
 - In an open popup, `Up`, `Down`, `PageUp`, `PageDown`, `Home`, and `End` move the
   highlight, `Enter` and `Space` pick, and `Esc` closes it and keeps the focus on its
   select. Any other key or click closes it first.
-- `Ctrl+H` shows or hides the password anywhere in the Broker category.
+- `Ctrl+H` deletes a character while typing, including terminals that send it for Backspace. Outside text fields it shows or hides the password in the Broker category.
 - A click focuses a control and does what `Space` does. A click on a radio choice or on a
   popup entry picks it, and a click on the select whose popup is open only closes it.
 
@@ -515,8 +515,8 @@ line breaks.
   reports as well.
 - Without the keyboard protocol a terminal sends `Ctrl+/` as the byte crossterm reads
   as `Ctrl+7`, so `Ctrl+7` opens the help there; under the protocol it selects tab 7.
-- `Up` and `Down` move between the controls of a settings panel, and `Ctrl+H` shows or
-  hides the password anywhere in the Broker category.
+- `Up` and `Down` move between the controls of a settings panel, and `Ctrl+H` outside
+  text fields shows or hides the password in the Broker category.
 - `Ctrl+Left` and `Ctrl+Right` move the divider in every focus of the Messages tab,
   text fields included, and a drag on the divider moves it too.
 - The wheel scrolls the pane under the pointer: the list by three lines, the tree by
@@ -547,10 +547,12 @@ the Appearance settings mean the same thing in both.
 - Text is never transformed. Labels read as they are written in the catalogs.
 - The glyphs `✕`, `●`, `✓`, `…`, `│`, `▾`, `▸`, `🔒`, `📌`, and `(●)` fall back to
   `x`, `*`, `x`, `...`, `|`, `v`, `>`, `[enc]`, `[R]`, and `(*)` on the Linux console
-  (`TERM=linux`) and on a Windows console that is not Windows Terminal (no
-  `WT_SESSION`), whose fonts lack them. The choice is made once for the whole screen.
+  (`TERM=linux`) and on a Windows console without a modern terminal marker (`WT_SESSION`,
+  `TERM_PROGRAM`, `WEZTERM_EXECUTABLE`, `ALACRITTY_LOG`, `ConEmuANSI`, or `SSH_TTY`), whose fonts lack them. The choice is made once for the whole screen.
 - The block letters of the About tab (`█`, `▀`, `▄`) and the scrollbar of a settings
-  panel (`│`, `┃`) are in the code pages those consoles draw, and have no fallback.
+  panel (`│`, `┃`), composer joins (`├`, `┤`), and rounded bubble borders have no ASCII
+  fallback. Their appearance depends on the console font; the fallback set above
+  covers the explicit control markers.
 
 ## Languages
 
@@ -623,8 +625,7 @@ in place of `hmg` at the end of phase 4.
 
 *Phase 1.*
 
-Interactive `hmc` connects as `Role::Tui`: `<broker.clientIdPrefix>-hmc-<first 8
-alphanumerics of device.id>-<8 random characters>`, the shape one-shot `hmc` already
+Interactive `hmc` connects as `Role::Tui`: `<broker.clientIdPrefix>-hmc-<device.id alphanumeric>-<8 random characters>`, the shape one-shot `hmc` already
 uses, with the connection behavior of `hmg`: reconnect with backoff, subscriptions sent
 again when the broker has forgotten the session, `broker.sessionExpirySecs` for the
 life of the process, and the session ended on quit. The random suffix means several
@@ -820,3 +821,11 @@ bundles: every installer already carries `hmc` beside `hmg`.
   focused text field, and a signal each end the session once and restore the terminal;
   a second press exits at once; a shutdown that hangs is cut off at
   `SHUTDOWN_TIMEOUT`.
+
+Idle ticks redraw only after a visible change or during a reconnect
+countdown. Bubble parsing/wrapping and day labels are cached until invalidated. The
+unfiltered topic tree is traversed directly. Forms are reused during input handling
+and drawing; long single-line fields scroll in linear time. Split arithmetic uses
+32-bit intermediates. After event lag the tree, status, and selected page are reloaded.
+Mark-read and clear operations run off the event loop, with completion applied on a tick.
+Rule IDs remain unique after deletion; blank subscription drafts defer autosave.

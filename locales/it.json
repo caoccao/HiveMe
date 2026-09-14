@@ -16,7 +16,6 @@
   },
   "topics": {
     "filter": "Filtra argomenti",
-    "empty": "Nessun messaggio per ora. Un argomento appare qui quando riceve il primo messaggio.",
     "noMatch": "Nessun argomento corrisponde al filtro.",
     "unread_one": "{{count, number}} messaggio non letto",
     "unread_other": "{{count, number}} messaggi non letti",
@@ -25,7 +24,6 @@
   "messages": {
     "selectTopic": "Seleziona un argomento per leggerne i messaggi.",
     "empty": "Nessun messaggio in questo argomento.",
-    "unknownSender": "sconosciuto",
     "newerVersion": "versione più recente",
     "retained": "Conservato dal broker",
     "actions": "Opzioni di copia",
@@ -169,7 +167,8 @@
       "Daily": "Ogni giorno",
       "Weekly": "Ogni settimana",
       "Monthly": "Ogni mese"
-    }
+    },
+    "rawNotificationHint": "Il testo semplice e JSON usano il livello Info. Attiva una regola Info per ricevere le notifiche."
   },
   "about": {
     "tagline": "Un formato di messaggio, due applicazioni e un cluster HiveMQ Cloud.",
@@ -237,7 +236,8 @@
     "verbose": "Registra i dettagli della connessione su stderr",
     "printHelp": "Mostra l’aiuto",
     "printVersion": "Mostra la versione",
-    "interactive": "Esegui hmc senza argomenti in un terminale per aprire l’interfaccia da terminale."
+    "interactive": "Esegui hmc senza argomenti in un terminale per aprire l’interfaccia da terminale.",
+    "noRetain": "Disattiva il flag retain"
   },
   "tui": {
     "toolbar": {
@@ -293,5 +293,10 @@
       "releases": "Apri la pagina delle versioni",
       "dismiss": "Chiudi l’avviso"
     }
+  },
+  "notifications": {
+    "suppressed_one": "e {{count}} altro messaggio",
+    "suppressed_other": "e altri {{count}} messaggi",
+    "suppressed_many": "e altri {{count}} messaggi"
   }
 }

@@ -33,58 +33,20 @@ use assert_cmd::Command;
 use hiveme_core::config::{BrokerInit, Config};
 use hiveme_core::message::{Level, Parsed};
 use hiveme_core::mqtt::{IncomingMessage, MqttClient, Qos, Role};
-use testcontainers::core::{IntoContainerPort, WaitFor};
-use testcontainers::runners::AsyncRunner;
-use testcontainers::{ContainerAsync, GenericImage, ImageExt};
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::UnboundedReceiver as Receiver;
 
-const BROKER_IMAGE: &str = "hivemq/hivemq-ce";
-const BROKER_TAG: &str = "latest";
-/// The MQTT port of HiveMQ CE, which its image exposes itself. Nothing here exposes it
-/// again: two entries for one container port make Docker publish it twice, and the second
-/// bind fails with `address already in use` on Docker Desktop.
-const BROKER_PORT: u16 = 1883;
-
-/// The line HiveMQ CE prints once its MQTT listener is up.
-const BROKER_READY: &str = "Started HiveMQ";
-
-/// Set to 1 to skip every test in this file. The macOS and Windows workflows do.
-const SKIP_VARIABLE: &str = "HIVEME_SKIP_DOCKER";
+use hiveme_core::test_support::{self, Broker};
 
 /// How long a test waits for a message `hmc` has already been told was acknowledged.
 const RECEIVE_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// Why this test did nothing, when it did nothing.
-fn skip_reason() -> Option<String> {
-  match std::env::var(SKIP_VARIABLE).as_deref() {
-    Ok("1") => Some(format!("{SKIP_VARIABLE}=1")),
-    _ => None,
-  }
-}
-
-/// Runs `body` against a freshly started broker, or explains why it did not.
 fn with_broker<F, Fut>(name: &str, body: F)
 where
   F: FnOnce(Fixture) -> Fut,
   Fut: std::future::Future<Output = ()>,
 {
-  if let Some(reason) = skip_reason() {
-    eprintln!("skipping {name}: {reason}");
-    return;
-  }
-  let runtime = tokio::runtime::Builder::new_multi_thread()
-    .enable_all()
-    .build()
-    .expect("a tokio runtime");
-  runtime.block_on(async move {
-    let fixture = match Fixture::start().await {
-      Ok(fixture) => fixture,
-      Err(reason) => {
-        eprintln!("skipping {name}: the HiveMQ CE container did not start ({reason})");
-        return;
-      }
-    };
-    body(fixture).await;
+  test_support::with_broker(name, |broker| async move {
+    body(Fixture::new(broker).expect("test fixture")).await
   });
 }
 
@@ -94,7 +56,7 @@ where
 /// uses rather than a namespace invented to keep tests apart.
 struct Fixture {
   #[allow(dead_code, reason = "held so the container outlives the test that uses it")]
-  container: ContainerAsync<GenericImage>,
+  container: Broker,
   #[allow(dead_code, reason = "held so the directory outlives the config file inside it")]
   directory: tempfile::TempDir,
   config_path: PathBuf,
@@ -102,23 +64,9 @@ struct Fixture {
 }
 
 impl Fixture {
-  async fn start() -> Result<Self, String> {
-    let container = GenericImage::new(BROKER_IMAGE, BROKER_TAG)
-      .with_wait_for(WaitFor::message_on_stdout(BROKER_READY))
-      .with_startup_timeout(Duration::from_secs(180))
-      .start()
-      .await
-      .map_err(|error| error.to_string())?;
-    let host = container
-      .get_host()
-      .await
-      .map_err(|error| error.to_string())?
-      .to_string();
-    let port = container
-      .get_host_port_ipv4(BROKER_PORT.tcp())
-      .await
-      .map_err(|error| error.to_string())?;
-
+  fn new(container: Broker) -> Result<Self, String> {
+    let host = container.host.clone();
+    let port = container.port;
     let mut config = Config::new_for_this_device();
     config.device.name = "test-runner".to_owned();
     config.broker.url = format!("mqtt://{host}:{port}");

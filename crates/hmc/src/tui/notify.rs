@@ -88,15 +88,7 @@ impl Toaster for DesktopToaster {
 /// comes from the Start menu shortcut an installed `hmg` has.
 #[cfg(target_os = "windows")]
 fn register_identity() -> Result<(), String> {
-  let key = windows_registry::CURRENT_USER
-    .create(format!(r"SOFTWARE\Classes\AppUserModelId\{APP_ID}"))
-    .map_err(|error| error.to_string())?;
-  key
-    .set_expand_string("DisplayName", APP_ID)
-    .map_err(|error| error.to_string())?;
-  key
-    .set_string("IconBackgroundColor", "0")
-    .map_err(|error| error.to_string())
+  hiveme_core::session::register_toast_identity(None)
 }
 
 #[cfg(test)]

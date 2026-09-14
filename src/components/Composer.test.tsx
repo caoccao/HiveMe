@@ -91,11 +91,18 @@ describe('the composer', () => {
   });
 
   it.each([
-    ['textbox', /Write a message/], ['textbox', 'Topic'], ['textbox', 'Title'],
-    ['radio', 'Config'], ['radio', '0'], ['radio', '1'], ['radio', '2'],
-    ['checkbox', 'Retain Message'], ['checkbox', 'As Raw JSON'],
+    ['textbox', /Write a message/],
+    ['textbox', 'Topic'],
+    ['textbox', 'Title'],
+    ['radio', 'Config'],
+    ['radio', '0'],
+    ['radio', '1'],
+    ['radio', '2'],
+    ['checkbox', 'Retain Message'],
+    ['checkbox', 'As Raw JSON'],
     ['combobox', 'Level'],
-    ['button', 'More Options'], ['button', 'Send'],
+    ['button', 'More Options'],
+    ['button', 'Send'],
   ] as const)('sends exactly once on Enter from the focused %s %s', async (role, name) => {
     // Keep the body after sending so accidental button activation would send twice.
     const publish = connected(vi.fn().mockResolvedValue(false));
@@ -107,7 +114,12 @@ describe('the composer', () => {
     expect(control).toHaveFocus();
     await userEvent.keyboard('{Enter}');
     expect(publish).toHaveBeenCalledExactlyOnceWith('hiveme', 'Build finished', {
-      topic: null, title: null, qos: null, retain: false, json: false, level: 'info',
+      topic: null,
+      title: null,
+      qos: null,
+      retain: false,
+      json: false,
+      level: 'info',
     });
     expect(screen.getByRole('button', { name: 'More Options' })).toHaveAttribute('aria-expanded', 'true');
   });
@@ -179,22 +191,30 @@ describe('the composer', () => {
     expect(screen.getByRole('checkbox', { name: 'As Raw JSON' })).not.toBeChecked();
   });
 
-  it.each([['Info', 'info'], ['Error', 'error'], ['Success', 'success'], ['Warn', 'warn']])(
-    'sends the selected %s level while More Options is collapsed', async (label, level) => {
-      const publish = connected();
-      render(<Composer />);
-      const select = screen.getByRole('combobox', { name: 'Level' });
-      expect(select).toHaveTextContent('Info');
-      await userEvent.click(select);
-      expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(['Info', 'Error', 'Success', 'Warn']);
-      await userEvent.click(screen.getByRole('option', { name: label }));
-      await userEvent.type(screen.getByLabelText(/Write a message/), 'Build finished');
-      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
-      expect(publish).toHaveBeenCalledExactlyOnceWith('hiveme', 'Build finished', expect.objectContaining({ level }));
-      expect(select).toHaveTextContent(label);
-      expect(screen.getByRole('button', { name: 'More Options' })).toHaveAttribute('aria-expanded', 'false');
-    }
-  );
+  it.each([
+    ['Info', 'info'],
+    ['Error', 'error'],
+    ['Success', 'success'],
+    ['Warn', 'warn'],
+  ])('sends the selected %s level while More Options is collapsed', async (label, level) => {
+    const publish = connected();
+    render(<Composer />);
+    const select = screen.getByRole('combobox', { name: 'Level' });
+    expect(select).toHaveTextContent('Info');
+    await userEvent.click(select);
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Info',
+      'Error',
+      'Success',
+      'Warn',
+    ]);
+    await userEvent.click(screen.getByRole('option', { name: label }));
+    await userEvent.type(screen.getByLabelText(/Write a message/), 'Build finished');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(publish).toHaveBeenCalledExactlyOnceWith('hiveme', 'Build finished', expect.objectContaining({ level }));
+    expect(select).toHaveTextContent(label);
+    expect(screen.getByRole('button', { name: 'More Options' })).toHaveAttribute('aria-expanded', 'false');
+  });
 
   it('uses Enter to choose an open menu option, then sends from the closed level control', async () => {
     const publish = connected();
@@ -207,18 +227,28 @@ describe('the composer', () => {
     expect(publish).not.toHaveBeenCalled();
     act(() => select.focus());
     await userEvent.keyboard('{Enter}');
-    expect(publish).toHaveBeenCalledExactlyOnceWith('hiveme', 'Build finished', expect.objectContaining({ level: 'error' }));
+    expect(publish).toHaveBeenCalledExactlyOnceWith(
+      'hiveme',
+      'Build finished',
+      expect.objectContaining({ level: 'error' })
+    );
   });
 
   it.each(['light', 'dark'] as const)('colors the selected level and all dropdown options in %s mode', async (mode) => {
     connected();
     const theme = createTheme({ palette: { mode } });
-    render(<ThemeProvider theme={theme}><Composer /></ThemeProvider>);
+    render(
+      <ThemeProvider theme={theme}>
+        <Composer />
+      </ThemeProvider>
+    );
     const select = screen.getByRole('combobox', { name: 'Level' });
     expect(select).toHaveStyle({ color: theme.palette.text.primary });
     const colors = {
-      Info: theme.palette.text.primary, Error: theme.palette.error.main,
-      Success: theme.palette.success.main, Warn: theme.palette.warning.main,
+      Info: theme.palette.text.primary,
+      Error: theme.palette.error.main,
+      Success: theme.palette.success.main,
+      Warn: theme.palette.warning.main,
     };
     for (const [label, color] of Object.entries(colors)) {
       await userEvent.click(select);
@@ -229,34 +259,41 @@ describe('the composer', () => {
     }
   });
 
-  it.each([['Config', null], ['0', 0], ['1', 1], ['2', 2]] as const)(
-    'sends using QoS %s and keeps overrides active while collapsed',
-    async (label, qos) => {
-      const publish = connected();
-      render(<Composer />);
-      const toggle = screen.getByRole('button', { name: 'More Options' });
-      await userEvent.click(toggle);
-      await userEvent.type(screen.getByLabelText('Topic'), 'custom/build');
-      await userEvent.type(screen.getByLabelText('Title'), 'CI');
-      await userEvent.click(screen.getByRole('radio', { name: label }));
-      await userEvent.click(screen.getByRole('checkbox', { name: 'Retain Message' }));
-      await userEvent.click(toggle);
-      await waitFor(() => expect(screen.queryByLabelText('Topic')).not.toBeInTheDocument());
-      await userEvent.type(screen.getByLabelText(/Write a message/), 'Build finished');
-      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+  it.each([
+    ['Config', null],
+    ['0', 0],
+    ['1', 1],
+    ['2', 2],
+  ] as const)('sends using QoS %s and keeps overrides active while collapsed', async (label, qos) => {
+    const publish = connected();
+    render(<Composer />);
+    const toggle = screen.getByRole('button', { name: 'More Options' });
+    await userEvent.click(toggle);
+    await userEvent.type(screen.getByLabelText('Topic'), 'custom/build');
+    await userEvent.type(screen.getByLabelText('Title'), 'CI');
+    await userEvent.click(screen.getByRole('radio', { name: label }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Retain Message' }));
+    await userEvent.click(toggle);
+    await waitFor(() => expect(screen.queryByLabelText('Topic')).not.toBeInTheDocument());
+    await userEvent.type(screen.getByLabelText(/Write a message/), 'Build finished');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
 
-      expect(publish).toHaveBeenCalledWith('hiveme', 'Build finished', {
-        topic: 'custom/build', json: false, qos, retain: true, title: 'CI', level: 'info',
-      });
-      expect(screen.getByLabelText(/Write a message/)).toHaveValue('');
-      expect(toggle).toHaveAttribute('aria-expanded', 'false');
-      await userEvent.click(toggle);
-      expect(screen.getByLabelText('Topic')).toHaveValue('custom/build');
-      expect(screen.getByLabelText('Title')).toHaveValue('CI');
-      expect(screen.getByRole('radio', { name: label })).toBeChecked();
-      expect(screen.getByRole('checkbox', { name: 'Retain Message' })).toBeChecked();
-    }
-  );
+    expect(publish).toHaveBeenCalledWith('hiveme', 'Build finished', {
+      topic: 'custom/build',
+      json: false,
+      qos,
+      retain: true,
+      title: 'CI',
+      level: 'info',
+    });
+    expect(screen.getByLabelText(/Write a message/)).toHaveValue('');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(toggle);
+    expect(screen.getByLabelText('Topic')).toHaveValue('custom/build');
+    expect(screen.getByLabelText('Title')).toHaveValue('CI');
+    expect(screen.getByRole('radio', { name: label })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Retain Message' })).toBeChecked();
+  });
 
   it('keeps raw JSON active while collapsed and preserves the unused title and level', async () => {
     const publish = connected();
@@ -272,7 +309,11 @@ describe('the composer', () => {
     await userEvent.click(toggle);
     fireEvent.change(screen.getByLabelText(/Write a JSON payload/), { target: { value: '{"ok":true}' } });
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(publish).toHaveBeenCalledWith('hiveme', '{"ok":true}', expect.objectContaining({ json: true, title: null, level: null, retain: false }));
+    expect(publish).toHaveBeenCalledWith(
+      'hiveme',
+      '{"ok":true}',
+      expect.objectContaining({ json: true, title: null, level: null, retain: false })
+    );
     await userEvent.click(toggle);
     expect(screen.getByRole('checkbox', { name: 'As Raw JSON' })).toBeChecked();
     await userEvent.click(screen.getByRole('checkbox', { name: 'As Raw JSON' }));
@@ -324,7 +365,9 @@ describe('the composer', () => {
     await userEvent.click(screen.getByRole('option', { name: 'Warn' }));
     await userEvent.type(screen.getByLabelText(/Write a message/), 'Child draft');
     act(() => useAppStore.setState({ status: INITIAL_STATUS }));
-    act(() => useAppStore.setState({ status: { ...INITIAL_STATUS, state: ConnectionState.Connected }, selectedTopic: 'hiveme' }));
+    act(() =>
+      useAppStore.setState({ status: { ...INITIAL_STATUS, state: ConnectionState.Connected }, selectedTopic: 'hiveme' })
+    );
 
     expect(screen.getByLabelText(/Write a JSON payload/)).toHaveValue('{"root":true}');
     expect(screen.getByRole('combobox', { name: 'Level' })).toHaveTextContent('Success');
@@ -345,7 +388,14 @@ describe('the composer', () => {
 
   it('clears only the originating draft when the user switches topics during a send', async () => {
     let finish!: (value: boolean) => void;
-    const publish = connected(vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; })));
+    const publish = connected(
+      vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finish = resolve;
+          })
+      )
+    );
     render(<Composer />);
     await userEvent.type(screen.getByLabelText(/Write a message/), 'Root draft');
     act(() => useAppStore.setState({ selectedTopic: 'hiveme/child' }));
@@ -359,13 +409,16 @@ describe('the composer', () => {
     expect(screen.getByLabelText(/Write a message/)).toHaveValue('');
   });
 
-  it.each([/Write a message/, 'Topic', 'Title'])('does not send Enter used to finish IME composition in %s', async (name) => {
-    const publish = connected();
-    render(<Composer />);
-    await userEvent.click(screen.getByRole('button', { name: 'More Options' }));
-    const input = screen.getByLabelText(/Write a message/);
-    fireEvent.change(input, { target: { value: '日本語' } });
-    fireEvent.keyDown(screen.getByLabelText(name), { key: 'Enter', isComposing: true });
-    expect(publish).not.toHaveBeenCalled();
-  });
+  it.each([/Write a message/, 'Topic', 'Title'])(
+    'does not send Enter used to finish IME composition in %s',
+    async (name) => {
+      const publish = connected();
+      render(<Composer />);
+      await userEvent.click(screen.getByRole('button', { name: 'More Options' }));
+      const input = screen.getByLabelText(/Write a message/);
+      fireEvent.change(input, { target: { value: '日本語' } });
+      fireEvent.keyDown(screen.getByLabelText(name), { key: 'Enter', isComposing: true });
+      expect(publish).not.toHaveBeenCalled();
+    }
+  );
 });

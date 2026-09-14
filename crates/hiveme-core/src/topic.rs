@@ -122,26 +122,16 @@ pub fn matches(filter: &str, topic: &str) -> bool {
     return false;
   }
 
-  let filter_levels: Vec<&str> = filter.split('/').collect();
-  let topic_levels: Vec<&str> = topic.split('/').collect();
-
-  for (index, level) in filter_levels.iter().enumerate() {
-    match *level {
-      // '#' also matches the parent level, so "sport/#" matches "sport".
-      "#" => return true,
-      "+" => {
-        if index >= topic_levels.len() {
-          return false;
-        }
-      }
-      literal => {
-        if index >= topic_levels.len() || topic_levels[index] != literal {
-          return false;
-        }
-      }
+  let mut topic_levels = topic.split('/');
+  for level in filter.split('/') {
+    match (level, topic_levels.next()) {
+      ("#", _) => return true,
+      ("+", Some(_)) => {}
+      (literal, Some(value)) if literal == value => {}
+      _ => return false,
     }
   }
-  filter_levels.len() == topic_levels.len()
+  topic_levels.next().is_none()
 }
 
 #[cfg(test)]

@@ -376,18 +376,20 @@ fn a_setup_string_missing_its_credentials_says_which() {
 }
 
 #[test]
-fn a_setup_string_from_a_newer_hmg_is_refused() {
+fn a_setup_string_from_a_newer_hmg_initializes_the_known_fields() {
   let (_directory, path) = scratch();
   hmc()
     .arg("--config")
     .arg(&path)
     .args([
       "--init",
-      r#"{"v":99,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"u","password":"p"}"#,
+      r#"{"v":99,"url":"mqtts://abc123.s1.eu.hivemq.cloud:8883","username":"u","password":"p","futureOption":true}"#,
     ])
     .assert()
-    .code(2)
-    .stderr(predicate::str::contains("version 99"));
+    .success();
+  let config = hiveme_core::config::ConfigFile::load(&path).unwrap();
+  assert_eq!(config.config().broker.username, "u");
+  assert_eq!(config.config().broker.password, "p");
 }
 
 #[test]

@@ -42,12 +42,16 @@ use tokio::sync::broadcast;
 
 use crate::config::{BrokerInit, Config};
 use crate::error::{Error, Result};
-use crate::message::{CONTENT_TYPE, Level, Message, MessageProperties, Sender};
+#[cfg(test)]
+use crate::message::{CONTENT_TYPE, Level};
+use crate::message::{Message, build_envelope, raw_json_payload, raw_json_properties};
 use crate::mqtt::{Qos, Role};
 use crate::storage::{NewMessage, PRUNE_INTERVAL_SECS, Store};
 
 pub use config::{ConfigStore, needs_reconnect};
 pub use history::build_tree;
+#[cfg(target_os = "windows")]
+pub use notify::register_toast_identity;
 pub use notify::{Notifier, Toaster};
 pub use types::{About, MessageRow, PublishOptions, SessionEvent, Status, TopicNode, UpdateCheckResult};
 pub use update::{GITHUB_URL, RELEASES_API_URL, is_newer};
@@ -101,9 +105,8 @@ impl Session {
   ///
   /// `config_path` is an explicit path such as `--config`; without one the location is
   /// resolved as `docs/specs/config.md` says. A config that cannot be read is kept as a
-  /// load error and the session runs on defaults. A history that cannot be opened is the
-  /// one failure that stops startup: without it there is nothing to show and nowhere to
-  /// put what arrives.
+  /// load error and the session runs on defaults. Corrupt or incompatible history is
+  /// recreated without changing the config. Other storage failures stop startup.
   pub fn open(config_path: Option<&Path>, app: SessionApp, toaster: Arc<dyn Toaster>) -> Result<Arc<Self>> {
     let path = crate::config::config_path(config_path)?;
     let config = Arc::new(ConfigStore::open(&path)?);
@@ -175,11 +178,6 @@ impl Session {
     self.config.path()
   }
 
-  /// The directory the config file is in.
-  pub fn config_directory(&self) -> PathBuf {
-    self.config.directory()
-  }
-
   /// Where the history database is.
   pub fn database_path(&self) -> PathBuf {
     self.config.database_path()
@@ -208,7 +206,6 @@ impl Session {
         // The config is saved either way. A cluster that is unreachable right now is
         // not a reason to refuse the settings the user typed.
         log::warn!("the new broker settings did not connect: {error}");
-        return Err(error);
       }
     }
     Ok(after)
@@ -233,7 +230,13 @@ impl Session {
 
   /// Connects to the broker and subscribes, replacing a connection that is up.
   pub async fn connect(&self) -> Result<Status> {
-    self.mqtt.connect().await
+    let result = self.mqtt.connect().await;
+    if let Err(error) = &result {
+      let mut status = Status::disconnected();
+      status.last_error = Some(error.to_string());
+      self.mqtt.shared().publish_status(status);
+    }
+    result
   }
 
   /// Says goodbye to the broker and ends its session.
@@ -301,8 +304,10 @@ impl Session {
     let retain = options.retain.unwrap_or(config.publish.retain);
 
     let (payload, properties) = if options.json {
-      serde_json::from_str::<serde_json::Value>(body).map_err(|source| Error::NotJson(source.to_string()))?;
-      (body.as_bytes().to_vec(), raw_json_properties())
+      (
+        raw_json_payload(body).map_err(|source| Error::NotJson(source.to_string()))?,
+        raw_json_properties(),
+      )
     } else {
       let message = build_message(&config, self.app, body, &options);
       let payload = message.to_bytes().map_err(|source| Error::PublishRejected {
@@ -330,9 +335,10 @@ impl Session {
       .publish_bytes(topic, payload, qos, retain, Some(properties))
       .await
     {
-      // Nothing was sent and nothing was stored, so a message that does arrive under
-      // this id later is somebody else's and has to be shown.
-      shared.forget(&row.topic, &row.msg_id);
+      // A timeout does not cancel the accepted MQTT request; its echo can still arrive.
+      if !matches!(error, Error::PublishTimeout { .. }) {
+        shared.forget(&row.topic, &row.msg_id);
+      }
       return Err(error);
     }
 
@@ -357,7 +363,11 @@ impl Session {
 
   /// What the release check found, once it has an answer.
   pub fn update_result(&self) -> Option<UpdateCheckResult> {
-    self.update.lock().unwrap().clone()
+    self
+      .update
+      .lock()
+      .unwrap_or_else(|poisoned| poisoned.into_inner())
+      .clone()
   }
 
   /// Remembers that the user does not want to hear about this version again.
@@ -425,38 +435,23 @@ async fn prune_forever(session: Weak<Session>) {
     let Some(session) = session.upgrade() else {
       return;
     };
-    history::prune(&session.store, &session.config.get().gui.history);
-    drop(session);
+    let _ = tokio::task::spawn_blocking(move || {
+      history::prune(&session.store, &session.config.get().gui.history);
+    })
+    .await;
     tokio::time::sleep(interval).await;
   }
 }
 
 /// The envelope of `docs/specs/message.md`, filled in from a composer.
 fn build_message(config: &Config, app: SessionApp, body: &str, options: &PublishOptions) -> Message {
-  let sender = Sender::from_device(&config.device, app.app_id());
-  let level = options.level.as_deref().map(Level::parse).unwrap_or_default();
-  let mut message = Message::new_text(sender, body).with_level(level);
-  if let Some(title) = options
-    .title
-    .as_deref()
-    .map(str::trim)
-    .filter(|title| !title.is_empty())
-  {
-    message = message.with_title(title);
-  }
-  message
-}
-
-/// The MQTT 5 properties of a raw JSON publish.
-///
-/// The content type still says JSON, because it is, but there is no `hiveme-v`
-/// property: the payload is not a HiveMe envelope and a reader must not be told it is.
-fn raw_json_properties() -> MessageProperties {
-  MessageProperties {
-    content_type: CONTENT_TYPE,
-    user_properties: Vec::new(),
-    message_expiry_interval: None,
-  }
+  build_envelope(
+    config,
+    app.app_id(),
+    body,
+    options.title.as_deref(),
+    options.level.as_deref(),
+  )
 }
 
 #[cfg(test)]
@@ -475,6 +470,48 @@ mod tests {
     let directory = tempfile::tempdir().unwrap();
     let session = Session::open(Some(&directory.path().join("HiveMe.json")), app, Arc::new(Silent)).unwrap();
     (directory, session)
+  }
+
+  #[test]
+  fn both_apps_start_with_unusable_history_and_preserve_the_config() {
+    for app in [SessionApp::Gui, SessionApp::Tui] {
+      for corrupt in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("HiveMe.json");
+        let config = ConfigStore::open(&path).unwrap();
+        let mut settings = config.get();
+        settings.device.name = "preserve my settings".to_owned();
+        config.set(settings.clone()).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let database = config.database_path();
+        if corrupt {
+          std::fs::write(&database, b"not a database").unwrap();
+        } else {
+          rusqlite::Connection::open(&database)
+            .unwrap()
+            .execute_batch("CREATE TABLE topics(id INTEGER PRIMARY KEY, topic TEXT, unread INTEGER);")
+            .unwrap();
+        }
+        let session = Session::open(Some(&path), app, Arc::new(Silent)).expect("the application can start");
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(session.config().device, settings.device);
+        assert!(session.store.topics().unwrap().is_empty());
+        session
+          .store
+          .insert(&NewMessage::from_payload(
+            "hiveme",
+            b"new history".to_vec(),
+            1,
+            false,
+            false,
+          ))
+          .unwrap();
+        assert_eq!(
+          session.store.messages("hiveme", None, 10).unwrap()[0].body,
+          "new history"
+        );
+      }
+    }
   }
 
   #[test]
@@ -609,5 +646,33 @@ mod tests {
   fn the_setup_string_is_refused_until_the_broker_is_usable() {
     let (_directory, session) = session(SessionApp::Gui);
     assert!(session.broker_init().is_err());
+  }
+  #[tokio::test]
+  async fn a_saved_config_succeeds_even_when_its_connection_is_invalid() {
+    let (_directory, session) = session(SessionApp::Gui);
+    let mut config = session.config();
+    config.broker.url = "mqtt://localhost".to_owned();
+    config.broker.username.clear();
+    let saved = session.set_config(config.clone()).await.unwrap();
+    assert_eq!(saved, config);
+    assert_eq!(
+      crate::config::ConfigFile::load(&session.config_path())
+        .unwrap()
+        .config(),
+      &config
+    );
+    assert!(session.status().last_error.is_some());
+  }
+
+  #[test]
+  fn a_poisoned_update_result_is_recoverable() {
+    let (_directory, session) = session(SessionApp::Gui);
+    let update = session.update.clone();
+    let _ = std::thread::spawn(move || {
+      let _guard = update.lock().unwrap();
+      panic!("test poison");
+    })
+    .join();
+    assert!(session.update_result().is_none());
   }
 }

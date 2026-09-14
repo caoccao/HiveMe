@@ -38,27 +38,11 @@ use std::time::{Duration, Instant};
 use assert_cmd::Command;
 use hiveme_core::config::{Config, DATABASE_FILE_NAME};
 use hiveme_core::i18n::{Locale, t};
-use hiveme_core::session::{SHUTDOWN_TIMEOUT, Session, SessionApp, Toaster};
+use hiveme_core::session::{SHUTDOWN_TIMEOUT, Session, SessionApp};
 use hiveme_core::storage::Store;
 use portable_pty::{Child, CommandBuilder, ExitStatus, MasterPty, PtySize, native_pty_system};
-use rumqttc::v5::mqttbytes::v5::Packet;
-use rumqttc::v5::{AsyncClient, Event, MqttOptions};
-use testcontainers::core::{IntoContainerPort, WaitFor};
-use testcontainers::runners::AsyncRunner;
-use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 
-const BROKER_IMAGE: &str = "hivemq/hivemq-ce";
-const BROKER_TAG: &str = "latest";
-/// The MQTT port of HiveMQ CE, which its image exposes itself. Nothing here exposes it
-/// again: two entries for one container port make Docker publish it twice, and the second
-/// bind fails with `address already in use` on Docker Desktop.
-const BROKER_PORT: u16 = 1883;
-
-/// The line HiveMQ CE prints once its MQTT listener is up.
-const BROKER_READY: &str = "Started HiveMQ";
-
-/// Set to 1 to skip every test in this file. The macOS and Windows workflows do.
-const SKIP_VARIABLE: &str = "HIVEME_SKIP_DOCKER";
+use hiveme_core::test_support::{self, Broker};
 
 /// The size of the pseudo-terminal, the larger of the two sizes the in-process tests use.
 const ROWS: u16 = 40;
@@ -88,44 +72,20 @@ const UP: &[u8] = b"\x1b[A";
 const F10: &[u8] = b"\x1b[21~";
 const CTRL_Q: &[u8] = b"\x11";
 
-/// Why this test did nothing, when it did nothing.
-fn skip_reason() -> Option<String> {
-  match std::env::var(SKIP_VARIABLE).as_deref() {
-    Ok("1") => Some(format!("{SKIP_VARIABLE}=1")),
-    _ => None,
-  }
-}
-
-/// Runs `body` against a freshly started broker, or explains why it did not.
 fn with_broker<F, Fut>(name: &str, body: F)
 where
   F: FnOnce(Fixture) -> Fut,
   Fut: std::future::Future<Output = ()>,
 {
-  if let Some(reason) = skip_reason() {
-    eprintln!("skipping {name}: {reason}");
-    return;
-  }
-  let runtime = tokio::runtime::Builder::new_multi_thread()
-    .enable_all()
-    .build()
-    .expect("a tokio runtime");
-  runtime.block_on(async move {
-    let fixture = match Fixture::start().await {
-      Ok(fixture) => fixture,
-      Err(reason) => {
-        eprintln!("skipping {name}: the HiveMQ CE container did not start ({reason})");
-        return;
-      }
-    };
-    body(fixture).await;
+  test_support::with_broker(name, |broker| async move {
+    body(Fixture::new(broker).expect("test fixture")).await
   });
 }
 
 /// A running broker, the installation the terminal UI runs on, and a second device.
 struct Fixture {
   #[allow(dead_code, reason = "held so the container outlives the test that uses it")]
-  container: ContainerAsync<GenericImage>,
+  container: Broker,
   directory: tempfile::TempDir,
   host: String,
   port: u16,
@@ -137,23 +97,9 @@ struct Fixture {
 }
 
 impl Fixture {
-  async fn start() -> Result<Self, String> {
-    let container = GenericImage::new(BROKER_IMAGE, BROKER_TAG)
-      .with_wait_for(WaitFor::message_on_stdout(BROKER_READY))
-      .with_startup_timeout(Duration::from_secs(180))
-      .start()
-      .await
-      .map_err(|error| error.to_string())?;
-    let host = container
-      .get_host()
-      .await
-      .map_err(|error| error.to_string())?
-      .to_string();
-    let port = container
-      .get_host_port_ipv4(BROKER_PORT.tcp())
-      .await
-      .map_err(|error| error.to_string())?;
-
+  fn new(container: Broker) -> Result<Self, String> {
+    let host = container.host.clone();
+    let port = container.port;
     let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
     let config_path = directory.path().join("HiveMe.json");
     write_config(&config_path, &device_config(&host, port, "test-runner"))?;
@@ -214,42 +160,7 @@ impl Fixture {
 
   /// Asks the broker whether `client_id` still has a session.
   async fn session_present(&self, client_id: &str) -> bool {
-    let mut options = MqttOptions::new(client_id, &self.host, self.port);
-    options.set_clean_start(false);
-    options.set_session_expiry_interval(Some(3_600));
-    let (client, mut eventloop) = AsyncClient::new(options, 1);
-    let present = tokio::time::timeout(RECEIVE_TIMEOUT, async {
-      let mut present = None;
-      loop {
-        match eventloop.poll().await.expect("the session probe connects") {
-          Event::Incoming(Packet::ConnAck(ack)) => {
-            present = Some(ack.session_present);
-            client.disconnect().await.expect("the probe says goodbye");
-          }
-          Event::Outgoing(rumqttc::Outgoing::Disconnect) => return present.expect("the CONNACK arrived"),
-          _ => {}
-        }
-      }
-    })
-    .await
-    .expect("the session probe finishes");
-    // The probe itself asked for a session; a clean one with no expiry discards it again.
-    let mut options = MqttOptions::new(client_id, &self.host, self.port);
-    options.set_clean_start(true);
-    options.set_session_expiry_interval(Some(0));
-    let (client, mut eventloop) = AsyncClient::new(options, 1);
-    tokio::time::timeout(RECEIVE_TIMEOUT, async {
-      loop {
-        match eventloop.poll().await.expect("the cleanup probe connects") {
-          Event::Incoming(Packet::ConnAck(_)) => client.disconnect().await.expect("the probe says goodbye"),
-          Event::Outgoing(rumqttc::Outgoing::Disconnect) => return,
-          _ => {}
-        }
-      }
-    })
-    .await
-    .expect("the cleanup probe finishes");
-    present
+    test_support::session_present(&self.host, self.port, client_id).await
   }
 
   /// Fails unless the log says the quit path ended the session and the broker agrees.
@@ -711,18 +622,7 @@ fn closing_the_terminal_ends_the_broker_session_all_the_same() {
   );
 }
 
-/// Records the notifications the session of `hmg` would show.
-#[derive(Default)]
-struct Recorder {
-  shown: Mutex<Vec<(String, String)>>,
-}
-
-impl Toaster for Recorder {
-  fn show(&self, title: &str, body: &str) -> Result<(), String> {
-    self.shown.lock().unwrap().push((title.to_owned(), body.to_owned()));
-    Ok(())
-  }
-}
+use hiveme_core::test_support::Recorder;
 
 /// `hmg` and interactive `hmc` on one config and one database.
 ///

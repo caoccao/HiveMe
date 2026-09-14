@@ -256,8 +256,8 @@ Counts have the locale's plural forms, and dates, times, numbers, byte sizes, an
 reconnect durations follow the selected language. The document language updates too.
 Protocol values, topic names, JSON keys and values, message content, device names,
 identifiers, URLs, and backend diagnostic details remain as received. OS notification
-templates and backend-generated notification summaries are outside these frontend
-catalogs.
+templates remain user content; rate-limit summaries use the shared catalogs and
+the saved UI language.
 
 Catalog tests check key coverage, interpolation variables, and plural forms in every
 locale, including keys selected dynamically by connection state, theme, and severity.
@@ -388,7 +388,7 @@ schema_version(version INTEGER NOT NULL)
 
 topics(id INTEGER PRIMARY KEY, topic TEXT NOT NULL UNIQUE,
        first_seen_ts TEXT NOT NULL, last_seen_ts TEXT NOT NULL,
-       unread INTEGER NOT NULL DEFAULT 0)
+       unread INTEGER NOT NULL DEFAULT 0, messages INTEGER NOT NULL DEFAULT 0)
 
 messages(id INTEGER PRIMARY KEY,
          topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
@@ -397,6 +397,7 @@ messages(id INTEGER PRIMARY KEY,
          tier TEXT NOT NULL CHECK(tier IN ('envelope','json','text','bytes')),
          level TEXT, title TEXT, body TEXT NOT NULL, raw BLOB NOT NULL,
          qos INTEGER NOT NULL, retain INTEGER NOT NULL, outgoing INTEGER NOT NULL,
+         unread INTEGER NOT NULL DEFAULT 0,
          UNIQUE(topic_id, msg_id))
 
 CREATE INDEX messages_topic_id_id ON messages(topic_id, id)
@@ -413,7 +414,13 @@ one database are in [session.md](session.md#two-processes-one-installation).
 - `schema_version` holds the version of the layout above. Version 0 means a database
   this build has not stamped, whether it is brand new or older than the table itself,
   so the tables are created with `IF NOT EXISTS` and the version is written afterward.
-  A database from a newer build is refused rather than guessed at.
+  A database from a newer build remains usable when its required columns are present;
+  its version stamp and extra schema objects are preserved.
+- Corrupt files and incompatible development layouts are deleted and recreated at
+  startup. The failed connection is closed before deleting the database and its
+  `-wal`, `-shm`, and `-journal` files. Initialization retries once with empty history,
+  leaving the config intact. Locking, permissions, and other I/O errors do not cause
+  deletion. No migration is performed.
 - Inserts de-duplicate on `(topic_id, msg_id)`, in one immediate transaction, which is
   how a message the composer sent and the copy the broker echoes back collapse into one
   bubble, regardless of arrival order. An outgoing publish sets the row's outgoing flag and preserves the
@@ -455,7 +462,7 @@ the same session without any IPC.
 
 | `src-tauri/src` | What it adds to the session |
 |-----------------|-----------------------------|
-| `lib.rs`, `controller.rs` | The commands below, each one line of `controller.rs`; `open_config_file` is the one the session cannot answer, because it needs the opener plugin |
+| `lib.rs`, `controller.rs` | Thin Tauri commands delegating to the shared session |
 | `events.rs` | A task that emits every `SessionEvent` under the event names below |
 | `notification.rs` | The `Toaster` of [session.md](session.md#notifications) |
 | `protocol.rs` | Re-exports the session's types, and holds the event names, the event payloads, and the managed state |
@@ -485,7 +492,6 @@ shows.
 | `get_update_result` | none | `{ "hasUpdate": false, "latestVersion": null }`, or nothing while the check is still running |
 | `list_topics` | none | `TopicNode[]` |
 | `mark_read` | `{ "topic": "hiveme" }` | none; clears unread counts throughout the selected subtree |
-| `open_config_file` | none | none |
 | `publish` | `{ "topic": "hiveme", "body": "Build finished", "options": PublishOptions }` | the stored `MessageRow` |
 | `set_config` | `{ "config": Config }` | the config as it was saved |
 | `set_notifications_paused` | `{ "paused": true }` | `Status` |
@@ -671,8 +677,9 @@ configuration, and `lib.rs` calls it on the generated context before the builder
 A size below 600 x 450 is clamped there and the clamped size written back once; a
 negative stored coordinate asks for `center` instead of a corner, which is what a fresh
 config's `-1, -1` does. `setup` then only shows the window and starts the update check
-when it is due. `on_window_event` persists size and position on move and resize,
-ignoring minimized windows and sizes below 600 x 450.
+when it is due. `on_window_event` persists size and position on focus loss, and the exit handler
+saves once before shutdown. Move/resize events do not write. Unchanged geometry,
+minimized windows, and sizes below 600 x 450 are ignored.
 
 The geometry is set before the window exists rather than after, because a window that is
 built somewhere and moved afterwards is drawn in both places. macOS is where that shows:
@@ -724,3 +731,25 @@ window, connects when a broker is configured, and starts the release check when 
 due. A config file that cannot be read is reported rather than replaced: the window
 opens on defaults, the status bar says so, and nothing is written until the user edits
 a setting.
+
+Each history row tracks whether it is unread, and SQLite triggers
+maintain topic message/unread counts inside insert, reconciliation, deletion, and
+mark-read transactions. Subtree pages walk descending row IDs without a temporary
+sort; sparse subtrees may scan unrelated rows. Count pruning considers only topics
+above the cap. WAL uses `synchronous=NORMAL`: application crashes preserve consistency,
+while sudden power loss may lose recent commits. Reported database size includes WAL
+and shared-memory files. This unpublished schema has no upgrade migrations. Existing
+development layouts missing required columns are recreated with empty history so
+the application still opens.
+
+Loading older messages preserves the reading position using the virtualizer's size
+change and stable row keys. Tab shortcuts act on keydown, cancel the default action,
+and accept uppercase letters. Added notification rules choose unused IDs. A blank
+subscription stays editable and postpones saving until its filter is filled in.
+
+Window geometry is saved on focus loss and exit, not on move/resize events. A startup
+history failure that remains after the recovery described above opens a native error
+dialog naming the database and exits with code 1.
+The webview uses a CSP allowing local assets, Tauri IPC, and MUI inline styles; clipboard
+access is write-only. Saving settings succeeds once saved; reconnection errors reach
+the connection status separately.

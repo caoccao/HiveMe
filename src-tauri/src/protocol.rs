@@ -100,3 +100,5 @@ mod tests {
     );
   }
 }
+
+// Stored history tier is authoritative when rendering raw JSON/text.

@@ -47,7 +47,7 @@ function looksLikeEnvelope(value: unknown): boolean {
   }
   const candidate = value as Record<string, unknown>;
   const version = candidate.v;
-  if (typeof version !== 'number' || !Number.isInteger(version) || version < 0) {
+  if (typeof version !== 'number' || !Number.isInteger(version) || version < 0 || version > 0xffffffff) {
     return false;
   }
   return 'payload' in candidate || 'enc' in candidate;
@@ -67,6 +67,37 @@ function isValidEnvelope(candidate: Record<string, unknown>): boolean {
   if (hasCiphertext && !hasEnc) {
     return false;
   }
+  const object = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+  const optionalString = (value: unknown) => value == null || typeof value === 'string';
+  const uint32 = (value: unknown) =>
+    typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 0xffffffff;
+  if (
+    hasPayload &&
+    (!object(candidate.payload) ||
+      typeof candidate.payload.body !== 'string' ||
+      !['title', 'level', 'contentType'].every((key) =>
+        optionalString(candidate.payload && (candidate.payload as Record<string, unknown>)[key])
+      ))
+  )
+    return false;
+  if (
+    hasEnc &&
+    (!object(candidate.enc) ||
+      !['alg', 'kid', 'iv'].every((key) => typeof (candidate.enc as Record<string, unknown>)[key] === 'string'))
+  )
+    return false;
+  if (!optionalString(candidate.ciphertext) || !optionalString(candidate.replyTo)) return false;
+  if (candidate.type !== undefined && typeof candidate.type !== 'string') return false;
+  if (candidate.ttlSecs != null && !uint32(candidate.ttlSecs)) return false;
+  if (
+    candidate.sender != null &&
+    (!object(candidate.sender) ||
+      !['id', 'name', 'app', 'appVersion'].every((key) =>
+        optionalString((candidate.sender as Record<string, unknown>)[key])
+      ))
+  )
+    return false;
   return hasPayload || hasEnc;
 }
 
@@ -101,6 +132,14 @@ export function parseText(text: string): Parsed {
 export function parseRow(row: { tier: string; raw: string; rawLength: number }): Parsed {
   if (row.tier === Tier.Bytes) {
     return { tier: Tier.Bytes, hex: row.raw, length: row.rawLength };
+  }
+  if (row.tier === Tier.Text) return { tier: Tier.Text, text: row.raw };
+  if (row.tier === Tier.Json) {
+    try {
+      return { tier: Tier.Json, value: JSON.parse(row.raw) };
+    } catch {
+      return { tier: Tier.Text, text: row.raw };
+    }
   }
   return parseText(row.raw);
 }
@@ -158,7 +197,13 @@ export function displayedLevel(level: string | null | undefined): Level {
 /** Whether this build knows what a level means. */
 export function isKnownLevel(level: string | null | undefined): boolean {
   const normalized = level?.toLowerCase();
-  return normalized === Level.Debug || normalized === Level.Info || normalized === Level.Success || normalized === Level.Warn || normalized === Level.Error;
+  return (
+    normalized === Level.Debug ||
+    normalized === Level.Info ||
+    normalized === Level.Success ||
+    normalized === Level.Warn ||
+    normalized === Level.Error
+  );
 }
 
 /** The MUI palette used for message bubbles, badges, and level selections. */

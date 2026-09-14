@@ -54,7 +54,11 @@ fn window_frame(window: &hiveme_core::config::Window) -> ((u32, u32), Option<(i3
   (size, corner)
 }
 
-/// Persists the main window's geometry as the user moves and resizes it.
+fn saves_geometry(event: &tauri::WindowEvent) -> bool {
+  matches!(event, tauri::WindowEvent::Focused(false))
+}
+
+/// Saves geometry on focus loss; moving and resizing never write the config.
 pub fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
   if window.label() != "main" {
     return;
@@ -65,40 +69,42 @@ pub fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
       api.prevent_close();
       window.app_handle().exit(0);
     }
-    tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
-      if !WINDOW_READY.load(Ordering::SeqCst) {
-        return;
-      }
-      if window.is_minimized().unwrap_or(false) {
-        return;
-      }
-      let (Ok(scale), Ok(position), Ok(size)) = (window.scale_factor(), window.outer_position(), window.inner_size())
-      else {
-        return;
-      };
-      let position: tauri::LogicalPosition<i32> = position.to_logical(scale);
-      let size: tauri::LogicalSize<u32> = size.to_logical(scale);
-      if !is_persistable_window_size(size.width, size.height) {
-        return;
-      }
-      let session = &window.state::<AppState>().session;
-      let mut config = session.config();
-      if config.gui.window.position.x == position.x
-        && config.gui.window.position.y == position.y
-        && config.gui.window.size.width == size.width
-        && config.gui.window.size.height == size.height
-      {
-        return;
-      }
-      config.gui.window.position.x = position.x;
-      config.gui.window.position.y = position.y;
-      config.gui.window.size.width = size.width;
-      config.gui.window.size.height = size.height;
-      if let Err(error) = session.set_config_quietly(config) {
-        log::error!("the window geometry could not be saved: {error}");
-      }
-    }
+    event if saves_geometry(event) => save_geometry(window),
     _ => {}
+  }
+}
+
+fn save_geometry(window: &tauri::Window) {
+  if !WINDOW_READY.load(Ordering::SeqCst) {
+    return;
+  }
+  if window.is_minimized().unwrap_or(false) {
+    return;
+  }
+  let (Ok(scale), Ok(position), Ok(size)) = (window.scale_factor(), window.outer_position(), window.inner_size())
+  else {
+    return;
+  };
+  let position: tauri::LogicalPosition<i32> = position.to_logical(scale);
+  let size: tauri::LogicalSize<u32> = size.to_logical(scale);
+  if !is_persistable_window_size(size.width, size.height) {
+    return;
+  }
+  let session = &window.state::<AppState>().session;
+  let mut config = session.config();
+  if config.gui.window.position.x == position.x
+    && config.gui.window.position.y == position.y
+    && config.gui.window.size.width == size.width
+    && config.gui.window.size.height == size.height
+  {
+    return;
+  }
+  config.gui.window.position.x = position.x;
+  config.gui.window.position.y = position.y;
+  config.gui.window.size.width = size.width;
+  config.gui.window.size.height = size.height;
+  if let Err(error) = session.set_config_quietly(config) {
+    log::error!("the window geometry could not be saved: {error}");
   }
 }
 
@@ -113,6 +119,9 @@ pub fn on_run_event(app: &tauri::AppHandle, event: tauri::RunEvent) {
   api.prevent_exit();
   if EXIT_REQUESTED.swap(true, Ordering::SeqCst) {
     return;
+  }
+  if let Some(window) = app.get_webview_window("main") {
+    save_geometry(&window.as_ref().window());
   }
   let session = app.state::<AppState>().session.clone();
   session.begin_shutdown();
@@ -249,5 +258,20 @@ mod tests {
       window_frame(&remembered(837, 531, 1, 2)).0,
       (MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
     );
+  }
+  #[test]
+  fn geometry_waits_for_focus_loss_instead_of_writing_during_a_drag() {
+    use tauri::{PhysicalPosition, PhysicalSize, WindowEvent};
+    for point in 0..100 {
+      assert!(!saves_geometry(&WindowEvent::Moved(PhysicalPosition::new(
+        point, point
+      ))));
+      assert!(!saves_geometry(&WindowEvent::Resized(PhysicalSize::new(
+        800 + point as u32,
+        600
+      ))));
+    }
+    assert!(!saves_geometry(&WindowEvent::Focused(true)));
+    assert!(saves_geometry(&WindowEvent::Focused(false)));
   }
 }

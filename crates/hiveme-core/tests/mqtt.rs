@@ -33,165 +33,11 @@ use std::time::Duration;
 use hiveme_core::config::{BrokerInit, Config};
 use hiveme_core::message::{Level, Message, Parsed, Sender};
 use hiveme_core::mqtt::{IncomingMessage, MqttClient, Qos, Role, State};
-use rumqttc::v5::mqttbytes::v5::Packet;
-use rumqttc::v5::{AsyncClient, Event, MqttOptions};
-use testcontainers::core::{IntoContainerPort, WaitFor};
-use testcontainers::runners::AsyncRunner;
-use testcontainers::{ContainerAsync, GenericImage, ImageExt};
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::UnboundedReceiver as Receiver;
 
-const BROKER_IMAGE: &str = "hivemq/hivemq-ce";
-const BROKER_TAG: &str = "latest";
-/// The MQTT port of HiveMQ CE, which its image exposes itself. Nothing here exposes it
-/// again: two entries for one container port make Docker publish it twice, and the second
-/// bind fails with `address already in use` on Docker Desktop.
-const BROKER_PORT: u16 = 1883;
-
-/// The line HiveMQ CE prints once its MQTT listener is up.
-const BROKER_READY: &str = "Started HiveMQ";
-
-/// Set to 1 to skip every test in this file. The macOS and Windows workflows do.
-const SKIP_VARIABLE: &str = "HIVEME_SKIP_DOCKER";
-
-/// How long a test waits for a message that should already be on its way.
-const RECEIVE_TIMEOUT: Duration = Duration::from_secs(15);
-
-/// How long a test waits for the client to work its way back to the broker.
-const RECONNECT_TIMEOUT: Duration = Duration::from_secs(60);
-
-/// Why this test did nothing, when it did nothing.
-fn skip_reason() -> Option<String> {
-  match std::env::var(SKIP_VARIABLE).as_deref() {
-    Ok("1") => Some(format!("{SKIP_VARIABLE}=1")),
-    _ => None,
-  }
-}
-
-/// A runtime for one test, since each test owns its broker.
-fn runtime() -> tokio::runtime::Runtime {
-  tokio::runtime::Builder::new_multi_thread()
-    .enable_all()
-    .build()
-    .expect("a tokio runtime")
-}
-
-/// Runs `body` against a freshly started broker, or explains why it did not.
-fn with_broker<F, Fut>(name: &str, body: F)
-where
-  F: FnOnce(Broker) -> Fut,
-  Fut: std::future::Future<Output = ()>,
-{
-  with_broker_on(name, None, body);
-}
-
-/// As [`with_broker`], with the broker published on a host port a test picked.
-///
-/// A fixed port is what lets a test replace the broker underneath a running client,
-/// which is the only way to see a reconnect land on the same address.
-fn with_broker_on<F, Fut>(name: &str, host_port: Option<u16>, body: F)
-where
-  F: FnOnce(Broker) -> Fut,
-  Fut: std::future::Future<Output = ()>,
-{
-  if let Some(reason) = skip_reason() {
-    eprintln!("skipping {name}: {reason}");
-    return;
-  }
-  runtime().block_on(async move {
-    let broker = match Broker::start(host_port).await {
-      Ok(broker) => broker,
-      Err(reason) => {
-        eprintln!("skipping {name}: the HiveMQ CE container did not start ({reason})");
-        return;
-      }
-    };
-    body(broker).await;
-  });
-}
-
-/// A host port nothing is listening on, for a broker that has to keep its address.
-///
-/// The port is released before the container claims it, so this is a guess rather than
-/// a reservation; a test that loses the race reports a container that would not start
-/// rather than a failure.
-fn free_port() -> Option<u16> {
-  std::net::TcpListener::bind(("127.0.0.1", 0))
-    .ok()
-    .and_then(|listener| listener.local_addr().ok())
-    .map(|address| address.port())
-}
-
-/// A running broker and the address it answers on.
-struct Broker {
-  container: Option<ContainerAsync<GenericImage>>,
-  host: String,
-  port: u16,
-  host_port: Option<u16>,
-}
-
-impl Broker {
-  async fn start(host_port: Option<u16>) -> Result<Self, String> {
-    let image = GenericImage::new(BROKER_IMAGE, BROKER_TAG).with_wait_for(WaitFor::message_on_stdout(BROKER_READY));
-    let request = match host_port {
-      Some(port) => image.with_mapped_port(port, BROKER_PORT.tcp()),
-      None => image.into(),
-    };
-    let container = request
-      .with_startup_timeout(Duration::from_secs(180))
-      .start()
-      .await
-      .map_err(|error| error.to_string())?;
-
-    let host = container
-      .get_host()
-      .await
-      .map_err(|error| error.to_string())?
-      .to_string();
-    let port = container
-      .get_host_port_ipv4(BROKER_PORT.tcp())
-      .await
-      .map_err(|error| error.to_string())?;
-    Ok(Self {
-      container: Some(container),
-      host,
-      port,
-      host_port,
-    })
-  }
-
-  fn url(&self) -> String {
-    format!("mqtt://{}:{}", self.host, self.port)
-  }
-
-  /// A config pointing at this test’s isolated broker.
-  fn config(&self, device: &str) -> Config {
-    let mut config = Config::default();
-    config.device.id = device.to_owned();
-    config.device.name = device.to_owned();
-    config.broker.url = self.url();
-    config.broker.keep_alive_secs = 5;
-    config.broker.connect_timeout_secs = 10;
-    config.broker.reconnect.initial_delay_ms = 200;
-    config.broker.reconnect.max_delay_ms = 2_000;
-    config.publish.timeout_secs = 20;
-    config
-  }
-
-  /// Throws this broker away and puts a brand new one on the same address.
-  ///
-  /// A replacement, not a restart, because the point is a broker that has never heard
-  /// of the client: it answers the reconnect with no session, and the client has to
-  /// send its subscriptions again.
-  async fn replace(&mut self) -> Result<(), String> {
-    let container = self.container.take().ok_or("the broker is already gone")?;
-    container.rm().await.map_err(|error| error.to_string())?;
-    let replacement = Self::start(self.host_port).await?;
-    self.host = replacement.host.clone();
-    self.port = replacement.port;
-    self.container = replacement.container;
-    Ok(())
-  }
-}
+use hiveme_core::test_support::{
+  Broker, RECEIVE_TIMEOUT, RECONNECT_TIMEOUT, free_port, runtime, with_broker, with_broker_on,
+};
 
 /// Connects a client, without [`Config::validate`] because the container is anonymous.
 async fn connect(config: &Config, role: Role) -> MqttClient {
@@ -202,29 +48,7 @@ async fn connect(config: &Config, role: Role) -> MqttClient {
 
 /// Asks the broker whether the stable GUI identity still has a session.
 async fn session_present(broker: &Broker, config: &Config) -> bool {
-  let mut options = MqttOptions::new(
-    hiveme_core::mqtt::client_id(config, Role::Gui),
-    &broker.host,
-    broker.port,
-  );
-  options.set_clean_start(false);
-  options.set_session_expiry_interval(Some(config.broker.session_expiry_secs));
-  let (client, mut eventloop) = AsyncClient::new(options, 1);
-  tokio::time::timeout(RECEIVE_TIMEOUT, async {
-    let mut present = None;
-    loop {
-      match eventloop.poll().await.expect("the session probe connects") {
-        Event::Incoming(Packet::ConnAck(ack)) => {
-          present = Some(ack.session_present);
-          client.disconnect().await.expect("the probe says goodbye");
-        }
-        Event::Outgoing(rumqttc::Outgoing::Disconnect) => return present.expect("the CONNACK arrived"),
-        _ => {}
-      }
-    }
-  })
-  .await
-  .expect("the session probe finishes")
+  hiveme_core::test_support::session_present(&broker.host, broker.port, &config.client_id("hmg", false)).await
 }
 
 #[test]
@@ -480,10 +304,14 @@ fn a_wildcard_subscription_collects_the_prefix_and_nothing_else() {
       expected.sort();
       assert_eq!(seen, expected);
 
-      tokio::time::sleep(Duration::from_millis(500)).await;
-      assert!(
-        incoming.try_recv().is_err(),
-        "a topic outside the prefix reached a prefix subscription"
+      publisher
+        .publish("hiveme/barrier", b"barrier".to_vec(), Qos::AtLeastOnce, false, None)
+        .await
+        .unwrap();
+      assert_eq!(
+        next_message(&mut incoming).await.topic,
+        "hiveme/barrier",
+        "the next delivery must be the ordered barrier, never the excluded topic"
       );
 
       publisher.disconnect().await.expect("the publisher says goodbye");

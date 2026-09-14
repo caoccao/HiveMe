@@ -24,7 +24,7 @@
 //! thing.
 
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+use std::sync::{Mutex, RwLock};
 
 use crate::config::{Config, ConfigFile};
 use crate::error::Result;
@@ -40,6 +40,7 @@ struct Holder {
 /// The config in memory.
 pub struct ConfigStore {
   holder: RwLock<Holder>,
+  writer: Mutex<()>,
 }
 
 impl ConfigStore {
@@ -70,6 +71,7 @@ impl ConfigStore {
     };
     Ok(Self {
       holder: RwLock::new(holder),
+      writer: Mutex::new(()),
     })
   }
 
@@ -88,15 +90,6 @@ impl ConfigStore {
     self.read().file.database_path()
   }
 
-  /// The directory the config lives in.
-  pub fn directory(&self) -> PathBuf {
-    self
-      .path()
-      .parent()
-      .map(Path::to_path_buf)
-      .unwrap_or_else(|| PathBuf::from("."))
-  }
-
   /// Why the config file could not be read, when that happened.
   pub fn load_error(&self) -> Option<String> {
     self.read().load_error.clone()
@@ -109,10 +102,10 @@ impl ConfigStore {
   /// here: see [`Config::validate_for_save`].
   pub fn set(&self, config: Config) -> Result<()> {
     config.validate_for_save()?;
-    let mut holder = self.write();
-    holder.file.save_config(config)?;
-    holder.load_error = None;
-    Ok(())
+    self.update(|file, _| {
+      file.save_config(config)?;
+      Ok(None)
+    })
   }
 
   /// Writes a config change the user did not ask for, such as the window geometry.
@@ -120,16 +113,27 @@ impl ConfigStore {
   /// Silently does nothing while the file on disk is unreadable, so that moving the
   /// window cannot destroy a config the user is in the middle of repairing.
   pub fn set_quietly(&self, config: Config) -> Result<()> {
-    let mut holder = self.write();
-    if let Some(error) = holder.load_error.as_deref() {
-      log::debug!(
-        "not saving: {} could not be read ({error})",
-        holder.file.path().display()
-      );
-      holder.file.set_config(config);
-      return Ok(());
-    }
-    holder.file.save_config(config)
+    self.update(|file, load_error| {
+      if let Some(error) = &load_error {
+        log::debug!("not saving: {} could not be read ({error})", file.path().display());
+        file.set_config(config);
+      } else {
+        file.save_config(config)?;
+      }
+      Ok(load_error)
+    })
+  }
+
+  /// Serializes writers while readers retain the last successfully saved snapshot.
+  fn update(&self, save: impl FnOnce(&mut ConfigFile, Option<String>) -> Result<Option<String>>) -> Result<()> {
+    let _writer = self.writer.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (mut file, load_error) = {
+      let holder = self.read();
+      (holder.file.clone(), holder.load_error.clone())
+    };
+    let load_error = save(&mut file, load_error)?;
+    *self.write() = Holder { file, load_error };
+    Ok(())
   }
 
   fn read(&self) -> std::sync::RwLockReadGuard<'_, Holder> {
@@ -234,5 +238,31 @@ mod tests {
 
     assert_eq!(store.get().gui.theme, crate::config::Theme::Rose);
     assert!(std::fs::read_to_string(&path).unwrap().contains("\"theme\": \"Rose\""));
+  }
+  #[test]
+  fn saving_does_not_block_readers_and_swaps_only_after_persistence() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = ConfigStore::open(&directory.path().join("HiveMe.json")).unwrap();
+    let before = store.get();
+    let mut after = before.clone();
+    after.gui.theme = crate::config::Theme::Rose;
+    store
+      .update(|file, load_error| {
+        // This runs at the persistence boundary, while the serialized writer is busy.
+        let holder = store.holder.try_read().expect("disk I/O must not hold the reader lock");
+        assert_eq!(holder.file.config(), &before);
+        assert!(store.writer.try_lock().is_err(), "another writer must wait");
+        drop(holder);
+        file.save_config(after.clone())?;
+        assert_eq!(
+          store.get(),
+          before,
+          "unpublished snapshot stays unchanged until save completes"
+        );
+        Ok(load_error)
+      })
+      .unwrap();
+    assert_eq!(store.get(), after);
+    assert_eq!(ConfigFile::load(&store.path()).unwrap().config(), &after);
   }
 }

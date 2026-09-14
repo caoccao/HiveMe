@@ -42,6 +42,23 @@ use super::settings::{SettingsState, cli_setup_command, is_broker_usable};
 use super::theme::{Glyphs, Theme};
 use super::{clipboard, open};
 
+/// Clears the selected badges immediately while the disk write runs in the background.
+fn mark_tree_read(nodes: &mut [TopicNode], selected: &str) -> u32 {
+  let mut cleared = 0;
+  for node in nodes {
+    if belongs_to_topic(&node.id, selected) {
+      cleared += node.unread;
+      node.unread = 0;
+      mark_tree_read(&mut node.children, selected);
+    } else {
+      let children = mark_tree_read(&mut node.children, selected);
+      node.unread = node.unread.saturating_sub(children);
+      cleared += children;
+    }
+  }
+  cleared
+}
+
 /// The topic the Messages tab selects at startup, so a new installation is ready to
 /// compose. `STARTUP_TOPIC` in `src/lib/constants.ts`.
 pub const STARTUP_TOPIC: &str = "hiveme";
@@ -122,6 +139,8 @@ pub struct Snackbar {
 /// The answer of an operation that was spawned.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
+  MarkedRead,
+  ClearedTopic(String),
   Status(Status),
   Failed(String),
   Saved(Box<Config>),
@@ -208,6 +227,8 @@ pub struct App<S: Service> {
   pub hits: Vec<(Rect, Action)>,
 
   pub(super) outcomes: mpsc::UnboundedSender<Outcome>,
+  write_outcomes: mpsc::UnboundedSender<Outcome>,
+  write_results: mpsc::UnboundedReceiver<Outcome>,
   /// When the edited config is due to be written, 500 ms after the last edit. The
   /// config itself is `config`, which always holds the newest edits.
   pending_save: Option<Instant>,
@@ -226,6 +247,7 @@ impl<S: Service> App<S> {
   /// first run the Settings tab on the Broker category with the URL focused.
   pub fn new(service: Arc<S>, glyphs: Glyphs, enhanced: bool, first_run: bool) -> (Self, Receivers) {
     let (sender, outcomes) = mpsc::unbounded_channel();
+    let (write_outcomes, write_results) = mpsc::unbounded_channel();
     let events = service.subscribe();
     let config = service.config();
     let status = service.status();
@@ -256,6 +278,8 @@ impl<S: Service> App<S> {
       quitting: false,
       hits: Vec::new(),
       outcomes: sender,
+      write_outcomes,
+      write_results,
       pending_save: None,
       saving: false,
       last_save_succeeded: true,
@@ -576,10 +600,30 @@ impl<S: Service> App<S> {
         Err(error) => return self.notify_error(error.to_string(), now),
       }
     }
-    if let Err(error) = self.service.mark_read(topic) {
-      self.notify_error(error.to_string(), now);
-    }
     self.refresh_topics(now);
+    mark_tree_read(&mut self.topics, topic);
+    let topic = topic.to_owned();
+    let service = self.service.clone();
+    let outcomes = self.write_outcomes.clone();
+    std::thread::spawn(move || {
+      let outcome = match service.mark_read(&topic) {
+        Ok(()) => Outcome::MarkedRead,
+        Err(error) => Outcome::Failed(error.to_string()),
+      };
+      let _ = outcomes.send(outcome);
+    });
+  }
+
+  /// Recovers state after the broadcast channel reports missing events.
+  pub fn recover_lag(&mut self, now: Instant) {
+    self.set_status(self.service.status(), now);
+    self.refresh_topics(now);
+    if let Some(topic) = self.selected_topic.clone() {
+      self.loaded_topics.remove(&topic);
+      self.messages.remove(&topic);
+      self.has_older.remove(&topic);
+      self.select_topic(&topic, now);
+    }
   }
 
   /// Loads the page before the oldest row of a subtree, as `loadOlderMessages` does.
@@ -615,18 +659,27 @@ impl<S: Service> App<S> {
 
   /// Deletes the selected topic's history, then reloads every cached view that
   /// contained it, as `clearSelectedTopic` does.
-  pub fn clear_selected_topic(&mut self, now: Instant) {
+  pub fn clear_selected_topic(&mut self, _now: Instant) {
     let Some(topic) = self.selected_topic.clone() else {
       return;
     };
-    if let Err(error) = self.service.clear_topic(&topic) {
-      return self.notify_error(error.to_string(), now);
-    }
+    let service = self.service.clone();
+    let outcomes = self.write_outcomes.clone();
+    std::thread::spawn(move || {
+      let outcome = match service.clear_topic(&topic) {
+        Ok(_) => Outcome::ClearedTopic(topic),
+        Err(error) => Outcome::Failed(error.to_string()),
+      };
+      let _ = outcomes.send(outcome);
+    });
+  }
+
+  fn topic_cleared(&mut self, topic: &str, now: Instant) {
     let roots: Vec<String> = self
       .messages
       .keys()
       .chain(self.loaded_topics.iter())
-      .filter(|root| belongs_to_topic(&topic, root))
+      .filter(|root| belongs_to_topic(topic, root))
       .cloned()
       .collect();
     for root in roots {
@@ -635,7 +688,7 @@ impl<S: Service> App<S> {
       self.has_older.remove(&root);
     }
     match self.selected_topic.clone() {
-      Some(selected) if belongs_to_topic(&topic, &selected) => {
+      Some(selected) if belongs_to_topic(topic, &selected) => {
         self.messages_tab.view.reset();
         self.select_topic(&selected, now);
       }
@@ -656,6 +709,7 @@ impl<S: Service> App<S> {
   /// A stored row, merged into every loaded view it belongs to. A row that is already
   /// there is replaced, so the broker's echo of a message sent here never doubles it.
   pub fn receive_message(&mut self, row: MessageRow) {
+    self.messages_tab.view.invalidate_row(row.row_id);
     let roots: Vec<String> = self
       .loaded_topics
       .iter()
@@ -686,6 +740,8 @@ impl<S: Service> App<S> {
   /// Reacts to the answer of something that was spawned.
   pub fn on_outcome(&mut self, outcome: Outcome, now: Instant) {
     match outcome {
+      Outcome::MarkedRead => self.refresh_topics(now),
+      Outcome::ClearedTopic(topic) => self.topic_cleared(&topic, now),
       Outcome::Status(status) => self.set_status(status, now),
       Outcome::Failed(error) => {
         self.notify_error(error, now);
@@ -738,7 +794,13 @@ impl<S: Service> App<S> {
   }
 
   /// What the tick advances: the snackbar's time, the pending save, the update check.
-  pub fn on_tick(&mut self, now: Instant) {
+  pub fn on_tick(&mut self, now: Instant) -> bool {
+    let before = (self.snackbar.is_some(), self.saving, self.notice.clone());
+    let mut written = false;
+    while let Ok(outcome) = self.write_results.try_recv() {
+      self.on_outcome(outcome, now);
+      written = true;
+    }
     if self.snackbar.as_ref().is_some_and(|snackbar| now >= snackbar.until) {
       self.snackbar = None;
     }
@@ -755,6 +817,7 @@ impl<S: Service> App<S> {
         self.notice = Some(UpdateNotice { version, skip: false });
       }
     }
+    written || self.retry_deadline.is_some() || before != (self.snackbar.is_some(), self.saving, self.notice.clone())
   }
 
   /// Milliseconds until the pending reconnect, for the footer.
@@ -788,6 +851,15 @@ impl<S: Service> App<S> {
 
   /// Writes the newest config, one write at a time.
   fn start_save(&mut self) {
+    if self
+      .config
+      .topics
+      .subscriptions
+      .iter()
+      .any(|row| row.filter().trim().is_empty())
+    {
+      return;
+    }
     if self.saving || self.pending_save.take().is_none() {
       return;
     }

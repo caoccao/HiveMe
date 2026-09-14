@@ -128,13 +128,15 @@ impl TextInput {
     // Keep one cell after the cursor for the cursor itself.
     let room = usize::from(area.width).saturating_sub(1);
     let mut start = 0;
-    while focused && start < self.cursor && cells(&shown[start..self.cursor]) > room {
+    let mut cursor_cells = cells(&shown[..self.cursor]);
+    while focused && start < self.cursor && cursor_cells > room {
+      cursor_cells -= shown[start].width().unwrap_or(0);
       start += 1;
     }
     let visible: String = shown[start..].iter().collect();
     frame.render_widget(Line::styled(visible, style), area);
     if focused {
-      let offset = cells(&shown[start..self.cursor]).min(room) as u16;
+      let offset = cursor_cells.min(room) as u16;
       frame.set_cursor_position(Position::new(area.x + offset, area.y));
     }
   }
@@ -239,5 +241,16 @@ mod tests {
       .draw(|frame| input.render(frame, frame.area(), Style::new(), true, false))
       .unwrap();
     terminal.backend().assert_buffer_lines(["******    "]);
+  }
+  #[test]
+  fn a_long_wide_character_field_scrolls_in_linear_time() {
+    let input = TextInput::new(&"界".repeat(100000));
+    let mut terminal = Terminal::new(TestBackend::new(8, 1)).unwrap();
+    let start = std::time::Instant::now();
+    terminal
+      .draw(|frame| input.render(frame, frame.area(), Style::new(), false, true))
+      .unwrap();
+    assert!(start.elapsed() < std::time::Duration::from_secs(2));
+    terminal.backend().assert_buffer_lines(["界界界  "]);
   }
 }

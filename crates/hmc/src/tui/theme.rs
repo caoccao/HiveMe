@@ -240,8 +240,21 @@ impl Glyphs {
   /// to have a font that covers them.
   pub fn detect() -> Self {
     let linux_console = std::env::var("TERM").is_ok_and(|term| term == "linux");
-    let legacy_windows_console = cfg!(target_os = "windows") && std::env::var_os("WT_SESSION").is_none();
-    if linux_console || legacy_windows_console {
+    let modern = [
+      "WT_SESSION",
+      "TERM_PROGRAM",
+      "WEZTERM_EXECUTABLE",
+      "ALACRITTY_LOG",
+      "ConEmuANSI",
+      "SSH_TTY",
+    ]
+    .iter()
+    .any(|name| std::env::var_os(name).is_some());
+    Self::for_environment(cfg!(target_os = "windows"), linux_console, modern)
+  }
+
+  fn for_environment(windows: bool, linux_console: bool, modern: bool) -> Self {
+    if linux_console || (windows && !modern) {
       Self::ASCII
     } else {
       Self::UNICODE
@@ -334,5 +347,12 @@ mod tests {
     ] {
       assert!(glyph.is_ascii(), "{glyph}");
     }
+  }
+  #[test]
+  fn modern_windows_terminals_use_unicode_and_legacy_consoles_use_ascii() {
+    assert_eq!(Glyphs::for_environment(true, false, true), Glyphs::UNICODE);
+    assert_eq!(Glyphs::for_environment(true, false, false), Glyphs::ASCII);
+    assert_eq!(Glyphs::for_environment(false, true, true), Glyphs::ASCII);
+    assert_eq!(Glyphs::for_environment(false, false, false), Glyphs::UNICODE);
   }
 }

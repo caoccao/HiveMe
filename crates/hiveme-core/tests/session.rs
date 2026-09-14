@@ -25,151 +25,16 @@
 //! says why it did nothing and passes, so that the macOS and Windows workflows stay
 //! green; the Linux workflow has Docker and does run them.
 
-use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use hiveme_core::config::{Config, ConfigFile, Theme};
+use hiveme_core::config::Theme;
 use hiveme_core::message::{Level, Message, Sender};
-use hiveme_core::mqtt::{IncomingMessage, MqttClient, Qos, Role};
-use hiveme_core::session::{PublishOptions, SHUTDOWN_TIMEOUT, Session, SessionApp, SessionEvent, Toaster};
-use rumqttc::v5::mqttbytes::v5::Packet;
-use rumqttc::v5::{AsyncClient, Event, MqttOptions};
-use testcontainers::core::{IntoContainerPort, WaitFor};
-use testcontainers::runners::AsyncRunner;
-use testcontainers::{ContainerAsync, GenericImage, ImageExt};
+use hiveme_core::mqtt::{IncomingMessage, Qos, Role};
+use hiveme_core::session::{PublishOptions, SHUTDOWN_TIMEOUT, Session, SessionApp, SessionEvent};
 use tokio::sync::broadcast::Receiver;
 
-const BROKER_IMAGE: &str = "hivemq/hivemq-ce";
-const BROKER_TAG: &str = "latest";
-/// The MQTT port of HiveMQ CE, which its image exposes itself. Nothing here exposes it
-/// again: two entries for one container port make Docker publish it twice, and the second
-/// bind fails with `address already in use` on Docker Desktop.
-const BROKER_PORT: u16 = 1883;
-
-/// The line HiveMQ CE prints once its MQTT listener is up.
-const BROKER_READY: &str = "Started HiveMQ";
-
-/// Set to 1 to skip every test in this file. The macOS and Windows workflows do.
-const SKIP_VARIABLE: &str = "HIVEME_SKIP_DOCKER";
-
-/// How long a test waits for something that should already be on its way.
-const RECEIVE_TIMEOUT: Duration = Duration::from_secs(15);
-
-/// Runs `body` against a freshly started broker, or explains why it did not.
-fn with_broker<F, Fut>(name: &str, body: F)
-where
-  F: FnOnce(Broker) -> Fut,
-  Fut: std::future::Future<Output = ()>,
-{
-  if let Ok("1") = std::env::var(SKIP_VARIABLE).as_deref() {
-    eprintln!("skipping {name}: {SKIP_VARIABLE}=1");
-    return;
-  }
-  let runtime = tokio::runtime::Builder::new_multi_thread()
-    .enable_all()
-    .build()
-    .expect("a tokio runtime");
-  runtime.block_on(async move {
-    let broker = match Broker::start().await {
-      Ok(broker) => broker,
-      Err(reason) => {
-        eprintln!("skipping {name}: the HiveMQ CE container did not start ({reason})");
-        return;
-      }
-    };
-    body(broker).await;
-  });
-}
-
-/// A running broker and the address it answers on.
-struct Broker {
-  _container: ContainerAsync<GenericImage>,
-  host: String,
-  port: u16,
-  directory: tempfile::TempDir,
-}
-
-impl Broker {
-  async fn start() -> Result<Self, String> {
-    let container = GenericImage::new(BROKER_IMAGE, BROKER_TAG)
-      .with_wait_for(WaitFor::message_on_stdout(BROKER_READY))
-      .with_startup_timeout(Duration::from_secs(180))
-      .start()
-      .await
-      .map_err(|error| error.to_string())?;
-    let host = container
-      .get_host()
-      .await
-      .map_err(|error| error.to_string())?
-      .to_string();
-    let port = container
-      .get_host_port_ipv4(BROKER_PORT.tcp())
-      .await
-      .map_err(|error| error.to_string())?;
-    Ok(Self {
-      _container: container,
-      host,
-      port,
-      directory: tempfile::tempdir().map_err(|error| error.to_string())?,
-    })
-  }
-
-  /// A config pointing at this test's broker, for a device of its own.
-  fn config(&self, device: &str) -> Config {
-    let mut config = Config::default();
-    config.device.id = device.to_owned();
-    config.device.name = device.to_owned();
-    config.broker.url = format!("mqtt://{}:{}", self.host, self.port);
-    config.broker.username = "hiveme".to_owned();
-    config.broker.password = "test".to_owned();
-    config.broker.keep_alive_secs = 5;
-    config.broker.connect_timeout_secs = 10;
-    config.broker.reconnect.initial_delay_ms = 200;
-    config.broker.reconnect.max_delay_ms = 2_000;
-    config.publish.timeout_secs = 20;
-    config
-  }
-
-  /// A session of `app` on a config file of its own, written before it opens.
-  fn session(&self, app: SessionApp, device: &str, toaster: Arc<Recorder>) -> Arc<Session> {
-    let path = self.directory.path().join(device).join("HiveMe.json");
-    write_config(&path, self.config(device));
-    Session::open(Some(&path), app, toaster).expect("the session opens")
-  }
-
-  /// A plain client, as another installation would connect.
-  async fn client(&self, device: &str, role: Role) -> MqttClient {
-    MqttClient::connect(&self.config(device), role)
-      .await
-      .unwrap_or_else(|error| panic!("cannot connect as {role}: {error}"))
-  }
-}
-
-fn write_config(path: &Path, config: Config) {
-  let (mut file, _) = ConfigFile::load_or_create(path).expect("the config file is created");
-  file.set_config(config);
-  file.save().expect("the config file is written");
-}
-
-/// A toaster that records what it was asked to show.
-#[derive(Default)]
-struct Recorder {
-  shown: Mutex<Vec<(String, String)>>,
-}
-
-impl Recorder {
-  fn shown(&self) -> Vec<(String, String)> {
-    self.shown.lock().unwrap().clone()
-  }
-}
-
-impl Toaster for Recorder {
-  fn show(&self, title: &str, body: &str) -> Result<(), String> {
-    self.shown.lock().unwrap().push((title.to_owned(), body.to_owned()));
-    Ok(())
-  }
-}
+use hiveme_core::test_support::{Broker, RECEIVE_TIMEOUT, Recorder, with_broker};
 
 /// Waits for the first event `wanted` accepts, failing the test rather than hanging.
 async fn next_event<T>(events: &mut Receiver<SessionEvent>, mut wanted: impl FnMut(SessionEvent) -> Option<T>) -> T {
@@ -195,7 +60,7 @@ async fn events_within(events: &mut Receiver<SessionEvent>, window: Duration) ->
   seen
 }
 
-async fn next_message(incoming: &mut tokio::sync::mpsc::Receiver<IncomingMessage>) -> IncomingMessage {
+async fn next_message(incoming: &mut tokio::sync::mpsc::UnboundedReceiver<IncomingMessage>) -> IncomingMessage {
   tokio::time::timeout(RECEIVE_TIMEOUT, incoming.recv())
     .await
     .expect("a message arrives within the timeout")
@@ -204,42 +69,7 @@ async fn next_message(incoming: &mut tokio::sync::mpsc::Receiver<IncomingMessage
 
 /// Asks the broker whether `client_id` still has a session.
 async fn session_present(broker: &Broker, client_id: &str) -> bool {
-  let mut options = MqttOptions::new(client_id, &broker.host, broker.port);
-  options.set_clean_start(false);
-  options.set_session_expiry_interval(Some(3_600));
-  let (client, mut eventloop) = AsyncClient::new(options, 1);
-  let present = tokio::time::timeout(RECEIVE_TIMEOUT, async {
-    let mut present = None;
-    loop {
-      match eventloop.poll().await.expect("the session probe connects") {
-        Event::Incoming(Packet::ConnAck(ack)) => {
-          present = Some(ack.session_present);
-          client.disconnect().await.expect("the probe says goodbye");
-        }
-        Event::Outgoing(rumqttc::Outgoing::Disconnect) => return present.expect("the CONNACK arrived"),
-        _ => {}
-      }
-    }
-  })
-  .await
-  .expect("the session probe finishes");
-  // The probe itself asked for a session; a clean one with no expiry discards it again.
-  let mut options = MqttOptions::new(client_id, &broker.host, broker.port);
-  options.set_clean_start(true);
-  options.set_session_expiry_interval(Some(0));
-  let (client, mut eventloop) = AsyncClient::new(options, 1);
-  tokio::time::timeout(RECEIVE_TIMEOUT, async {
-    loop {
-      match eventloop.poll().await.expect("the cleanup probe connects") {
-        Event::Incoming(Packet::ConnAck(_)) => client.disconnect().await.expect("the probe says goodbye"),
-        Event::Outgoing(rumqttc::Outgoing::Disconnect) => return,
-        _ => {}
-      }
-    }
-  })
-  .await
-  .expect("the cleanup probe finishes");
-  present
+  hiveme_core::test_support::session_present(&broker.host, broker.port, client_id).await
 }
 
 #[test]
@@ -300,7 +130,14 @@ fn a_published_envelope_is_stored_raised_once_and_its_echo_is_recognized() {
 
       // The echo comes back on the session's own subscription. It collapses into the
       // row that is there and raises nothing, so the only row event is the publish.
-      let seen = events_within(&mut events, Duration::from_secs(2)).await;
+      tokio::time::timeout(RECEIVE_TIMEOUT, async {
+        while session.status().messages_received == 0 {
+          tokio::task::yield_now().await;
+        }
+      })
+      .await
+      .expect("the broker echo has been stored");
+      let seen = events_within(&mut events, Duration::from_millis(100)).await;
       let rows: Vec<_> = seen
         .iter()
         .filter_map(|event| match event {
@@ -363,7 +200,14 @@ fn a_raw_json_publish_claims_no_envelope() {
     // too. A payload HiveMe did not shape carries no id, so the echo is recognized by
     // its bytes; without that it is given an id of its own and drawn a second time, as
     // somebody else's message.
-    let seen = events_within(&mut events, Duration::from_secs(2)).await;
+    tokio::time::timeout(RECEIVE_TIMEOUT, async {
+      while session.status().messages_received == 0 {
+        tokio::task::yield_now().await;
+      }
+    })
+    .await
+    .expect("the broker echo has been stored");
+    let seen = events_within(&mut events, Duration::from_millis(100)).await;
     let rows: Vec<_> = seen
       .iter()
       .filter_map(|event| match event {

@@ -17,8 +17,18 @@
 
 import { useId, useRef, useState } from 'react';
 import {
-  Box, Button, Checkbox, Collapse, FormControlLabel, MenuItem, Radio, RadioGroup,
-  Select, TextField, Tooltip, Typography,
+  Box,
+  Button,
+  Checkbox,
+  Collapse,
+  FormControlLabel,
+  MenuItem,
+  Radio,
+  RadioGroup,
+  Select,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -57,8 +67,9 @@ export function isSendKey(event: {
   metaKey?: boolean;
   isComposing?: boolean;
 }): boolean {
-  return event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey
-    && !event.metaKey && !event.isComposing;
+  return (
+    event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing
+  );
 }
 
 export default function Composer() {
@@ -72,7 +83,7 @@ export default function Composer() {
   const [drafts, setDrafts] = useState(() => new Map<string, Draft>());
   const [sending, setSending] = useState(false);
   const sendPending = useRef(false);
-  const draft = selectedTopic === null ? EMPTY_DRAFT : drafts.get(selectedTopic) ?? EMPTY_DRAFT;
+  const draft = selectedTopic === null ? EMPTY_DRAFT : (drafts.get(selectedTopic) ?? EMPTY_DRAFT);
   const { body, topic, title, level, qos, retain, asJson, expanded } = draft;
   const color = levelColor(level);
 
@@ -83,9 +94,12 @@ export default function Composer() {
 
   const updateDraft = (changes: Partial<Draft>) => {
     if (selectedTopic === null) return;
-    setDrafts((previous) => new Map(previous).set(selectedTopic, {
-      ...(previous.get(selectedTopic) ?? EMPTY_DRAFT), ...changes,
-    }));
+    setDrafts((previous) =>
+      new Map(previous).set(selectedTopic, {
+        ...(previous.get(selectedTopic) ?? EMPTY_DRAFT),
+        ...changes,
+      })
+    );
   };
 
   const send = async () => {
@@ -128,9 +142,14 @@ export default function Composer() {
         }
       }}
       sx={{
-        borderTop: 1, borderColor: 'divider', p: '4px',
-        display: 'flex', flexDirection: 'column',
-        flexShrink: 0, maxHeight: '70%', overflow: 'auto',
+        borderTop: 1,
+        borderColor: 'divider',
+        p: '4px',
+        display: 'flex',
+        flexDirection: 'column',
+        flexShrink: 0,
+        maxHeight: '70%',
+        overflow: 'auto',
         '& .MuiOutlinedInput-root': { p: '4px' },
         '& .MuiOutlinedInput-input': { p: 0 },
         '& .MuiButton-root': { p: '2px 4px', minHeight: 24 },
@@ -164,14 +183,19 @@ export default function Composer() {
           size="small"
           inputProps={{ 'aria-label': t('composer.level') }}
           sx={{
-            minWidth: 96, height: 24,
+            minWidth: 96,
+            height: 24,
             '& .MuiSelect-select': { pr: '24px', color: color === 'default' ? 'text.primary' : `${color}.main` },
           }}
         >
           {[Protocol.Level.Info, Protocol.Level.Error, Protocol.Level.Success, Protocol.Level.Warn].map((value) => {
             const optionColor = levelColor(value);
             return (
-              <MenuItem key={value} value={value} sx={{ color: optionColor === 'default' ? 'text.primary' : `${optionColor}.main` }}>
+              <MenuItem
+                key={value}
+                value={value}
+                sx={{ color: optionColor === 'default' ? 'text.primary' : `${optionColor}.main` }}
+              >
                 {t(`levels.${value}`)}
               </MenuItem>
             );
@@ -199,7 +223,15 @@ export default function Composer() {
       </Box>
 
       <Collapse id={id + '-options'} in={expanded} unmountOnExit>
-        <Box sx={{ pt: '4px', display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr)', alignItems: 'center', gap: '4px' }}>
+        <Box
+          sx={{
+            pt: '4px',
+            display: 'grid',
+            gridTemplateColumns: 'max-content minmax(0, 1fr)',
+            alignItems: 'center',
+            gap: '4px',
+          }}
+        >
           <Typography component="label" htmlFor={id + '-topic'} sx={{ textAlign: 'right' }}>
             {t('composer.topic')}
           </Typography>
@@ -234,19 +266,44 @@ export default function Composer() {
               onChange={(_, value) => updateDraft({ qos: value === 'config' ? null : Number(value) })}
               sx={{ columnGap: '4px' }}
             >
-              <FormControlLabel value="config" control={<Radio size="small" />} label={t('composer.qosDefault')} disabled={disabled} sx={{ m: 0 }} />
+              <FormControlLabel
+                value="config"
+                control={<Radio size="small" />}
+                label={t('composer.qosDefault')}
+                disabled={disabled}
+                sx={{ m: 0 }}
+              />
               {[0, 1, 2].map((value) => (
-                <FormControlLabel key={value} value={value} control={<Radio size="small" />} label={value} disabled={disabled} sx={{ m: 0 }} />
+                <FormControlLabel
+                  key={value}
+                  value={value}
+                  control={<Radio size="small" />}
+                  label={value}
+                  disabled={disabled}
+                  sx={{ m: 0 }}
+                />
               ))}
             </RadioGroup>
             <FormControlLabel
-              control={<Checkbox size="small" checked={retain} onChange={(event) => updateDraft({ retain: event.target.checked })} />}
+              control={
+                <Checkbox
+                  size="small"
+                  checked={retain}
+                  onChange={(event) => updateDraft({ retain: event.target.checked })}
+                />
+              }
               label={t('composer.retain')}
               disabled={disabled}
               sx={{ ml: 0, mr: 0 }}
             />
             <FormControlLabel
-              control={<Checkbox size="small" checked={asJson} onChange={(event) => updateDraft({ asJson: event.target.checked })} />}
+              control={
+                <Checkbox
+                  size="small"
+                  checked={asJson}
+                  onChange={(event) => updateDraft({ asJson: event.target.checked })}
+                />
+              }
               label={t('composer.sendAsJson')}
               disabled={disabled}
               sx={{ ml: 0, mr: 0 }}

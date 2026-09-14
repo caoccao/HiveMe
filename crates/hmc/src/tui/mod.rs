@@ -180,6 +180,7 @@ where
   }
 
   while app.quit.is_none() {
+    let mut dirty = true;
     tokio::select! {
       input = inputs.recv() => match input {
         Some(input) => app.handle_input(input, Instant::now()),
@@ -190,15 +191,14 @@ where
         Ok(event) => app.on_session_event(event, Instant::now()),
         Err(RecvError::Lagged(skipped)) => {
           log::warn!("the terminal UI fell behind, {skipped} session event(s) were dropped");
-          let status = app.service.status();
-          app.set_status(status, Instant::now());
+          app.recover_lag(Instant::now());
         }
         Err(RecvError::Closed) => events_open = false,
       },
       Some(outcome) = receivers.outcomes.recv() => app.on_outcome(outcome, Instant::now()),
-      _ = tick.tick() => app.on_tick(Instant::now()),
+      _ = tick.tick() => dirty = app.on_tick(Instant::now()),
     }
-    if app.quit.is_none() && !draw(app, terminal) {
+    if dirty && app.quit.is_none() && !draw(app, terminal) {
       app.request_quit(QuitReason::Hangup);
     }
   }
