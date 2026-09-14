@@ -774,7 +774,6 @@ fn against_a_real_broker_the_composer_and_one_shot_hmc_meet_in_the_view() {
     .unwrap();
   runtime.block_on(async {
     let container = match GenericImage::new("hivemq/hivemq-ce", "latest")
-      .with_exposed_port(1883.tcp())
       .with_wait_for(WaitFor::message_on_stdout("Started HiveMQ"))
       .with_startup_timeout(Duration::from_secs(180))
       .start()

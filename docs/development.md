@@ -361,6 +361,13 @@ Each test says why it did nothing and passes when Docker is unavailable, or when
 `HIVEME_SKIP_DOCKER=1` is set, as the macOS and Windows workflows do. The Linux
 workflow has Docker and runs them.
 
+A skipped test is a passing one, so a broker that never starts reads as green. Run them
+with `-- --nocapture` and look for `skipping` to see whether they did any work; a suite
+that finishes in a second did not. Nothing in the tree exposes a container port the
+HiveMQ CE image already exposes, because a second entry for one port makes Docker
+publish it twice and the second bind fails with `address already in use`, which is a
+container that never starts and so a whole suite that quietly does nothing.
+
 The container speaks plain MQTT, so nothing there exercises the TLS handshake. To test
 against a real HiveMQ Cloud cluster, which does, put its setup string in
 `.config/broker.json`:

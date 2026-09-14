@@ -49,6 +49,9 @@ use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 
 const BROKER_IMAGE: &str = "hivemq/hivemq-ce";
 const BROKER_TAG: &str = "latest";
+/// The MQTT port of HiveMQ CE, which its image exposes itself. Nothing here exposes it
+/// again: two entries for one container port make Docker publish it twice, and the second
+/// bind fails with `address already in use` on Docker Desktop.
 const BROKER_PORT: u16 = 1883;
 
 /// The line HiveMQ CE prints once its MQTT listener is up.
@@ -136,7 +139,6 @@ struct Fixture {
 impl Fixture {
   async fn start() -> Result<Self, String> {
     let container = GenericImage::new(BROKER_IMAGE, BROKER_TAG)
-      .with_exposed_port(BROKER_PORT.tcp())
       .with_wait_for(WaitFor::message_on_stdout(BROKER_READY))
       .with_startup_timeout(Duration::from_secs(180))
       .start()
@@ -576,6 +578,17 @@ async fn eventually(what: &str, condition: impl Fn() -> bool) {
   }
 }
 
+/// How many notifications the terminal UI raised, counted from what it logged.
+///
+/// A desktop without a notification daemon refuses the toast, which the session logs and
+/// drops, so a refusal counts too: the rules had their say either way.
+fn toasts(log: &str) -> usize {
+  log
+    .lines()
+    .filter(|line| line.contains("showed a notification for") || line.contains("the OS would not show a notification"))
+    .count()
+}
+
 /// How many stored rows under `hiveme` have this body.
 fn rows_with_body(store: &Store, body: &str) -> usize {
   store
@@ -768,22 +781,19 @@ fn hmg_and_the_terminal_ui_share_one_installation() {
     })
     .await;
 
+    // The terminal UI raised one for each message as well. It is waited for rather than
+    // read after the quit, because the two applications answer the same message at their
+    // own pace and the quit would otherwise be a race with the slower one.
+    eventually("the terminal UI's two notifications", || toasts(&fixture.log()) == 2).await;
+
     terminal.press(&[CTRL_Q]).await;
     let exit = terminal.wait_for_exit().await;
     assert!(exit.success(), "hmc exited {exit:?}\nhmc.log:\n{}", fixture.log());
     gui.begin_shutdown();
     gui.shutdown().await.expect("hmg's session ends");
 
-    // The terminal UI showed, or on a desktop without a notification daemon tried to show
-    // and logged why it could not, one notification for each message as well.
     let log = fixture.log();
-    let toasts = log
-      .lines()
-      .filter(|line| {
-        line.contains("showed a notification for") || line.contains("the OS would not show a notification")
-      })
-      .count();
-    assert_eq!(toasts, 2, "hmc.log:\n{log}");
+    assert_eq!(toasts(&log), 2, "hmc.log:\n{log}");
     assert_eq!(recorder.shown.lock().unwrap().len(), 2);
     fixture.assert_session_ended().await;
   });

@@ -623,9 +623,22 @@ The entries below are against [the terminal UI plan](../plans/plan-terminal-ui.m
     synchronously and the size cannot change inside one draw.
 50. Phase 6: the checks by hand the plan lists are not done: the terminal UI by eye in
     Windows Terminal and in the legacy Windows console, the toast label on Windows, and
-    the toast of an unbundled binary on macOS. A Linux desktop without a notification
+    the toast label on macOS. That the toast of an unbundled binary appears at all is no
+    longer among them: a macOS run of the end-to-end test has the toasts accepted and
+    `com.caoccao.hiveme` taken as the identifier, which
+    [tui.md](tui.md#notifications) records. A Linux desktop without a notification
     daemon is covered by the notifier's test of a refused toast and by the Linux run of
     the end-to-end test, which has no daemon and whose toasts are logged as refused while
     everything else goes on. [screenshots.md](../screenshots.md) has the recipe for
     `tui.png` but no image, as entry 19 has for the others. [todos.md](../todos.md) lists
     what is left.
+51. Phase 6, found afterward: none of the tests that need a broker had ever run on Docker
+    Desktop. Each asked for container port 1883, which the HiveMQ CE image exposes
+    itself, so Docker published one port twice and the second bind failed with `address
+    already in use`; a container that will not start is a skip, and a skip passes, so
+    four suites read as green while doing nothing. They no longer name a port the image
+    already names. Running the end-to-end test for the first time then found that its
+    two-process check read the terminal UI's notifications after quitting it, which
+    raced the slower of the two applications; it waits for them instead.
+    [development.md](../development.md#testing-against-a-broker) says how to tell a
+    skipped suite from a passing one.

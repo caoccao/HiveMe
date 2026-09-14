@@ -42,6 +42,9 @@ use tokio::sync::broadcast::Receiver;
 
 const BROKER_IMAGE: &str = "hivemq/hivemq-ce";
 const BROKER_TAG: &str = "latest";
+/// The MQTT port of HiveMQ CE, which its image exposes itself. Nothing here exposes it
+/// again: two entries for one container port make Docker publish it twice, and the second
+/// bind fails with `address already in use` on Docker Desktop.
 const BROKER_PORT: u16 = 1883;
 
 /// The line HiveMQ CE prints once its MQTT listener is up.
@@ -90,7 +93,6 @@ struct Broker {
 impl Broker {
   async fn start() -> Result<Self, String> {
     let container = GenericImage::new(BROKER_IMAGE, BROKER_TAG)
-      .with_exposed_port(BROKER_PORT.tcp())
       .with_wait_for(WaitFor::message_on_stdout(BROKER_READY))
       .with_startup_timeout(Duration::from_secs(180))
       .start()
