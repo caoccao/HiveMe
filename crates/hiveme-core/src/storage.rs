@@ -557,11 +557,21 @@ impl Store {
   /// Applies `gui.history`: a cap per topic and a retention window.
   ///
   /// Both limits treat 0 as "no limit", as `docs/specs/config.md` says.
+  ///
+  /// The unread counts come down with the messages. A count is a number of rows that
+  /// arrived and were never looked at, and a row that has been deleted can never be
+  /// looked at now, so a badge left standing over an empty topic is counting messages
+  /// nobody can ever read. The whole pass is one transaction, so the counts and the
+  /// rows they describe are never briefly out of step for a reader in the other
+  /// application.
   pub fn prune(&self, history: &History) -> Result<Pruned> {
     let mut pruned = Pruned::default();
-    let connection = self.lock();
+    let mut connection = self.lock();
+    let transaction = connection
+      .transaction_with_behavior(TransactionBehavior::Immediate)
+      .map_err(|source| failed("begin pruning", source))?;
     if history.max_messages_per_topic > 0 {
-      let deleted = connection
+      let deleted = transaction
         .execute(
           "DELETE FROM messages WHERE id IN (
              SELECT id FROM (
@@ -575,7 +585,7 @@ impl Store {
     }
     if history.retention_days > 0 {
       let cutoff = chrono::Utc::now() - chrono::Duration::days(i64::from(history.retention_days));
-      let deleted = connection
+      let deleted = transaction
         .execute(
           "DELETE FROM messages WHERE received_ts < ?1",
           params![cutoff.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)],
@@ -583,6 +593,17 @@ impl Store {
         .map_err(|source| failed("prune by age", source))?;
       pruned.by_age = deleted as u64;
     }
+    if pruned.total() > 0 {
+      transaction
+        .execute(
+          "UPDATE topics SET unread = MIN(unread, (
+             SELECT COUNT(*) FROM messages WHERE messages.topic_id = topics.id AND messages.outgoing = 0
+           ))",
+          [],
+        )
+        .map_err(|source| failed("bring the unread counts down with the messages", source))?;
+    }
+    transaction.commit().map_err(|source| failed("prune", source))?;
     Ok(pruned)
   }
 

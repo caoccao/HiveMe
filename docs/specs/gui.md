@@ -422,7 +422,9 @@ one database are in [session.md](session.md#two-processes-one-installation).
   as sent and removed from the unread count.
 - A payload that is not a HiveMe envelope has no identifier of its own, so one is
   generated. Two identical third party messages are therefore two rows, which is right:
-  they are two messages, and only an envelope can claim otherwise.
+  they are two messages, and only an envelope can claim otherwise. The echo of a raw
+  publish is not a second message, and the session hands it the id of the row it belongs
+  to before the insert sees it, see [session.md](session.md#receiving).
 - `unread` counts a message that is new and came from the broker. What this
   installation published has been seen by definition.
 - `raw` is the payload exactly as it arrived, which is what lets the view render every

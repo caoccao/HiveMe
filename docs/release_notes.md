@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+* The Settings tab saves before the broker has been filled in. A theme, a language, or
+  a notification rule used to be refused on a fresh install until an address, a
+  username, and a password had been typed in as well. Connecting still reports an
+  address or a credential that does not work.
+
+* A message sent as raw JSON appears once. Its copy from the broker used to be stored
+  and drawn a second time, and to raise a desktop notification for the sender's own
+  message.
+
+* The terminal UI of `hmc` keeps its broker session across a reconnect, so the messages
+  the broker held while the network was down arrive when it comes back. It used to ask
+  the broker to discard them on every reconnect.
+
+* A `broker.keepAliveSecs` under five seconds is reported as a setting to fix, rather
+  than crashing both applications on the way to the broker.
+
+* Two settings saved at the same moment in `hmc` and `hmg` no longer leave a config
+  file that neither of them can read afterward, and a save that fails no longer leaves
+  the screen showing settings that were never written. A setting this version does not
+  know, inside a notification rule written by another one, survives a save as it
+  already did everywhere else.
+
+* An unread badge goes away with the messages it counted. Pruning the history used to
+  leave a count over a topic that no longer had anything to read.
+
+* A topic with thousands of levels is shown instead of closing the application. Both
+  used to abort on one.
+
+* A publish reports what happened to that message. After a reconnect it could report
+  the answer the broker had given to a different one.
+
 * `hmg` puts what `hmc` sent on the incoming side, and the terminal UI does the same
   with what `hmg` sent. The two share one message history, and both used to read a
   message the other had sent as their own and draw it on the right, `hmg` every time

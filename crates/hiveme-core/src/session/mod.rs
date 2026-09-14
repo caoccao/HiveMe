@@ -268,6 +268,10 @@ impl Session {
   /// row is stored once the broker has the message, so that a publish that failed never
   /// leaves a bubble claiming it was sent; the copy the broker echoes back onto this
   /// session's own subscription collapses into that row by its message id.
+  ///
+  /// The echo can beat the acknowledgement back, so the message is spoken for before it
+  /// is sent rather than after it is stored: otherwise its own echo arrives at a session
+  /// that has never heard of it and is drawn a second time, as somebody else's.
   pub async fn publish(&self, topic: &str, body: &str, options: PublishOptions) -> Result<MessageRow> {
     let resolved_topic = crate::topic::resolve_publish(topic, options.topic.as_deref().unwrap_or(""));
     let topic = resolved_topic.as_str();
@@ -296,32 +300,43 @@ impl Session {
       .unwrap_or_else(|| Qos::from_config(&config));
     let retain = options.retain.unwrap_or(config.publish.retain);
 
-    let payload = if options.json {
+    let (payload, properties) = if options.json {
       serde_json::from_str::<serde_json::Value>(body).map_err(|source| Error::NotJson(source.to_string()))?;
-      let payload = body.as_bytes().to_vec();
-      self
-        .mqtt
-        .publish_bytes(topic, payload.clone(), qos, retain, Some(raw_json_properties()))
-        .await?;
-      payload
+      (body.as_bytes().to_vec(), raw_json_properties())
     } else {
       let message = build_message(&config, self.app, body, &options);
       let payload = message.to_bytes().map_err(|source| Error::PublishRejected {
         topic: topic.to_owned(),
         reason: format!("the message cannot be encoded: {source}"),
       })?;
-      self.mqtt.publish_message(topic, &message, qos, retain).await?;
-      payload
+      (payload, message.mqtt_properties())
     };
 
-    let mut row = NewMessage::from_payload(topic, payload, qos.as_u8(), retain, true);
+    let mut row = NewMessage::from_payload(topic, payload.clone(), qos.as_u8(), retain, true);
     // A raw JSON publish carries no envelope, so the parser found no `sender.app` to
     // read and the row would not know which of the two applications sent it. It is
     // this one: say so, or the bubble that was just composed here arrives on the left.
     row.app.get_or_insert_with(|| self.app.app_id().to_owned());
-    let insertion = self.store.insert(&row)?;
+
     let shared = self.mqtt.shared();
     shared.remember(&row.topic, &row.msg_id);
+    if options.json {
+      // The generated id is not in the payload, so the echo of these bytes has to be
+      // recognized by the bytes themselves.
+      shared.remember_raw(&row.topic, &payload, &row.msg_id);
+    }
+    if let Err(error) = self
+      .mqtt
+      .publish_bytes(topic, payload, qos, retain, Some(properties))
+      .await
+    {
+      // Nothing was sent and nothing was stored, so a message that does arrive under
+      // this id later is somebody else's and has to be shown.
+      shared.forget(&row.topic, &row.msg_id);
+      return Err(error);
+    }
+
+    let insertion = self.store.insert(&row)?;
     if insertion.topic_is_new {
       shared.emit(SessionEvent::TopicAdded {
         topic: topic.to_owned(),

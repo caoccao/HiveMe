@@ -176,9 +176,12 @@ the selected topic.
 the pump, and a window handler all see the same thing.
 
 - Loading never validates. `set_config` validates first and reports every problem at
-  once; it is the one path that overwrites a file that could not be read.
-- Writes go through `ConfigFile::save`, which merges into the document that was read
-  so unknown keys survive.
+  once; it is the one path that overwrites a file that could not be read. It validates
+  everything but the broker address and credentials, which the connection that follows
+  validates in full, so that the Settings tab can be saved before the broker has been
+  filled in. See [config.md](config.md#validation).
+- Writes go through `ConfigFile::save_config`, which merges into the document that was
+  read so unknown keys survive, and holds the new config only once it is on disk.
 - `needs_reconnect` is true when `broker` or `topics.subscriptions` differ. Changing a
   theme keeps the connection; changing a password drops it.
 - Both applications keep the config in memory and neither watches the file, so a
@@ -202,8 +205,14 @@ so that a message from any of them is indistinguishable.
    `device` with the application's `app`, the body, the trimmed title when there is
    one, and the level, `info` by default.
 4. QoS is the option or `publish.qos`; retain is the option or `publish.retain`.
-5. Publish through `MqttClient`, which returns once the broker has acknowledged.
-6. Store the row, flagged outgoing, only then. A publish that failed leaves no row and
+5. Claim the message before sending it, by its topic and id, and for a raw publish by
+   its bytes as well. The broker can echo a message back onto this session's own
+   subscription before it acknowledges it, and an echo that arrives at a session which
+   has never heard of the message is stored and drawn a second time, as somebody else's.
+   A publish that fails gives the claim back, so that a message arriving under that id
+   later is somebody else's and is shown.
+6. Publish through `MqttClient`, which returns once the broker has acknowledged.
+7. Store the row, flagged outgoing, only then. A publish that failed leaves no row and
    no bubble. Emit `TopicAdded` when the topic is new and `Message` for the row.
 
 ## Receiving
@@ -211,14 +220,25 @@ so that a message from any of them is indistinguishable.
 *Phase 1.*
 
 Every message the broker delivers is counted, parsed with the lenient reader of
-[message.md](message.md#parse-tiers), and stored. A new row raises `Message` and is
-offered to the notifier. A row that was already there raises nothing when this session
-put it there, as the echo of its own publish or a second delivery, or when the message
-is a retained copy; one that another process on the same database stored a moment
-earlier is raised and offered to the notifier as new, see
+[message.md](message.md#parse-tiers), and stored. A message this session has not seen
+before raises `Message` and is offered to the notifier. One it has raises nothing: it is
+the echo of its own publish, whose bubble the composer already has on screen and whose
+rules had their say when it was sent, or a second delivery of something it stored. A
+retained copy of a message that was already stored is old news too. What is left was
+stored a moment ago by another process on the same database, and is raised and offered
+to the notifier as new, see
 [Two processes, one installation](#two-processes-one-installation). `TopicAdded` is
 raised for a topic the store has not seen. Inserts run on the runtime in arrival order,
 which is the order the chat views show.
+
+A message is recognized by its topic and its envelope id. A payload HiveMe did not shape
+has no id, so one is generated for the row, and the echo of a raw publish would be given
+a second one and stored beside the message it is a copy of. The session remembers the
+bytes of what it published raw instead, and an echo of exactly those bytes on exactly
+that topic takes the id of the row it belongs to. Each remembered publish is spent on
+the first echo that matches it, so a second identical payload, from here or from
+anywhere else, is still a second message, which is what
+[storage](gui.md#storage) means by two rows.
 
 ## Notifications
 
@@ -256,6 +276,21 @@ in `controller.rs`: the tree built by splitting every stored topic on `/` with c
 rolled up into every parent, paging across a subtree with the row id as cursor,
 marking a subtree read, clearing one topic, and the prune loop that runs at startup and
 every ten minutes with `gui.history`.
+
+The tree is at most 64 levels deep, and the rest of a deeper topic becomes a single node
+at the bottom, labeled with the levels it stands for and carrying the whole topic, so it
+still selects and shows exactly that topic. A topic may have as many levels as fit in
+its 65,535 bytes, and every one of them would be a node that the tree is built,
+converted, serialized to the frontend, rendered, and finally dropped by walking into,
+all of it by recursion. Real topics are a handful of levels deep; one published with
+thousands, which the MQTT specification allows and a broker will deliver, would
+otherwise take the stack, and the application, down with it.
+
+Pruning brings the unread counts down with the messages. A count is a number of rows
+that arrived and were never looked at, and a row that has been deleted can never be
+looked at now, so a badge left standing over a pruned topic counts messages nobody can
+ever read. The deletions and the counts are one transaction, so the other application
+never reads one without the other.
 
 ## Update check
 
@@ -301,7 +336,9 @@ One-shot `hmc` does not use the session; it keeps `Role::Cli`. The full table is
 - A payload with no id of its own (raw JSON, text, bytes) has an id generated on insert,
   so one received by both becomes two rows, each counted unread, and each process raises
   its own. This is documented, not prevented; only an envelope can claim to be the same
-  message.
+  message. The one exception is a session's own raw publish, whose echo it recognizes by
+  the bytes it sent, under [Receiving](#receiving); that is the session knowing what it
+  sent, not the database claiming two payloads are one.
 - A message one of them sends is the other's incoming message. See
   [Which side a message is on](#which-side-a-message-is-on).
 - Both processes prune; the second pass finds nothing.

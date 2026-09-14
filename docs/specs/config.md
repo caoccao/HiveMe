@@ -56,6 +56,18 @@ Writes go through a temporary file in the same directory and are then renamed, s
 interrupted write cannot leave a half finished config. On Unix the file is created with
 mode 0600, because it holds a password in plain text.
 
+The temporary file is named for the write that creates it, not for the config, because
+`hmc` and `hmg` share the directory and save whenever a window moves or a setting
+changes. Two writers on one temporary name do not take turns: they truncate and
+interleave into a document neither of them meant to write, and the rename then publishes
+that as the config.
+
+A config is held in memory only once it is on disk. A write the file system refuses
+leaves the value in memory as it was, so that the screen cannot show settings the next
+start will not find. The one config that is kept without being written is one from a
+newer build, which is deliberately never written and whose settings the user can still
+read.
+
 **Loading never validates.** A config is read as far as it can be, so that `hmg` can
 open an incomplete file and let the user finish it in the Settings tab. Both
 applications call validation separately, before they connect. See
@@ -148,7 +160,7 @@ value the applications use when the key is absent.
 | `broker.password` | string | yes | none | May be empty when `passwordRef` is set. |
 | `broker.passwordRef` | object or null | no | null | `{ "type": "Env", "name": "<VARIABLE>" }` is implemented. `{ "type": "Keychain", "service": "HiveMe", "account": "<username>" }` is reserved for phase 6 and reports that it is not implemented rather than failing silently. |
 | `broker.clientIdPrefix` | string | no | `hiveme` | Client id is `<prefix>-<app>-<first 8 hex of device.id>` plus a random suffix for `hmc`, in both of its modes. |
-| `broker.keepAliveSecs` | integer | no | 30 | MQTT keep alive. |
+| `broker.keepAliveSecs` | integer | no | 30 | MQTT keep alive, at least 5. |
 | `broker.sessionExpirySecs` | integer | no | 3600 | `hmg` session retention during network interruptions; explicit disconnect and quit discard the session. One-shot `hmc` always uses 0; interactive `hmc` uses this value. |
 | `broker.connectTimeoutSecs` | integer | no | 10 | |
 | `broker.tls.verifyServer` | boolean | no | true | `false` is honored only for hosts outside `hivemq.cloud` and logs a warning. |
@@ -203,13 +215,21 @@ Validation is separate from loading. Both applications call it before they conne
 `hmc` reports the problems and exits 3, `hmg` shows them in the snackbar and leaves the
 Settings tab open. Every problem is reported at once rather than one at a time.
 
+Saving the settings validates everything below **except the three broker login rules**,
+which are marked in the table. Saving is not connecting, and a broker that is half
+filled in is what the Settings tab looks like until the user has finished with it, so
+refusing the save over it would throw away the rest of what they typed. The connection
+is opened straight afterward and validates in full, so an address or a credential that
+does not work is still reported, by the attempt that found out.
+
 | Rule | Message mentions |
 |------|------------------|
 | `device.id` is not empty | `device.id` |
-| `broker.url` parses, and uses a known scheme, or none, with a host | `broker.url` |
-| A `hivemq.cloud` host uses `mqtts` or `wss`, because the service accepts TLS only | `TLS only` |
-| `broker.username` is not empty | `broker.username` |
-| A password is reachable: the field, `passwordRef`, or `HIVEME_PASSWORD` | `broker.password` |
+| Login: `broker.url` parses, and uses a known scheme, or none, with a host | `broker.url` |
+| Login: a `hivemq.cloud` host uses `mqtts` or `wss`, because the service accepts TLS only | `TLS only` |
+| Login: `broker.username` is not empty | `broker.username` |
+| Login: a password is reachable: the field, `passwordRef`, or `HIVEME_PASSWORD` | `broker.password` |
+| `broker.keepAliveSecs` is at least 5, which is the shortest the MQTT client accepts | `broker.keepAliveSecs` |
 | `broker.reconnect.initialDelayMs` is not greater than `maxDelayMs` | `initialDelayMs` |
 | `topics.subscriptions` is not empty, and every filter is well formed | `topics.subscriptions` |
 | `publish.qos` is 0, 1, or 2 | `publish.qos` |
@@ -237,6 +257,12 @@ UTF-8.
   older `hmg` can share one file without losing each other's settings. This is a
   deliberate departure from the reference project, which serializes the struct
   directly.
+- An array is written out as it now stands, so that removing a notification rule really
+  removes it, and an element that is still there is merged into the element that carried
+  the same `id`, or `kid`, wherever the two ended up in the array. An unknown key inside
+  a rule therefore survives exactly as one at the top level does: saving a theme must not
+  quietly delete another version's settings. An element with neither identity is replaced
+  whole, because nothing says which of the old ones it used to be.
 - Adding an optional field with a default does not bump `version`.
 - HiveMe is unpublished. Schema changes do not add config migrations.
 - A config whose `version` is newer than the binary understands is loaded on a best

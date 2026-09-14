@@ -184,10 +184,35 @@ fn unknown_keys_survive_a_read_modify_write() {
     written["notifications"]["futureNotificationKey"],
     serde_json::Value::Null
   );
+  // Including one inside an element of an array, which a save that replaced the array
+  // wholesale would drop while writing an unrelated setting.
+  let rules = written["notifications"]["rules"].as_array().unwrap();
+  assert_eq!(rules[0]["id"], "error");
+  assert_eq!(rules[0]["futureRuleKey"]["kept"], true);
+  assert_eq!(rules[1]["id"], "warn");
   // The change this build made is there too.
   assert_eq!(written["gui"]["theme"], "Midnight");
   // And reloading sees both.
   assert_eq!(ConfigFile::load(&path).unwrap().config().gui.theme, Theme::Midnight);
+}
+
+#[test]
+fn a_rule_that_moves_keeps_the_keys_this_build_does_not_know() {
+  let (_directory, path) = scratch("unknown_keys.json");
+  let mut file = ConfigFile::load(&path).unwrap();
+  file.config_mut().notifications.rules.reverse();
+  file.config_mut().notifications.rules[1].enabled = false;
+  file.save().unwrap();
+
+  let written: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+  let rules = written["notifications"]["rules"].as_array().unwrap();
+  assert_eq!(rules[0]["id"], "warn", "the order is the one that was saved");
+  assert_eq!(rules[1]["id"], "error");
+  assert_eq!(rules[1]["enabled"], false, "and so is the change");
+  assert_eq!(
+    rules[1]["futureRuleKey"]["kept"], true,
+    "a rule is followed by its identity, not by where it used to be in the array"
+  );
 }
 
 #[test]
@@ -199,7 +224,7 @@ fn removing_a_rule_really_removes_it() {
 
   let written: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
   let rules = written["notifications"]["rules"].as_array().unwrap();
-  assert_eq!(rules.len(), 1, "arrays are replaced, not merged element by element");
+  assert_eq!(rules.len(), 1, "an array is written out as it now stands");
   assert_eq!(rules[0]["id"], "error");
 }
 
@@ -651,6 +676,61 @@ fn the_broker_url_parts_agree_with_the_frontend() {
       "{case}"
     );
   }
+}
+
+#[test]
+fn two_processes_saving_at_once_never_publish_a_half_written_config() {
+  // `hmc` and `hmg` share the file and save whenever a window moves or a setting
+  // changes. A temporary file they both wrote through would be truncated and
+  // interleaved by whichever of them was second, and the rename would publish that as
+  // the config: on the next start neither application could read its own settings.
+  let directory = tempfile::tempdir().unwrap();
+  let path = directory.path().join("HiveMe.json");
+  ConfigFile::load_or_create(&path).unwrap();
+
+  let writers: Vec<_> = (0..8)
+    .map(|writer| {
+      let path = path.clone();
+      std::thread::spawn(move || {
+        for round in 0..20 {
+          let mut file = ConfigFile::load(&path).expect("the config is readable at every moment");
+          file.config_mut().device.name = format!("writer-{writer}-round-{round}");
+          file.config_mut().gui.window.size.width = 600 + writer * 100 + round;
+          file.save().expect("the config is writable");
+        }
+      })
+    })
+    .collect();
+  for writer in writers {
+    writer.join().expect("no writer panicked");
+  }
+
+  let file = ConfigFile::load(&path).expect("the config survives the crowd");
+  assert!(file.config().device.name.starts_with("writer-"));
+  assert_eq!(
+    std::fs::read_dir(directory.path()).unwrap().count(),
+    1,
+    "and no temporary file is left behind"
+  );
+}
+
+#[test]
+fn a_save_the_file_system_refuses_leaves_the_config_in_memory_alone() {
+  // Otherwise the screen shows settings that are not on disk and will not come back.
+  let directory = tempfile::tempdir().unwrap();
+  let path = directory.path().join("HiveMe.json");
+  let mut file = ConfigFile::load_or_create(&path).unwrap().0;
+  let saved = file.config().clone();
+
+  // A directory where the temporary file has to go is a write nothing can complete.
+  std::fs::remove_file(&path).unwrap();
+  std::fs::create_dir(&path).unwrap();
+  let mut refused = saved.clone();
+  refused.gui.theme = Theme::Coral;
+  let error = file.save_config(refused).unwrap_err();
+
+  assert!(error.is_config(), "{error}");
+  assert_eq!(file.config(), &saved, "the refused config was not adopted");
 }
 
 /// Sets an environment variable for the duration of `body`.

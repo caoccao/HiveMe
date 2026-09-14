@@ -105,12 +105,12 @@ impl ConfigStore {
   /// Validates and writes a config the user asked to save.
   ///
   /// This is the one path that overwrites a file that could not be read, because saving
-  /// the settings is the user saying to.
+  /// the settings is the user saying to. The broker is not part of what is validated
+  /// here: see [`Config::validate_for_save`].
   pub fn set(&self, config: Config) -> Result<()> {
-    config.validate()?;
+    config.validate_for_save()?;
     let mut holder = self.write();
-    holder.file.set_config(config);
-    holder.file.save()?;
+    holder.file.save_config(config)?;
     holder.load_error = None;
     Ok(())
   }
@@ -129,8 +129,7 @@ impl ConfigStore {
       holder.file.set_config(config);
       return Ok(());
     }
-    holder.file.set_config(config);
-    holder.file.save()
+    holder.file.save_config(config)
   }
 
   fn read(&self) -> std::sync::RwLockReadGuard<'_, Holder> {
@@ -213,10 +212,27 @@ mod tests {
     let before = std::fs::read_to_string(&path).unwrap();
 
     let mut config = store.get();
-    config.broker.url = "mqtts://abc123.s1.eu.hivemq.cloud:8883".to_owned();
+    config.notifications.rules[0].topic = "build/#/ci".to_owned();
     let error = store.set(config).unwrap_err();
 
     assert!(error.is_config(), "{error}");
     assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+  }
+
+  #[test]
+  fn the_settings_save_before_the_broker_is_filled_in() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("HiveMe.json");
+    let store = ConfigStore::open(&path).unwrap();
+
+    // What a fresh install looks like: no address, no credentials, and a user who has
+    // just picked a theme in the Settings tab.
+    let mut config = store.get();
+    assert!(config.broker.url.is_empty());
+    config.gui.theme = crate::config::Theme::Rose;
+    store.set(config).unwrap();
+
+    assert_eq!(store.get().gui.theme, crate::config::Theme::Rose);
+    assert!(std::fs::read_to_string(&path).unwrap().contains("\"theme\": \"Rose\""));
   }
 }

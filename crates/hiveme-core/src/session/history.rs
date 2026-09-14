@@ -27,12 +27,23 @@ use crate::storage::{Store, TopicRow};
 
 use super::types::TopicNode;
 
+/// How many levels deep the tree goes before the rest of a topic becomes one node.
+///
+/// A topic may have as many levels as fit in its 65,535 bytes, and every one of them
+/// would be a node the tree is built, converted, serialized to the frontend, rendered,
+/// and finally dropped by walking into. All of those walk by recursion, so a topic
+/// published with thousands of levels, which is a topic the MQTT specification allows
+/// and a broker will deliver, would take the stack down with it. Real topics are a
+/// handful of levels deep. Past this one the remainder becomes a single node, which
+/// still carries the whole topic and so still selects and shows exactly its messages.
+pub const MAX_TREE_DEPTH: usize = 64;
+
 /// Builds the topic tree by splitting every stored topic on `/`.
 ///
 /// A node exists for every segment, so `hiveme/build/ci` puts `build` in the tree even
 /// though nothing was ever published to it. Every nonempty path can be selected to
 /// show its descendants. Counts are rolled up, so a collapsed branch shows that
-/// something below it is unread.
+/// something below it is unread. The depth is bounded by [`MAX_TREE_DEPTH`].
 pub fn build_tree(topics: &[TopicRow]) -> Vec<TopicNode> {
   #[derive(Default)]
   struct Node {
@@ -41,11 +52,11 @@ pub fn build_tree(topics: &[TopicRow]) -> Vec<TopicNode> {
     messages: u32,
   }
 
-  fn insert(node: &mut Node, segments: &[&str], row: &TopicRow) {
+  fn insert(node: &mut Node, segments: &[String], row: &TopicRow) {
     node.unread = node.unread.saturating_add(row.unread);
     node.messages = node.messages.saturating_add(row.messages);
     if let Some((head, rest)) = segments.split_first() {
-      insert(node.children.entry((*head).to_owned()).or_default(), rest, row);
+      insert(node.children.entry(head.clone()).or_default(), rest, row);
     }
   }
 
@@ -66,14 +77,27 @@ pub fn build_tree(topics: &[TopicRow]) -> Vec<TopicNode> {
 
   let mut root = Node::default();
   for row in topics {
-    let segments: Vec<&str> = row.topic.split('/').collect();
-    insert(&mut root, &segments, row);
+    insert(&mut root, &levels(&row.topic), row);
   }
   root
     .children
     .iter()
     .map(|(segment, child)| convert(segment, segment, child))
     .collect()
+}
+
+/// The levels `topic` becomes in the tree, at most [`MAX_TREE_DEPTH`] of them.
+///
+/// The last one keeps the slashes of everything it stands for, so the path a node is
+/// built from is still the topic itself, whatever depth the topic was published at.
+fn levels(topic: &str) -> Vec<String> {
+  let mut segments = topic.split('/');
+  let mut levels: Vec<String> = segments.by_ref().take(MAX_TREE_DEPTH - 1).map(str::to_owned).collect();
+  let rest: Vec<&str> = segments.collect();
+  if !rest.is_empty() {
+    levels.push(rest.join("/"));
+  }
+  levels
 }
 
 /// One pruning pass with `gui.history`, logged the way the loop has always logged it.
@@ -164,5 +188,37 @@ mod tests {
   #[test]
   fn an_empty_store_has_an_empty_tree() {
     assert!(build_tree(&[]).is_empty());
+  }
+
+  #[test]
+  fn a_topic_deeper_than_the_tree_goes_is_one_node_at_the_bottom() {
+    let deep = ["level"; MAX_TREE_DEPTH + 6].join("/");
+    let tree = build_tree(&[row(&deep, 1, 1)]);
+
+    let mut node = &tree[0];
+    let mut depth = 1;
+    while let Some(child) = node.children.first() {
+      node = child;
+      depth += 1;
+    }
+    assert_eq!(depth, MAX_TREE_DEPTH);
+    assert_eq!(node.topic.as_deref(), Some(deep.as_str()), "the whole topic selects");
+    assert_eq!(node.label, ["level"; 7].join("/"), "and says what it stands for");
+  }
+
+  /// A topic may have as many levels as fit in its 65,535 bytes, and it arrives from
+  /// the broker, so nothing but this bound stops a peer from recursing the stack away.
+  #[test]
+  fn a_topic_with_thousands_of_levels_does_not_take_the_stack_down() {
+    let absurd = ["a"; 30_000].join("/");
+    let tree = build_tree(&[row("hiveme/info", 0, 1), row(&absurd, 2, 3)]);
+
+    assert_eq!(tree.len(), 2);
+    let deep = tree
+      .iter()
+      .find(|node| node.label == "a")
+      .expect("the deep topic is there");
+    assert_eq!(deep.unread, 2);
+    assert_eq!(deep.messages, 3);
   }
 }

@@ -36,7 +36,7 @@ mod backoff;
 mod options;
 mod tls;
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -369,6 +369,7 @@ impl MqttClient {
       connect_timeout,
       dropped: AtomicU64::new(0),
       disconnected_cleanly: AtomicBool::new(false),
+      connected_once: AtomicBool::new(false),
     });
 
     let backoff = Backoff::from_config(&config.broker.reconnect);
@@ -709,6 +710,8 @@ struct Inner {
   connect_timeout: Duration,
   dropped: AtomicU64,
   disconnected_cleanly: AtomicBool,
+  /// Set by the first CONNACK, so that a later one is known to be a reconnect.
+  connected_once: AtomicBool,
 }
 
 impl Inner {
@@ -811,10 +814,21 @@ struct SubscribeWaiter {
 /// picked as an outgoing event, in the order the requests were sent, which is why the
 /// queues below are first in first out and why every request is queued and sent under
 /// one lock.
+///
+/// That pairing only holds while every request the client took produces exactly one
+/// outgoing event. Two things break it, and [`Pending::resuming`] and
+/// [`Pending::fail_all`] are how the reconnect keeps them out: the client sends an
+/// unacknowledged publish again under the identifier it already has, which is not a new
+/// request, and it drops everything it was holding when the broker comes back without
+/// the session, which is a request that will never be sent. Either one, left alone,
+/// moves the queue one out of step and hands a caller the acknowledgement of somebody
+/// else's message.
 #[derive(Default)]
 struct Pending {
   publishes: VecDeque<PublishWaiter>,
   publish_acks: HashMap<u16, PublishWaiter>,
+  /// The identifiers the client is about to put back on the wire itself.
+  republishing: HashSet<u16>,
   subscriptions: VecDeque<SubscribeWaiter>,
   subscribe_acks: HashMap<u16, SubscribeWaiter>,
 }
@@ -828,8 +842,40 @@ impl Pending {
     self.subscribe_acks.retain(|_, waiter| !waiter.sender.is_closed());
   }
 
+  /// A reconnect the broker resumed the session for.
+  ///
+  /// MQTT has the client send every unacknowledged publish again, under the identifier
+  /// it was given the first time, so those identifiers are expected back as outgoing
+  /// publishes that belong to the callers already waiting under them.
+  fn resuming(&mut self) {
+    self.republishing = self.publish_acks.keys().copied().collect();
+  }
+
+  /// Takes the waiter an outgoing publish belongs to, or says it is one going out again.
+  fn sent(&mut self, pkid: u16) -> Option<PublishWaiter> {
+    if pkid != 0 && self.republishing.remove(&pkid) {
+      return None;
+    }
+    self.publishes.pop_front()
+  }
+
+  /// Parks a waiter under the identifier its message went out with.
+  ///
+  /// An identifier is free again as soon as the broker has answered the message that
+  /// held it, and at QoS 2 that is one packet before the caller is done with it, so a
+  /// waiter still parked under this one would otherwise be handed the acknowledgement
+  /// of the message now going out.
+  fn acknowledging(&mut self, pkid: u16, waiter: PublishWaiter) {
+    if let Some(stale) = self.publish_acks.insert(pkid, waiter) {
+      let _ = stale.sender.send(Err(Error::ConnectionLost(
+        "this message's packet identifier was given away before the broker acknowledged it".to_owned(),
+      )));
+    }
+  }
+
   /// Tells everyone still waiting that there will be no acknowledgement.
   fn fail_all(&mut self, reason: &str) {
+    self.republishing.clear();
     let publishes = self
       .publishes
       .drain(..)
@@ -916,6 +962,22 @@ fn handle(inner: &Arc<Inner>, incoming: &mpsc::Sender<IncomingMessage>, event: E
         "the broker accepted the connection, session present: {}",
         ack.session_present
       );
+      // Nothing was in flight before the first connection of all, so there is nothing
+      // this CONNACK can have decided the fate of.
+      if inner.connected_once.swap(true, Ordering::SeqCst) {
+        let mut pending = inner.pending.lock().unwrap();
+        if ack.session_present {
+          pending.resuming();
+        } else {
+          // The client holds what it could not send across a drop and puts it back on
+          // the wire when the session comes back. Without the session it throws all of
+          // it away, so every caller still waiting is waiting for nothing.
+          pending.fail_all(
+            "the connection dropped before the broker acknowledged the message, \
+             and the broker had no session left to send it again",
+          );
+        }
+      }
       inner.set_connected();
       if !ack.session_present {
         resubscribe(inner, role);
@@ -961,18 +1023,14 @@ fn handle(inner: &Arc<Inner>, incoming: &mpsc::Sender<IncomingMessage>, event: E
     }
     Event::Outgoing(Outgoing::Publish(pkid)) => {
       let mut pending = inner.pending.lock().unwrap();
-      if pkid != 0 && pending.publish_acks.contains_key(&pkid) {
-        // A packet identifier that is already in flight is the same message going out
-        // again after a reconnect, not a new one, so the caller keeps waiting.
-        log::debug!("republished packet {pkid} after a reconnect");
-      } else if let Some(waiter) = pending.publishes.pop_front() {
-        if waiter.qos.is_acknowledged() {
-          pending.publish_acks.insert(pkid, waiter);
-        } else {
+      match pending.sent(pkid) {
+        None => log::debug!("republished packet {pkid} after a reconnect"),
+        Some(waiter) if !waiter.qos.is_acknowledged() => {
           // Nothing will acknowledge a QoS 0 publish, so the packet leaving is the only
           // answer there will ever be.
           let _ = waiter.sender.send(Ok(()));
         }
+        Some(waiter) => pending.acknowledging(pkid, waiter),
       }
     }
     Event::Outgoing(Outgoing::Subscribe(pkid)) => {
@@ -1312,6 +1370,78 @@ mod tests {
     let error = receiver.try_recv().unwrap().unwrap_err();
     assert!(error.is_connection(), "{error}");
     assert!(error.to_string().contains("the broker went away"), "{error}");
+  }
+
+  /// One caller waiting for the broker to answer a publish on `topic`.
+  fn waiting(pending: &mut Pending, topic: &str, qos: Qos) -> oneshot::Receiver<Result<()>> {
+    let (sender, receiver) = oneshot::channel();
+    pending.publishes.push_back(PublishWaiter {
+      topic: topic.to_owned(),
+      qos,
+      sender,
+    });
+    receiver
+  }
+
+  #[test]
+  fn a_message_the_client_sends_again_is_not_the_next_caller_s() {
+    let mut pending = Pending::default();
+    let mut first = waiting(&mut pending, "hiveme/one", Qos::AtLeastOnce);
+    let waiter = pending.sent(1).expect("the first publish takes the first waiter");
+    pending.acknowledging(1, waiter);
+
+    // The connection drops and the broker still has the session, so the client puts
+    // packet 1 back on the wire itself while a second publish waits its turn.
+    pending.resuming();
+    let mut second = waiting(&mut pending, "hiveme/two", Qos::AtLeastOnce);
+    assert!(pending.sent(1).is_none(), "packet 1 is the first message, again");
+    assert_eq!(pending.publishes.len(), 1, "and the second one has not gone out yet");
+
+    let waiter = pending.sent(2).expect("the second publish takes the second waiter");
+    assert_eq!(waiter.topic, "hiveme/two");
+    pending.acknowledging(2, waiter);
+    let _ = pending.publish_acks.remove(&1).unwrap().sender.send(Ok(()));
+    assert!(first.try_recv().unwrap().is_ok());
+    assert!(second.try_recv().is_err(), "the second is still waiting for its own");
+  }
+
+  #[test]
+  fn an_identifier_handed_on_before_its_acknowledgement_fails_the_caller_who_had_it() {
+    let mut pending = Pending::default();
+    let mut first = waiting(&mut pending, "hiveme/one", Qos::ExactlyOnce);
+    let waiter = pending.sent(1).unwrap();
+    pending.acknowledging(1, waiter);
+
+    // QoS 2 frees the identifier when the broker receives the message, which is a packet
+    // before the caller is done with it, so a later message can be given the same one.
+    let mut second = waiting(&mut pending, "hiveme/two", Qos::AtLeastOnce);
+    let waiter = pending.sent(1).expect("a publish of its own, not a repeat");
+    assert_eq!(waiter.topic, "hiveme/two");
+    pending.acknowledging(1, waiter);
+
+    let error = first.try_recv().unwrap().unwrap_err();
+    assert!(error.is_connection(), "{error}");
+    assert!(
+      second.try_recv().is_err(),
+      "the second caller waits for the real answer"
+    );
+  }
+
+  #[test]
+  fn a_reconnect_without_the_session_fails_what_the_client_threw_away() {
+    let mut pending = Pending::default();
+    let mut sent = waiting(&mut pending, "hiveme/one", Qos::AtLeastOnce);
+    let waiter = pending.sent(1).unwrap();
+    pending.acknowledging(1, waiter);
+    let mut queued = waiting(&mut pending, "hiveme/two", Qos::AtLeastOnce);
+
+    pending.fail_all("the broker had no session left");
+
+    assert!(sent.try_recv().unwrap().is_err(), "the acknowledgement is never coming");
+    assert!(queued.try_recv().unwrap().is_err(), "and this one was never sent");
+    assert!(pending.publishes.is_empty());
+    assert!(pending.publish_acks.is_empty());
+    assert!(pending.republishing.is_empty());
   }
 
   #[test]

@@ -431,6 +431,61 @@ fn pruning_caps_each_topic_separately() {
 }
 
 #[test]
+fn pruning_brings_the_unread_counts_down_with_the_messages() {
+  let store = Store::in_memory().unwrap();
+  for index in 0..6 {
+    store
+      .insert(&incoming(
+        "hiveme/info",
+        &envelope("device-1", &format!("news {index}")),
+      ))
+      .unwrap();
+  }
+  // One this installation sent, which was never unread and must not be counted now.
+  let mut sent = incoming("hiveme/info", &envelope("device-1", "mine"));
+  sent.outgoing = true;
+  store.insert(&sent).unwrap();
+  assert_eq!(store.topics().unwrap()[0].unread, 6);
+
+  store
+    .prune(&History {
+      max_messages_per_topic: 2,
+      retention_days: 0,
+    })
+    .unwrap();
+
+  let topic = &store.topics().unwrap()[0];
+  assert_eq!(topic.messages, 2);
+  assert_eq!(
+    topic.unread, 1,
+    "a badge cannot go on counting messages that have been deleted"
+  );
+}
+
+#[test]
+fn pruning_leaves_an_unread_count_it_has_not_deleted_alone() {
+  let store = Store::in_memory().unwrap();
+  for index in 0..3 {
+    store
+      .insert(&incoming(
+        "hiveme/info",
+        &envelope("device-1", &format!("news {index}")),
+      ))
+      .unwrap();
+  }
+
+  let pruned = store
+    .prune(&History {
+      max_messages_per_topic: 10,
+      retention_days: 30,
+    })
+    .unwrap();
+
+  assert_eq!(pruned.total(), 0);
+  assert_eq!(store.topics().unwrap()[0].unread, 3);
+}
+
+#[test]
 fn pruning_drops_what_is_older_than_the_retention_window() {
   let store = Store::in_memory().unwrap();
   let mut old = incoming("hiveme/info", &envelope("device-1", "last month"));

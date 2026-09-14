@@ -337,6 +337,7 @@ fn a_raw_json_publish_claims_no_envelope() {
 
     let session = broker.session(SessionApp::Tui, "raw-writer", Arc::default());
     session.connect().await.expect("the session connects");
+    let mut events = session.subscribe();
     let body = r#"{"build":482,"ok":true}"#;
     let row = session
       .publish(
@@ -357,6 +358,26 @@ fn a_raw_json_publish_claims_no_envelope() {
     assert_eq!(received.payload, body.as_bytes());
     assert_eq!(received.properties.content_type.as_deref(), Some("application/json"));
     assert_eq!(received.properties.hiveme_version(), None);
+
+    // The session is subscribed to what it just published, so the echo arrives here
+    // too. A payload HiveMe did not shape carries no id, so the echo is recognized by
+    // its bytes; without that it is given an id of its own and drawn a second time, as
+    // somebody else's message.
+    let seen = events_within(&mut events, Duration::from_secs(2)).await;
+    let rows: Vec<_> = seen
+      .iter()
+      .filter_map(|event| match event {
+        SessionEvent::Message(message) => Some(message.row_id),
+        _ => None,
+      })
+      .collect();
+    assert_eq!(rows, vec![row.row_id], "{seen:?}");
+
+    let stored = session.messages("hiveme/ci", None, 0).expect("the history is readable");
+    assert_eq!(stored.len(), 1, "the echo is that message, not another one");
+    assert!(stored[0].outgoing, "and it is still the one this session sent");
+    let tree = session.topic_tree().expect("the tree is readable");
+    assert_eq!(tree[0].unread, 0, "what this installation sent is never unread");
 
     session.shutdown().await.expect("the session ends");
     subscriber.disconnect().await.expect("the subscriber says goodbye");

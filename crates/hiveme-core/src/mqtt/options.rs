@@ -28,7 +28,7 @@ use std::time::Duration;
 use rumqttc::v5::MqttOptions;
 use rumqttc::{NetworkOptions, TlsConfiguration, Transport};
 
-use crate::config::{BrokerUrl, Config, Scheme};
+use crate::config::{BrokerUrl, Config, MIN_KEEP_ALIVE_SECS, Scheme};
 use crate::error::{Error, Result};
 
 use super::tls;
@@ -65,9 +65,15 @@ impl Role {
 
   /// Whether the broker discards whatever session the identifier already had.
   ///
-  /// An identifier that is new on every run has no session worth resuming.
+  /// One-shot `hmc` asks for a clean start because it wants no session at all. The
+  /// other two must not: the flag is on the CONNECT packet, and the client sends the
+  /// same packet on every reconnect, so asking for a clean start is asking the broker
+  /// to throw away the session on every recovery, along with the messages it held while
+  /// the network was down. The terminal UI takes a fresh identifier per run, so the
+  /// session there can only ever be the one this process left a moment ago, and
+  /// [`crate::mqtt::MqttClient::end_session`] discards it on the way out.
   pub fn clean_start(&self) -> bool {
-    matches!(self, Self::Cli | Self::Tui)
+    matches!(self, Self::Cli)
   }
 
   /// Whether a lost connection is retried.
@@ -128,7 +134,12 @@ pub fn build(config: &Config, role: Role) -> Result<Connection> {
   let mut options = MqttOptions::new(client_id.clone(), address, url.port);
 
   options.set_transport(transport(config, &url)?);
-  options.set_keep_alive(Duration::from_secs(u64::from(config.broker.keep_alive_secs)));
+  // Clamped rather than passed on: `set_keep_alive` asserts, and a config value that
+  // has not been through the validator, or a caller that skipped it, must not be able
+  // to turn one line of JSON into a panic. See [`MIN_KEEP_ALIVE_SECS`].
+  options.set_keep_alive(Duration::from_secs(u64::from(
+    config.broker.keep_alive_secs.max(MIN_KEEP_ALIVE_SECS),
+  )));
   options.set_clean_start(role.clean_start());
   options.set_session_expiry_interval(Some(role.session_expiry_secs(config)));
   options.set_connection_timeout(connect_timeout.as_secs());
@@ -225,9 +236,39 @@ mod tests {
     let mut config = config();
     config.broker.session_expiry_secs = 7_200;
     let connection = build(&config, Role::Tui).unwrap();
-    assert!(connection.options.clean_start());
+    assert!(
+      !connection.options.clean_start(),
+      "a reconnect that asked for a clean start would throw away the messages the broker \
+       held while the network was down"
+    );
     assert_eq!(connection.options.session_expiry_interval(), Some(7_200));
     assert!(Role::Tui.reconnects());
+  }
+
+  #[test]
+  fn only_the_one_shot_run_asks_the_broker_to_forget_its_session() {
+    assert!(Role::Cli.clean_start());
+    assert!(!Role::Gui.clean_start());
+    assert!(!Role::Tui.clean_start());
+  }
+
+  #[test]
+  fn a_keep_alive_the_client_would_panic_on_is_clamped() {
+    let mut config = config();
+    for seconds in [0, 1, MIN_KEEP_ALIVE_SECS - 1] {
+      config.broker.keep_alive_secs = seconds;
+      // `build` is reached by `connect_unvalidated` too, which never sees the validator.
+      let connection = build(&config, Role::Cli).unwrap();
+      assert_eq!(
+        connection.options.keep_alive(),
+        Duration::from_secs(u64::from(MIN_KEEP_ALIVE_SECS))
+      );
+    }
+    config.broker.keep_alive_secs = MIN_KEEP_ALIVE_SECS;
+    assert_eq!(
+      build(&config, Role::Cli).unwrap().options.keep_alive(),
+      Duration::from_secs(u64::from(MIN_KEEP_ALIVE_SECS))
+    );
   }
 
   #[test]

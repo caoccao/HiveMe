@@ -9,5 +9,11 @@
     "futureBrokerKey": ["a"]
   },
   "topics": { "subscriptions": ["#"] },
-  "notifications": { "futureNotificationKey": null }
+  "notifications": {
+    "futureNotificationKey": null,
+    "rules": [
+      { "id": "error", "topic": "#", "level": "error", "futureRuleKey": { "kept": true } },
+      { "id": "warn", "topic": "#", "level": "warn" }
+    ]
+  }
 }

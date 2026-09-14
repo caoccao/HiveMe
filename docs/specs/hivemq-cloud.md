@@ -73,7 +73,7 @@ The only difference between the applications is the role they connect as.
 | Concern | one-shot `hmc` (`Role::Cli`) | `hmg` (`Role::Gui`) | interactive `hmc` (`Role::Tui`) |
 |---------|------------------------------|---------------------|---------------------------------|
 | Client id | `<prefix>-hmc-<8 of device.id>-<8 random>` | `<prefix>-hmg-<8 of device.id>` | `<prefix>-hmc-<8 of device.id>-<8 random>` |
-| Clean start | yes | no | yes; the identifier is new, so there is no session to resume |
+| Clean start | yes | no | no; the identifier is new, so the only session to resume is this run's own |
 | Session expiry | 0 | `broker.sessionExpirySecs` during network interruptions; discarded on explicit disconnect or quit | as `hmg`, for the life of the process |
 | Reconnect | none; the first drop ends the connection | exponential backoff with jitter | as `hmg` |
 | Subscriptions | none | `topics.subscriptions` | `topics.subscriptions` |
@@ -86,8 +86,16 @@ identifier and `hmc` runs overlap with each other and with a running `hmg`.
 `Role::Tui` was added in phase 1 of [the terminal UI plan](../plans/plan-terminal-ui.md)
 and is used by the terminal UI of [tui.md](tui.md). It keeps the random
 suffix so that several interactive `hmc` processes on one device do not collide, and
-takes everything else from the GUI role. Because the identifier is new on every run,
-it starts clean: there is never an earlier session of its own to resume.
+takes everything else from the GUI role, clean start included.
+
+Clean start is a flag on the CONNECT packet, and the client sends the same packet every
+time it reconnects, so asking for a clean start is asking the broker to throw the
+session away on every recovery, along with the messages it held while the network was
+down. That is right for one-shot `hmc`, which wants no session at all, and wrong for the
+other two. A fresh identifier does not need it: the broker has no session under a name
+it has never seen, so the first connection behaves exactly as a clean one, and every
+connection after it is a reconnect of this process's own session. Quitting discards that
+session through `end_session`, under [Disconnect and quit](#disconnect-and-quit).
 
 ### Transport and TLS
 
@@ -128,7 +136,11 @@ neither application depends on which crates happen to be linked beside it.
 
 ### Session settings
 
-* Keep alive is `broker.keepAliveSecs`, 30 seconds by default.
+* Keep alive is `broker.keepAliveSecs`, 30 seconds by default, and is clamped to the
+  five seconds the client accepts as its shortest. Validation reports a smaller value,
+  and the clamp is here as well because a caller may skip validation, and because
+  `rumqttc` answers a shorter one by asserting: a single line of a config file must not
+  be able to take the application down.
 * The connect timeout is `broker.connectTimeoutSecs`, 10 seconds by default. It bounds
   both the TCP connection and the wait for the CONNACK.
 * `MqttClient::connect` returns only once the broker has answered, so a wrong password
@@ -202,6 +214,21 @@ local work; broker-side state then expires according to its configured interval.
 * `publish` returns once the broker has acknowledged: nothing to wait for at QoS 0, the
   PUBACK at QoS 1, the PUBCOMP at QoS 2. It gives up after `publish.timeoutSecs`. This
   is what lets `hmc` exit knowing the message landed.
+* A caller cannot know which acknowledgement is theirs, because `rumqttc` picks the
+  packet identifier inside the event loop and reports it afterward, as an outgoing event
+  in the order the requests were sent. Callers are therefore queued and sent under one
+  lock and paired with those events in turn. Two things would break that pairing, and
+  both are handled where the CONNACK is read, so that no caller is ever handed the
+  acknowledgement of somebody else's message:
+  * a reconnect the broker resumed the session for makes the client send every
+    unacknowledged publish again under the identifier it already has, which is not a new
+    request and must not take the next caller's place in the queue, and
+  * a reconnect that comes back without the session makes the client drop everything it
+    was holding, so every caller still waiting is waiting for a packet that will never
+    be sent and is told so rather than left until its timeout.
+  An identifier is also free again as soon as the broker has answered the message that
+  held it, which at QoS 2 is one packet before the caller is done with it, so a caller
+  whose identifier is handed on is told rather than left parked under it.
 * A PUBACK reason other than success is an error naming the topic.
   `NoMatchingSubscribers` is not an error: it is the normal answer when `hmg` is closed.
 * `subscribe` returns once the SUBACK has arrived, and a SUBACK carries one reason code

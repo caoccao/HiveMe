@@ -31,7 +31,7 @@ use tokio::sync::{Mutex as AsyncMutex, broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
-use crate::message::{Message, MessageProperties};
+use crate::message::MessageProperties;
 use crate::mqtt::{IncomingMessage, MqttClient, Qos, Role, State};
 use crate::storage::{NewMessage, Store};
 
@@ -42,6 +42,13 @@ use super::types::{MessageRow, SessionEvent, Status};
 
 /// How many messages a session remembers having stored or sent.
 const REMEMBERED_MESSAGES: usize = 10_000;
+
+/// How many raw publishes a session can be waiting for the echo of.
+///
+/// One entry per publish that has not come back yet, which is a handful at the very
+/// most: a composer sends one message at a time and the echo follows within a round
+/// trip.
+const REMEMBERED_RAW_PUBLISHES: usize = 64;
 
 /// The messages this session stored or sent, oldest first and bounded.
 ///
@@ -71,6 +78,65 @@ impl Remembered {
     self.order.push_back(key);
     true
   }
+
+  /// Forgets a message that was spoken for by a publish the broker never took.
+  pub(super) fn forget(&mut self, topic: &str, msg_id: &str) {
+    let key = (topic.to_owned(), msg_id.to_owned());
+    if self.keys.remove(&key) {
+      self.order.retain(|held| held != &key);
+    }
+  }
+}
+
+/// The raw payloads this session has published and not seen come back yet.
+///
+/// A payload HiveMe did not shape carries no message id, so [`NewMessage::from_payload`]
+/// generates one for the row, and the copy the broker echoes back onto this session's
+/// own subscription would generate a different one and be stored beside it as a second
+/// message. Nothing in the bytes tells the two apart, so what is remembered instead is
+/// the sending: this session published exactly these bytes on exactly this topic a
+/// moment ago, and the echo is that message and takes its id.
+///
+/// An entry is spent on the first echo it matches, so a second identical payload, from
+/// here or from anywhere else, is still a second message.
+#[derive(Debug, Default)]
+pub(super) struct RawPublishes {
+  sent: VecDeque<(String, u64, String)>,
+}
+
+impl RawPublishes {
+  fn insert(&mut self, topic: &str, payload: &[u8], msg_id: &str) {
+    if self.sent.len() == REMEMBERED_RAW_PUBLISHES {
+      self.sent.pop_front();
+    }
+    self
+      .sent
+      .push_back((topic.to_owned(), digest(payload), msg_id.to_owned()));
+  }
+
+  /// The id this session gave these bytes, if this session is what sent them.
+  fn take(&mut self, topic: &str, payload: &[u8]) -> Option<String> {
+    let digest = digest(payload);
+    let index = self
+      .sent
+      .iter()
+      .position(|(sent_topic, sent_digest, _)| sent_topic == topic && *sent_digest == digest)?;
+    self.sent.remove(index).map(|(_, _, msg_id)| msg_id)
+  }
+
+  fn forget(&mut self, topic: &str, msg_id: &str) {
+    self
+      .sent
+      .retain(|(sent_topic, _, sent_id)| sent_topic != topic || sent_id != msg_id);
+  }
+}
+
+/// A payload in as many bytes as it takes to recognize it coming back.
+fn digest(payload: &[u8]) -> u64 {
+  use std::hash::{Hash, Hasher};
+  let mut hasher = std::collections::hash_map::DefaultHasher::new();
+  payload.hash(&mut hasher);
+  hasher.finish()
 }
 
 /// One live connection and the tasks that serve it.
@@ -106,6 +172,7 @@ pub(super) struct Shared {
   config: Arc<ConfigStore>,
   events: broadcast::Sender<SessionEvent>,
   remembered: Mutex<Remembered>,
+  raw_publishes: Mutex<RawPublishes>,
 }
 
 impl Shared {
@@ -146,6 +213,22 @@ impl Shared {
     self.remembered.lock().unwrap().insert(topic, msg_id)
   }
 
+  /// Remembers the bytes of a raw publish, so that its echo is known as its echo.
+  pub(super) fn remember_raw(&self, topic: &str, payload: &[u8], msg_id: &str) {
+    self.raw_publishes.lock().unwrap().insert(topic, payload, msg_id);
+  }
+
+  /// The id this session gave a raw payload it published, if these bytes are that one.
+  pub(super) fn raw_publish_id(&self, topic: &str, payload: &[u8]) -> Option<String> {
+    self.raw_publishes.lock().unwrap().take(topic, payload)
+  }
+
+  /// Takes back what was remembered for a publish the broker never took.
+  pub(super) fn forget(&self, topic: &str, msg_id: &str) {
+    self.remembered.lock().unwrap().forget(topic, msg_id);
+    self.raw_publishes.lock().unwrap().forget(topic, msg_id);
+  }
+
   /// A send with no receiver is not an error: nothing is on screen yet.
   pub(super) fn emit(&self, event: SessionEvent) {
     let _ = self.events.send(event);
@@ -184,6 +267,7 @@ impl Mqtt {
         config,
         events,
         remembered: Mutex::new(Remembered::default()),
+        raw_publishes: Mutex::new(RawPublishes::default()),
       }),
     }
   }
@@ -306,12 +390,7 @@ impl Mqtt {
       .ok_or(Error::NotConnected)
   }
 
-  /// Publishes a HiveMe envelope through the same core path one-shot `hmc` uses.
-  pub(super) async fn publish_message(&self, topic: &str, message: &Message, qos: Qos, retain: bool) -> Result<()> {
-    self.client().await?.publish_message(topic, message, qos, retain).await
-  }
-
-  /// Publishes bytes HiveMe did not shape, as `hmc --json` does.
+  /// Publishes an encoded message through the same core path one-shot `hmc` uses.
   pub(super) async fn publish_bytes(
     &self,
     topic: &str,
@@ -358,13 +437,21 @@ async fn pump(shared: Arc<Shared>, mut incoming: mpsc::Receiver<IncomingMessage>
   while let Some(message) = incoming.recv().await {
     shared.received.fetch_add(1, Ordering::Relaxed);
     let parsed = message.parse();
-    let row = NewMessage::from_payload(
+    let mut row = NewMessage::from_payload(
       message.topic.clone(),
       message.payload.clone(),
       message.qos.as_u8(),
       message.retain,
       false,
     );
+    // A payload without an envelope was given a generated id a moment ago, which the
+    // echo of this session's own raw publish would not share with the row it belongs
+    // to. See [`RawPublishes`].
+    if !matches!(parsed, crate::message::Parsed::Envelope(_))
+      && let Some(msg_id) = shared.raw_publish_id(&row.topic, &message.payload)
+    {
+      row.msg_id = msg_id;
+    }
     let insertion = match shared.store.insert(&row) {
       Ok(insertion) => insertion,
       Err(error) => {
@@ -378,12 +465,13 @@ async fn pump(shared: Arc<Shared>, mut incoming: mpsc::Receiver<IncomingMessage>
       });
     }
     let new_here = shared.remember(&row.topic, &row.msg_id);
-    if !insertion.is_new && (message.retain || !new_here) {
-      // Stored by this session already: the echo of its own publish, whose bubble is on
-      // screen and whose rules had their say when it was sent, or the broker delivering
-      // a message again. A retained copy of a stored message is old news too. What is
-      // left was stored a moment ago by another process on the same database, `hmg` or
-      // another terminal UI, and is new to this one.
+    if !new_here || (!insertion.is_new && message.retain) {
+      // Known to this session already: the echo of its own publish, whose bubble the
+      // composer has on screen and whose rules had their say when it was sent, or the
+      // broker delivering a message a second time. A retained copy of a message that
+      // was already stored is old news too. What is left was stored a moment ago by
+      // another process on the same database, `hmg` or another terminal UI, and is new
+      // to this one.
       continue;
     }
     shared.emit(SessionEvent::Message(MessageRow::seen_by(

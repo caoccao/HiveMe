@@ -54,6 +54,14 @@ pub const PASSWORD_VARIABLE: &str = "HIVEME_PASSWORD";
 /// What a redacted secret is replaced with.
 pub const REDACTED: &str = "<redacted>";
 
+/// The smallest `broker.keepAliveSecs` the MQTT client accepts.
+///
+/// `rumqttc` asserts on anything shorter, so a config that asked for one second used to
+/// take the application down with it instead of being reported. The value is validated
+/// here and clamped again where the connection is built, so that neither a config the
+/// user never saved through HiveMe nor a test that skips validation can reach the panic.
+pub const MIN_KEEP_ALIVE_SECS: u16 = 5;
+
 /// Generates the parts of a closed config enum that stay the same for all of them.
 ///
 /// The reader is deliberately lenient: a value written by a newer build becomes the
@@ -156,30 +164,35 @@ impl Config {
   /// Loading never validates, so that `hmg` can open an incomplete file and let the
   /// user finish it in the Settings tab. Both applications validate before connecting.
   pub fn validate(&self) -> Result<()> {
+    let mut issues = self.issues();
+    issues.extend(self.login_issues());
+    report(issues)
+  }
+
+  /// Rejects a config that could not be written and read back as itself.
+  ///
+  /// Everything [`Self::validate`] refuses except the broker address and the
+  /// credentials, because saving the settings is not connecting with them. A broker
+  /// that is half filled in is what the Settings tab looks like until the user has
+  /// finished with it, and refusing the save over it would throw away the rest of what
+  /// they typed. The connection is opened right afterward and validates in full, so an
+  /// address that does not work is still reported, from the place that found out.
+  pub fn validate_for_save(&self) -> Result<()> {
+    report(self.issues())
+  }
+
+  /// Everything wrong with the config that is not about reaching the broker.
+  fn issues(&self) -> Vec<String> {
     let mut issues = Vec::new();
 
     if self.device.id.trim().is_empty() {
       issues.push("device.id is empty".to_owned());
     }
 
-    match BrokerUrl::parse(&self.broker.url) {
-      Ok(url) => {
-        if url.is_hivemq_cloud() && !url.scheme.is_secure() {
-          issues.push(format!(
-            "broker.url uses {} but HiveMQ Cloud accepts TLS only, use mqtts or wss",
-            url.scheme
-          ));
-        }
-      }
-      Err(reason) => issues.push(format!("broker.url: {reason}")),
-    }
-
-    if self.broker.username.trim().is_empty() {
-      issues.push("broker.username is empty".to_owned());
-    }
-    if self.broker.password.is_empty() && self.broker.password_ref.is_none() && var(PASSWORD_VARIABLE).is_none() {
+    if self.broker.keep_alive_secs < MIN_KEEP_ALIVE_SECS {
       issues.push(format!(
-        "broker.password is empty, set it, set broker.passwordRef, or set {PASSWORD_VARIABLE}"
+        "broker.keepAliveSecs is {}, and the MQTT client needs at least {MIN_KEEP_ALIVE_SECS}",
+        self.broker.keep_alive_secs
       ));
     }
     if self.broker.reconnect.initial_delay_ms > self.broker.reconnect.max_delay_ms {
@@ -217,11 +230,32 @@ impl Config {
       issues.extend(cloud_api.issues());
     }
 
-    if issues.is_empty() {
-      Ok(())
-    } else {
-      Err(Error::ConfigInvalid(issues))
+    issues
+  }
+
+  /// What would stop the CONNECT packet being sent at all.
+  fn login_issues(&self) -> Vec<String> {
+    let mut issues = Vec::new();
+    match BrokerUrl::parse(&self.broker.url) {
+      Ok(url) => {
+        if url.is_hivemq_cloud() && !url.scheme.is_secure() {
+          issues.push(format!(
+            "broker.url uses {} but HiveMQ Cloud accepts TLS only, use mqtts or wss",
+            url.scheme
+          ));
+        }
+      }
+      Err(reason) => issues.push(format!("broker.url: {reason}")),
     }
+    if self.broker.username.trim().is_empty() {
+      issues.push("broker.username is empty".to_owned());
+    }
+    if self.broker.password.is_empty() && self.broker.password_ref.is_none() && var(PASSWORD_VARIABLE).is_none() {
+      issues.push(format!(
+        "broker.password is empty, set it, set broker.passwordRef, or set {PASSWORD_VARIABLE}"
+      ));
+    }
+    issues
   }
 
   /// A copy safe to log or to show in a bug report.
@@ -863,6 +897,15 @@ impl CloudApi {
   }
 }
 
+/// Turns a list of complaints into the one error the applications show.
+fn report(issues: Vec<String>) -> Result<()> {
+  if issues.is_empty() {
+    Ok(())
+  } else {
+    Err(Error::ConfigInvalid(issues))
+  }
+}
+
 fn var(name: &str) -> Option<String> {
   match std::env::var(name) {
     Ok(value) if !value.is_empty() => Some(value),
@@ -989,20 +1032,33 @@ impl ConfigFile {
 
   /// Writes the config back, keeping any keys this build does not know.
   pub fn save(&mut self) -> Result<()> {
+    self.save_config(self.config.clone())
+  }
+
+  /// Writes `config`, and holds it only once it is on disk.
+  ///
+  /// A write that fails leaves this value as it was, so that a save the file system
+  /// refused cannot leave the screen showing settings the next start will not find. The
+  /// one case that keeps a config it did not write is a file from a newer build, which
+  /// is deliberately never written and whose settings the user can still see.
+  pub fn save_config(&mut self, config: Config) -> Result<()> {
     if self.is_read_only() {
       log::warn!(
         "not writing {}: it was written by a newer version of HiveMe",
         self.path.display()
       );
+      self.config = config;
       return Ok(());
     }
-    let typed = serde_json::to_value(&self.config).map_err(|source| Error::ConfigParse {
+    let typed = serde_json::to_value(&config).map_err(|source| Error::ConfigParse {
       path: self.path.clone(),
       source,
     })?;
     let mut document = self.document.clone();
     merge(&mut document, typed);
-    self.write_document(document)
+    self.write_document(document)?;
+    self.config = config;
+    Ok(())
   }
 
   /// Persists through the shared atomic writer before replacing the in-memory document.
@@ -1020,8 +1076,11 @@ impl ConfigFile {
 
 /// Copies `source` over `target`, descending into objects and replacing everything else.
 ///
-/// Arrays are replaced wholesale, so that removing a notification rule really removes
-/// it rather than leaving the old element behind.
+/// An array is written out as it now stands, so that removing a notification rule
+/// really removes it rather than leaving the old element behind. An element that is
+/// still there is merged into the element that carried the same identity, so that a key
+/// this build does not know survives inside a rule exactly as it survives at the top
+/// level: saving a theme must not quietly delete the settings of another version.
 fn merge(target: &mut Value, source: Value) {
   match (target, source) {
     (Value::Object(target), Value::Object(source)) => {
@@ -1029,11 +1088,44 @@ fn merge(target: &mut Value, source: Value) {
         merge(target.entry(key).or_insert(Value::Null), value);
       }
     }
+    (Value::Array(target), Value::Array(source)) => {
+      let mut previous = std::mem::take(target);
+      for element in source {
+        target.push(
+          match identity(&element).and_then(|id| take_by_identity(&mut previous, id)) {
+            Some(mut kept) => {
+              merge(&mut kept, element);
+              kept
+            }
+            None => element,
+          },
+        );
+      }
+    }
     (target, source) => *target = source,
   }
 }
 
+/// What names an element of a config array across a write: the `id` of a notification
+/// rule, the `kid` of an encryption key. An element without one is replaced whole,
+/// because nothing says which of the old elements it used to be.
+fn identity(value: &Value) -> Option<&str> {
+  let object = value.as_object()?;
+  ["id", "kid"].into_iter().find_map(|key| object.get(key)?.as_str())
+}
+
+/// Takes the element that carried `id`, so that two elements never merge into one.
+fn take_by_identity(elements: &mut Vec<Value>, id: &str) -> Option<Value> {
+  let index = elements.iter().position(|element| identity(element) == Some(id))?;
+  Some(elements.remove(index))
+}
+
 /// Writes through a temporary file so that a crash cannot leave a half written config.
+///
+/// The temporary file is named for this write and no other. `hmc` and `hmg` share the
+/// directory and save whenever a window moves or a setting changes, and two writers on
+/// one temporary name do not take turns: they truncate and interleave into a document
+/// neither of them meant to write, which the rename then publishes as the config.
 fn write_atomically(path: &Path, text: &str) -> Result<()> {
   let directory = path.parent().unwrap_or_else(|| Path::new("."));
   if !directory.as_os_str().is_empty() {
@@ -1043,10 +1135,14 @@ fn write_atomically(path: &Path, text: &str) -> Result<()> {
     })?;
   }
   let file_name = path.file_name().map(std::ffi::OsStr::to_os_string).unwrap_or_default();
-  let temporary = directory.join(format!(".{}.tmp", file_name.to_string_lossy()));
+  let temporary = directory.join(format!(
+    ".{}.{}.tmp",
+    file_name.to_string_lossy(),
+    uuid::Uuid::now_v7().simple()
+  ));
 
   let mut options = std::fs::OpenOptions::new();
-  options.write(true).create(true).truncate(true);
+  options.write(true).create_new(true);
   #[cfg(unix)]
   {
     use std::os::unix::fs::OpenOptionsExt;
@@ -1061,9 +1157,14 @@ fn write_atomically(path: &Path, text: &str) -> Result<()> {
     path: temporary.clone(),
     source,
   })?;
-  std::fs::rename(&temporary, path).map_err(|source| Error::ConfigWrite {
-    path: path.to_path_buf(),
-    source,
+  std::fs::rename(&temporary, path).map_err(|source| {
+    // The rename is what makes the write visible, so a failed one leaves a file nobody
+    // will ever read again.
+    let _ = std::fs::remove_file(&temporary);
+    Error::ConfigWrite {
+      path: path.to_path_buf(),
+      source,
+    }
   })
 }
 

@@ -670,3 +670,62 @@ The entries below are against [the terminal UI plan](../plans/plan-terminal-ui.m
     written into the window's configuration by `window::place` before the builder creates
     the window, so there is no second place to draw it in.
     [gui.md](gui.md#window) has the rule.
+55. Phase 6, found afterward: an unread badge outlived the messages it counted. Pruning
+    deleted rows and left `topics.unread` where it was, so a topic that had been emptied
+    by the retention window still showed a count, and nothing could ever clear it but
+    opening that topic. The counts now come down with the rows, in the same transaction,
+    under [session.md](session.md#history).
+56. Phase 6, found afterward: a message could be drawn twice, and the second copy on the
+    wrong side. Two causes, both of them the session not recognizing its own message
+    coming back: a raw publish has no envelope, so the echo was given a second generated
+    id and stored beside the row it was a copy of, and a message was spoken for only
+    after it had been stored, so an echo that beat the acknowledgement back arrived at a
+    session that had never heard of it. A raw publish is now remembered by its bytes and
+    every publish is claimed before it is sent, under
+    [session.md](session.md#publishing). The duplicate also raised a desktop notification
+    for the user's own message.
+57. Phase 6, found afterward: three ways a save could lose settings, all in the writer.
+    Every writer used one temporary file name, so `hmc` and `hmg` saving at the same
+    moment truncated and interleaved into a document neither meant to write, which the
+    rename then published as the config; an array was replaced wholesale, so a key this
+    build does not know inside a notification rule was dropped by a save of an unrelated
+    preference, which is the one thing the merging writer exists to prevent; and the new
+    config was held in memory before the write, so a save the file system refused left
+    the screen showing settings the next start would not find.
+    [config.md](config.md#location-and-precedence) and
+    [config.md](config.md#versioning-and-compatibility) have the rules.
+58. Phase 6, found afterward: the Settings tab could not be saved until the broker was
+    filled in. Saving ran the same validation as connecting, so on a fresh install a
+    theme, a language, or a notification rule was refused for the address and the
+    credentials the user had not typed yet. Saving now validates everything but the
+    broker login, and the connection that follows validates in full, so the address is
+    still reported by the attempt that found out.
+    [config.md](config.md#validation) has the split.
+59. Phase 6, found afterward: every terminal UI reconnect asked the broker to discard its
+    session, and with it the messages the broker had held while the network was down.
+    Clean start had been set for `Role::Tui` on the reasoning that a fresh client
+    identifier has no session to resume, which is true of the first connection and of no
+    other: the flag is on the CONNECT packet, and the client sends the same packet every
+    time it reconnects. [hivemq-cloud.md](hivemq-cloud.md#role) has the corrected table;
+    the row in [the terminal UI plan](../plans/plan-terminal-ui.md) is the original
+    reasoning.
+60. Phase 6, found afterward: `broker.keepAliveSecs` below five panicked both
+    applications. `rumqttc` asserts on a shorter keep alive, and nothing between the
+    config file and that assert looked at the value. It is validated now, and clamped
+    again where the connection is built, because a caller may skip validation and a
+    single line of a config file must not be able to take the application down.
+61. Phase 6, found afterward: a publish could return success on an acknowledgement that
+    belonged to another message. `rumqttc` picks the packet identifier inside the event
+    loop, so callers are paired with outgoing events in the order they were sent, and
+    that pairing held only while every request produced exactly one event. A reconnect
+    breaks it in both directions: with the session resumed the client sends
+    unacknowledged publishes again, and without it the client drops what it was holding.
+    Either one moves the queue a step out of line and every publish after it answers to
+    the message behind it. [hivemq-cloud.md](hivemq-cloud.md#publishing-and-subscribing)
+    has the rule.
+62. Phase 6, found afterward: a topic with thousands of levels aborted the process with a
+    stack overflow. The topic tree is built, converted, serialized, rendered, and dropped
+    by recursion, one frame per level, and a topic may have as many levels as fit in its
+    65,535 bytes. It arrives from the broker, so nothing local decides how deep it goes.
+    The tree stops at 64 levels and the rest of the topic becomes one node, which still
+    carries the whole topic. [session.md](session.md#history) has the bound.
