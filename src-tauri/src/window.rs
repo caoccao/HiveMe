@@ -19,15 +19,15 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use hiveme_core::session::SHUTDOWN_TIMEOUT;
+use hiveme_core::session::{SHUTDOWN_TIMEOUT, Session};
 use tauri::Manager;
 
 use crate::constants::APP_NAME;
 use crate::events;
 use crate::protocol::AppState;
 
-/// Set once the restored geometry has been applied, so that the moves and resizes the
-/// restore itself causes are not written back as if the user had made them.
+/// Set once the window is on screen, so that the moves and resizes of the opening itself
+/// are not written back as if the user had made them.
 pub static WINDOW_READY: AtomicBool = AtomicBool::new(false);
 
 static EXIT_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -42,6 +42,16 @@ fn is_persistable_window_size(width: u32, height: u32) -> bool {
 
 fn sanitize_window_size(width: u32, height: u32) -> (u32, u32) {
   (width.max(MIN_WINDOW_WIDTH), height.max(MIN_WINDOW_HEIGHT))
+}
+
+/// The frame a remembered geometry asks for: a size clamped to the minimums, and a top
+/// left corner, or [`None`] to let the window be centered.
+fn window_frame(window: &hiveme_core::config::Window) -> ((u32, u32), Option<(i32, i32)>) {
+  let size = sanitize_window_size(window.size.width, window.size.height);
+  // Either coordinate being negative centers the window, because a half restored position
+  // is not a position. A fresh config is -1, -1 and lands wherever the display is.
+  let corner = (window.position.x >= 0 && window.position.y >= 0).then_some((window.position.x, window.position.y));
+  (size, corner)
 }
 
 /// Persists the main window's geometry as the user moves and resizes it.
@@ -118,33 +128,59 @@ pub fn on_run_event(app: &tauri::AppHandle, event: tauri::RunEvent) {
   });
 }
 
-/// Titles and shows the window, then starts the session's connection, pruning, and
-/// update check.
+/// Gives the window its remembered geometry and its title before the window is created.
+///
+/// Moving a window and showing it is the obvious way to restore a position, and on macOS
+/// it flickers. `NSWindow` frame changes are not thread safe, so tao puts every move,
+/// resize, and retitle on the main dispatch queue, while showing a window runs inline
+/// when it is already on the main thread. [`setup`] is on the main thread and runs before
+/// the event loop turns, so its `show` went first and the queued move only landed a frame
+/// later: the window appeared where macOS had centered it and then jumped.
+///
+/// Writing the geometry into the window's own configuration instead leaves nothing to
+/// defer. Tauri resolves both this and `center` into the frame the window is built with,
+/// so the first frame drawn is the right one, on every platform.
+///
+/// A size below the minimums is clamped, and the clamped size is written back so that a
+/// config edited by hand is corrected once rather than argued with on every move.
+pub fn place<R: tauri::Runtime>(context: &mut tauri::Context<R>, session: &Session) {
+  let Some(window) = context.config_mut().app.windows.first_mut() else {
+    return;
+  };
+  window.title = format!("{APP_NAME} v{}", hiveme_core::VERSION);
+
+  let mut config = session.config();
+  let ((width, height), corner) = window_frame(&config.gui.window);
+  window.width = f64::from(width);
+  window.height = f64::from(height);
+  match corner {
+    Some((x, y)) => {
+      window.x = Some(f64::from(x));
+      window.y = Some(f64::from(y));
+    }
+    None => window.center = true,
+  }
+
+  if config.gui.window.size.width == width && config.gui.window.size.height == height {
+    return;
+  }
+  config.gui.window.size.width = width;
+  config.gui.window.size.height = height;
+  if let Err(error) = session.set_config_quietly(config) {
+    log::warn!("the clamped window size could not be saved: {error}");
+  }
+}
+
+/// Shows the window, then starts the session's connection, pruning, and update check.
 pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
   let window = app.get_webview_window("main").expect("the main window is configured");
-  let _ = window.set_title(&format!("{APP_NAME} v{}", hiveme_core::VERSION));
 
   let state = app.state::<AppState>();
   let session = state.session.clone();
   state.toaster.attach(app.handle().clone());
 
-  let mut config = session.config();
-  let (width, height) = sanitize_window_size(config.gui.window.size.width, config.gui.window.size.height);
-  let resized = config.gui.window.size.width != width || config.gui.window.size.height != height;
-  config.gui.window.size.width = width;
-  config.gui.window.size.height = height;
-  let _ = window.set_size(tauri::LogicalSize::new(width, height));
-  if config.gui.window.position.x < 0 || config.gui.window.position.y < 0 {
-    let _ = window.center();
-  } else {
-    let _ = window.set_position(tauri::LogicalPosition::new(
-      config.gui.window.position.x,
-      config.gui.window.position.y,
-    ));
-  }
-  if resized && let Err(error) = session.set_config_quietly(config) {
-    log::warn!("the clamped window size could not be saved: {error}");
-  }
+  // The window was built with its title and its remembered geometry already on it, by
+  // `place`. It is configured hidden so that nothing reaches the screen until here.
   let _ = window.show();
   let _ = window.set_focus();
   WINDOW_READY.store(true, Ordering::SeqCst);
@@ -175,6 +211,43 @@ mod tests {
     assert_eq!(
       sanitize_window_size(MIN_WINDOW_WIDTH + 100, MIN_WINDOW_HEIGHT + 100),
       (MIN_WINDOW_WIDTH + 100, MIN_WINDOW_HEIGHT + 100)
+    );
+  }
+
+  fn remembered(x: i32, y: i32, width: u32, height: u32) -> hiveme_core::config::Window {
+    hiveme_core::config::Window {
+      position: hiveme_core::config::WindowPosition { x, y },
+      size: hiveme_core::config::WindowSize { width, height },
+    }
+  }
+
+  #[test]
+  fn a_remembered_corner_is_the_frame_the_window_is_built_with() {
+    assert_eq!(
+      window_frame(&remembered(837, 531, 1200, 900)),
+      ((1200, 900), Some((837, 531)))
+    );
+    // The edge of a display is a corner like any other, and zero is not negative.
+    assert_eq!(window_frame(&remembered(0, 0, 1200, 900)), ((1200, 900), Some((0, 0))));
+  }
+
+  #[test]
+  fn a_negative_coordinate_centers_the_window_instead() {
+    let default = hiveme_core::config::Window::default();
+    assert_eq!(
+      window_frame(&default).1,
+      None,
+      "a fresh config has no corner to restore"
+    );
+    assert_eq!(window_frame(&remembered(-1, 531, 1200, 900)).1, None);
+    assert_eq!(window_frame(&remembered(837, -1, 1200, 900)).1, None);
+  }
+
+  #[test]
+  fn the_frame_clamps_a_size_the_window_could_not_take() {
+    assert_eq!(
+      window_frame(&remembered(837, 531, 1, 2)).0,
+      (MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
     );
   }
 }

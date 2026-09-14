@@ -218,7 +218,9 @@ on its `✕` closes it. Closing a tab selects the one that took its place.
   and heights are cached per row, width, and expansion.
 - A bubble is a rounded block, at most 80 percent of the list wide and at least 18
   cells, aligned left for incoming rows and right for outgoing rows, one cell from the
-  pane's border. An incoming bubble is preceded by the sender's name in bold, falling
+  pane's border. Outgoing means the terminal UI sent it, so what `hmg` sent from the
+  same device is an incoming row here; [session.md](session.md#which-side-a-message-is-on)
+  has the rule. An incoming bubble is preceded by the sender's name in bold, falling
   back to the sender id, never the application name; outgoing and senderless rows have
   no header.
 - Tiers render as [gui.md](gui.md#message-view) lists them: an envelope shows a bold

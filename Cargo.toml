@@ -39,6 +39,11 @@ libc = "0.2"
 log = "0.4"
 # Linux and macOS only: the OS notifications of the hmc terminal UI.
 notify-rust = "4.18"
+# macOS only, in xtask: NSWorkspace gives a built binary the Finder icon that a bundle
+# would have carried for it.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSImage", "NSWorkspace"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString"] }
 open = "5.4"
 # The pseudo-terminal the hmc end-to-end test runs the terminal UI in: openpty on Unix,
 # ConPTY on Windows.

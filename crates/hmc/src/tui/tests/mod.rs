@@ -143,9 +143,16 @@ impl Scripted {
   }
 
   /// A payload in the store, as if it had arrived before the terminal UI opened.
+  ///
+  /// `outgoing` means this terminal UI sent it, so the row says the terminal UI is what
+  /// produced it whatever the payload claims. A fixture that names `hmg` as its sender
+  /// is one `hmg` sent, and the two cannot both be true of the same row.
   fn keep(&self, topic: &str, payload: &[u8], outgoing: bool) -> MessageRow {
-    let row = NewMessage::from_payload(topic, payload.to_vec(), 1, false, outgoing);
-    MessageRow::from(self.store.insert(&row).unwrap().message)
+    let mut row = NewMessage::from_payload(topic, payload.to_vec(), 1, false, outgoing);
+    if outgoing {
+      row.app = Some(SessionApp::Tui.app_id().to_owned());
+    }
+    MessageRow::seen_by(self.store.insert(&row).unwrap().message, SessionApp::Tui)
   }
 
   /// Stores a row and raises the events the session raises for it.
@@ -156,7 +163,7 @@ impl Scripted {
         topic: row.topic.clone(),
       });
     }
-    let stored = MessageRow::from(insertion.message);
+    let stored = MessageRow::seen_by(insertion.message, SessionApp::Tui);
     let _ = self.events.send(SessionEvent::Message(stored.clone()));
     stored
   }
@@ -247,7 +254,12 @@ impl Service for Scripted {
 
   fn messages(&self, topic: &str, before: Option<i64>, limit: u32) -> Result<Vec<MessageRow>> {
     let rows = self.store.messages(topic, before, limit)?;
-    Ok(rows.into_iter().map(MessageRow::from).collect())
+    Ok(
+      rows
+        .into_iter()
+        .map(|row| MessageRow::seen_by(row, SessionApp::Tui))
+        .collect(),
+    )
   }
 
   fn mark_read(&self, topic: &str) -> Result<()> {
@@ -288,13 +300,16 @@ impl Service for Scripted {
         }
         message.to_bytes().unwrap()
       };
-      let row = NewMessage::from_payload(
+      let mut row = NewMessage::from_payload(
         &resolved,
         payload,
         options.qos.unwrap_or(1),
         options.retain.unwrap_or(false),
         true,
       );
+      // As the session does: a raw JSON publish has no envelope to read an application
+      // out of, and without one the composer's own bubble would arrive on the left.
+      row.app.get_or_insert_with(|| SessionApp::Tui.app_id().to_owned());
       Ok(self.store_and_announce(&row))
     })
   }

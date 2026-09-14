@@ -22,6 +22,7 @@
 //!
 //! See `docs/specs/app.md`, "Spec sync".
 
+pub mod icon;
 pub mod schema;
 pub mod spec;
 

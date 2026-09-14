@@ -37,6 +37,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 # Repository automation
 cargo xtask schema                              # regenerate schemas/ from the Rust types
 cargo xtask check-spec                          # validate the tagged examples in docs/specs/
+cargo xtask icon                                # macOS: the Finder icon of the built binaries
 deno task -c scripts/ts/deno.json check              # type check the scripts themselves
 deno task -c scripts/ts/deno.json check-license-headers
 deno task -c scripts/ts/deno.json check-spec-sync [base-ref]
@@ -394,6 +395,30 @@ they cannot disturb the messages a real installation keeps on the same cluster. 
 are opt in and never run in CI. `HIVEME_TEST_BROKER_URL`, `HIVEME_TEST_USERNAME`, and
 `HIVEME_TEST_PASSWORD` still work for the `hiveme-core` test, so a CI secret needs no
 file.
+
+## Building a release
+
+Both applications go into the repository's own `target/release`, in this order:
+
+```sh
+pnpm build
+cargo build --release -p hmc
+cargo build --release -p hmg --features tauri/custom-protocol
+cargo xtask icon                                # macOS only; a no-op elsewhere
+```
+
+`hmc` comes before `hmg` because every bundle carries it, and on Windows
+`tauri-build` reads it from the build script; see [Packaging `hmc`](#packaging-hmc).
+`hmg` needs `tauri/custom-protocol` to embed the frontend `pnpm build` just wrote.
+
+`cargo xtask icon` comes last, and only on macOS. A bare binary there has no bundle to
+take an icon from, so Finder draws both of them with the generic `exec` placeholder;
+the command writes the hive cell into each file's resource fork instead. Building a
+binary again replaces the file and drops the icon, so this is the step after the
+builds, never before. It reports a binary that is not built rather than failing, so it
+is worth running after building only one of the two, and it leaves the executables
+themselves untouched: `codesign --verify` still passes on both.
+[cli.md](specs/cli.md#appearance) has the rest of the icon story.
 
 ## Releasing
 

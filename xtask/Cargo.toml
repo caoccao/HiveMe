@@ -23,5 +23,11 @@ jsonschema = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+# `cargo xtask icon` only. Nowhere else gives a plain file an icon of its own.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { workspace = true }
+objc2-app-kit = { workspace = true }
+objc2-foundation = { workspace = true }
+
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+* `hmg` puts what `hmc` sent on the incoming side, and the terminal UI does the same
+  with what `hmg` sent. The two share one message history, and both used to read a
+  message the other had sent as their own and draw it on the right, `hmg` every time
+  and the terminal UI after a restart.
+
+* On macOS the built `hmc` and `hmg` show the hive cell in Finder instead of the
+  generic `exec` icon.
+
+* The `hmg` window opens at the size and position it was left at. It used to open
+  where the system put it and jump to the remembered place, which read as a flicker
+  on macOS.
+
 * `hmg` and the terminal UI of `hmc` run side by side on one installation: a message
   that arrives shows up live and raises its notification in both, where one of them used
   to take it for a message already seen and stay silent.

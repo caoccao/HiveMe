@@ -119,6 +119,11 @@ export interface MessageRow {
   rawLength: number;
   qos: number;
   retain: boolean;
+  /**
+   * Whether `hmg` itself published this message, which is what puts the bubble on the
+   * right. What `hmc` sent is not outgoing here, even from this device and this shared
+   * history: the backend decides it, and `docs/specs/session.md` has the rule.
+   */
   outgoing: boolean;
 }
 

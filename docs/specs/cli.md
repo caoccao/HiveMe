@@ -246,7 +246,8 @@ The rules the terminal UI adds are in [tui.md](tui.md#languages).
 
 `hmc` has an icon of its own: the same honey colored hive cell as `hmg`, holding a
 command prompt rather than a message bubble, so the pair reads as a pair. The source
-is `crates/hmc/icons/hmc.png` and the packed sizes are `crates/hmc/icons/hmc.ico`.
+is `crates/hmc/icons/hmc.png`, the packed sizes are `crates/hmc/icons/hmc.ico`, and the
+macOS sizes are `crates/hmc/icons/hmc.icns`.
 
 Windows reads an icon and a version out of the executable itself, so
 `crates/hmc/build.rs` puts them there: the icon, `HiveMe` as the product, the crate
@@ -254,9 +255,20 @@ description as the file description, and the workspace version. A build machine 
 no resource compiler produces an executable without them and a warning, rather than no
 executable at all.
 
-Linux and macOS carry no icon inside a binary; an icon belongs to a desktop entry or
-an application bundle, and a command line tool has neither. `hmg` supplies both on
-those platforms.
+Linux carries no icon inside a binary; there an icon belongs to a desktop entry, which
+`hmg`'s packages supply.
+
+macOS keeps an application's icon in its bundle, which a command line tool has no use
+for, so a bare `hmc` and a bare `hmg` are both drawn with the generic `exec`
+placeholder. It also lets a plain file carry an icon of its own, which is what
+`cargo xtask icon` gives the two binaries under `target/release` after they are built:
+`NSWorkspace` writes the `.icns` into the file's resource fork and raises the Finder
+flag that prefers it. Building a binary again replaces it and drops the icon, so the
+command runs after the release builds, not before; see
+[development.md](../development.md#building-a-release). It changes nothing inside the
+executable, and both binaries still pass `codesign --verify`. The icon of `HiveMe.app`
+is a separate thing, and `bundle.icon` in `src-tauri/tauri.conf.json` still supplies
+it.
 
 ## Client identifier
 

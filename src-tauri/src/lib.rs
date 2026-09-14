@@ -154,6 +154,11 @@ pub fn run() {
     log::error!("the config could not be read: {error}");
   }
 
+  // Before the builder, because the builder creates the window and a window that is moved
+  // after it exists is drawn twice. See `window::place`.
+  let mut context = tauri::generate_context!();
+  window::place(&mut context, &session);
+
   tauri::Builder::default()
     .manage(AppState { session, toaster })
     .plugin(tauri_plugin_clipboard_manager::init())
@@ -180,7 +185,7 @@ pub fn run() {
       set_notifications_paused,
       skip_version
     ])
-    .build(tauri::generate_context!())
+    .build(context)
     .expect("the application builds")
     .run(window::on_run_event);
 }

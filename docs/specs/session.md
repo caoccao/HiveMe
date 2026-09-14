@@ -302,6 +302,8 @@ One-shot `hmc` does not use the session; it keeps `Role::Cli`. The full table is
   so one received by both becomes two rows, each counted unread, and each process raises
   its own. This is documented, not prevented; only an envelope can claim to be the same
   message.
+- A message one of them sends is the other's incoming message. See
+  [Which side a message is on](#which-side-a-message-is-on).
 - Both processes prune; the second pass finds nothing.
 - Both hold the config in memory and write it atomically. The last writer wins, and a
   change made in one is seen by the other at its next start. A file watcher is an open
@@ -316,6 +318,35 @@ One-shot `hmc` does not use the session; it keeps `Role::Cli`. The full table is
   The check found that the second process took the first one's row for its own echo and
   showed and notified nothing, which is what the remembered messages and the immediate
   transaction above fixed.
+
+## Which side a message is on
+
+*Phase 6.*
+
+`MessageRow.outgoing` is what puts a bubble on the right, in both applications. It is
+true when **this application** published the message, which is a narrower question than
+the one the database answers:
+
+- The `messages.outgoing` column says that *this installation* published the row. It is
+  latched: a publish and the echo the broker sends back collapse into one row, and
+  whichever of the two writes second keeps the flag set. That is what the unread
+  reconciliation of [gui.md](gui.md#storage) needs, and it stays as it is.
+- `hmc` and `hmg` share one `HiveMe.db`, so a message either of them sends sets that
+  column for both. The column alone would therefore put the other application's
+  messages on the right in the one that did not send them.
+- `Session` narrows it: a row is outgoing to an application when the column is set
+  **and** the row's `app` is that application's own, `hmc` or `hmg`. Both halves are
+  stored, so a page read back after a restart says the same thing the live event said.
+- A raw JSON publish carries no envelope and so no `sender.app`. The publishing session
+  fills the row's `app` in with its own, which is the only writer that knows it.
+- One-shot `hmc` never opens the store, so what it publishes is nobody's outgoing row
+  and reaches both applications on the incoming side.
+- `MessageRow::seen_by` is the only place this is decided, so the two applications
+  cannot drift; there is no `From<StoredMessage>`, which would have no application to
+  ask. Unit tests in `session/types.rs` cover both directions, and
+  `two_sessions_on_one_database_each_raise_what_arrives_once` in
+  `crates/hiveme-core/tests/session.rs` checks a real `hmg` session and a real `hmc`
+  session over a real broker, live and read back from the database, each way around.
 
 ## What each application adds
 

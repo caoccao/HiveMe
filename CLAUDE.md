@@ -39,6 +39,7 @@ cargo test -p hmc --test tui                    # the terminal UI in a pseudo-te
 # Repository automation
 cargo xtask schema                              # regenerate schemas/ from the Rust types
 cargo xtask check-spec                          # validate the tagged examples in docs/specs/
+cargo xtask icon                                # macOS: the Finder icon of the built binaries
 deno task -c scripts/ts/deno.json check              # type check the scripts themselves
 deno task -c scripts/ts/deno.json check-license-headers
 deno task -c scripts/ts/deno.json check-spec-sync   # pass a base ref, or set SPEC_SYNC_BASE
@@ -70,6 +71,12 @@ If a release build fails, fix it and rebuild before reporting completion.
 Build both applications into the repository's `target/release` directory. Do not
 use a separate target directory for final verification. Build verification must
 not modify runtime config or data files.
+
+On macOS, finish with `cargo xtask icon`. A bare binary has no bundle to take an
+icon from, so Finder draws `hmc` and `hmg` with the generic `exec` placeholder
+until the command writes the hive cell into each file's resource fork. It has to
+come after the builds, because building a binary again replaces it and drops the
+icon.
 
 ## Architecture
 

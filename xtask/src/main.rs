@@ -19,20 +19,22 @@
 //!
 //! `cargo xtask schema`     regenerates the JSON schemas under `schemas/`.
 //! `cargo xtask check-spec` validates the examples embedded in `docs/specs/`.
+//! `cargo xtask icon`       gives the built macOS binaries their Finder icon.
 //!
-//! Both are part of the specification sync mechanism described in
+//! The first two are part of the specification sync mechanism described in
 //! `docs/specs/app.md`. The logic lives in the library beside this file, so the tests
 //! and the command line cannot disagree.
 
 use std::process::ExitCode;
 
-use xtask::{relative, repo_root, schema, spec};
+use xtask::{icon, relative, repo_root, schema, spec};
 
 fn main() -> ExitCode {
   let mut args = std::env::args().skip(1);
   match args.next().as_deref() {
     Some("schema") => generate_schemas(),
     Some("check-spec") => check_spec(),
+    Some("icon") => stamp_icons(),
     None | Some("help" | "--help" | "-h") => {
       usage();
       ExitCode::SUCCESS
@@ -51,7 +53,37 @@ fn usage() {
   println!("Commands:");
   println!("  schema       Regenerate the JSON schemas under schemas/ from the Rust types");
   println!("  check-spec   Validate the tagged JSON examples in docs/specs/");
+  println!("  icon         Give the built binaries their Finder icon, on macOS");
   println!("  help         Print this help");
+}
+
+/// Runs after the release builds, because building a binary again drops its icon.
+fn stamp_icons() -> ExitCode {
+  if !icon::is_supported() {
+    println!("xtask icon: only macOS draws a file's own icon, so there is nothing to do");
+    return ExitCode::SUCCESS;
+  }
+
+  let root = repo_root();
+  match icon::stamp(&root) {
+    Ok(outcomes) => {
+      for outcome in outcomes {
+        match outcome {
+          icon::Outcome::Stamped { binary, icon } => {
+            println!("{} wears {}", relative(&root, &binary), relative(&root, &icon));
+          }
+          icon::Outcome::NotBuilt { binary } => {
+            println!("{} is not built yet", relative(&root, &binary));
+          }
+        }
+      }
+      ExitCode::SUCCESS
+    }
+    Err(error) => {
+      eprintln!("xtask icon: {error}");
+      ExitCode::from(1)
+    }
+  }
 }
 
 fn generate_schemas() -> ExitCode {

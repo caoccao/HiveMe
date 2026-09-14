@@ -172,11 +172,12 @@ HiveMe/
       src/session/                # the shared backend of session.md: mod, config, mqtt, notify, history, update, types
       src/i18n/                   # locale resolution, catalogs, plural rules, formatting (feature i18n)
     hmc/                          # CLI binary `hmc`
-      build.rs, icons/            # the Windows executable icon and version information
+      build.rs, icons/            # the Windows executable icon and version information, and the
+                                  # macOS .icns `cargo xtask icon` gives the built binary
       src/tui/                    # the terminal UI of tui.md: the shell, messages/, settings/, widgets/,
                                   # and tests/, the in-process tests
       tests/                      # cli.rs, publish.rs, and tui.rs, the terminal UI in a pseudo-terminal
-  xtask/                          # `cargo xtask schema`, `cargo xtask check-spec`
+  xtask/                          # `cargo xtask schema`, `cargo xtask check-spec`, `cargo xtask icon`
   schemas/                        # broker-init, config, message .schema.json (generated, committed), README.md
   scripts/
     ts/                           # Deno scripts: deno.json, deno.lock, change-version.ts,
@@ -282,6 +283,7 @@ Their phase numbers are that plan's, not the initialization plan's.
 | `cargo test -r --workspace` | Run the Rust tests |
 | `cargo fmt --check` and `cargo clippy --workspace -- -D warnings` | Lint |
 | `cargo xtask schema` and `cargo xtask check-spec` | Regenerate schemas, validate spec examples |
+| `cargo xtask icon` | Give the built binaries their Finder icon, on macOS |
 | `pnpm install`, `pnpm typecheck`, `pnpm test` | Frontend dependencies, types, tests |
 | `pnpm tauri dev` and `pnpm tauri build` | Run and bundle the GUI |
 | `deno task -c scripts/ts/deno.json version` | Bump the version across the project |
@@ -642,3 +644,29 @@ The entries below are against [the terminal UI plan](../plans/plan-terminal-ui.m
     raced the slower of the two applications; it waits for them instead.
     [development.md](../development.md#testing-against-a-broker) says how to tell a
     skipped suite from a passing one.
+52. Phase 6, found afterward: `hmg` drew what `hmc` had sent on the outgoing side. The
+    column the database keeps says that this *installation* published a row, and the two
+    applications share one `HiveMe.db`, so each read the other's messages as its own. It
+    was asymmetric in practice only because the flag is latched and `hmc` usually won the
+    insert, so `hmc` happened to read `hmg`'s messages correctly and `hmg` did not; read
+    back from the database after a restart, both were wrong. The side is now decided by
+    `MessageRow::seen_by`, which asks the narrower question the view means, and the
+    `From<StoredMessage>` that had no application to ask is gone.
+    [session.md](session.md#which-side-a-message-is-on) has the rule.
+53. Phase 6, found afterward: on macOS the built `hmc` and `hmg` both showed Finder's
+    generic `exec` icon. An icon there belongs to a bundle, which `HiveMe.app` has and a
+    bare binary does not, so [cli.md](cli.md#appearance) had recorded that there was
+    nothing to be done. macOS does let a plain file carry its own icon, so `cargo xtask
+    icon` now writes one into each binary after the release builds, and
+    `crates/hmc/icons/hmc.icns` was packed from the existing `hmc.png` to give `hmc` its
+    own. The plan never asked for this; the pair looking like unidentified executables in
+    Finder is the reason.
+54. Phase 6, found afterward: the `hmg` window opened where macOS had centered it and
+    jumped to its remembered position a frame later. `setup` restored the geometry the
+    obvious way, by moving the window and then showing it, and on macOS that order does
+    not hold: tao defers a move to the main dispatch queue because `NSWindow` frames are
+    not thread safe, while a `show` from the main thread runs inline, and `setup` is on
+    the main thread before the event loop turns. The geometry and the title are now
+    written into the window's configuration by `window::place` before the builder creates
+    the window, so there is no second place to draw it in.
+    [gui.md](gui.md#window) has the rule.

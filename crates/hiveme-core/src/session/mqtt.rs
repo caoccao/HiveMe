@@ -35,6 +35,7 @@ use crate::message::{Message, MessageProperties};
 use crate::mqtt::{IncomingMessage, MqttClient, Qos, Role, State};
 use crate::storage::{NewMessage, Store};
 
+use super::SessionApp;
 use super::config::ConfigStore;
 use super::notify::Notifier;
 use super::types::{MessageRow, SessionEvent, Status};
@@ -93,6 +94,9 @@ impl Drop for Connection {
 
 /// What the connection tasks share with the session.
 pub(super) struct Shared {
+  /// Which of the two applications is reading, which is what decides the side a bubble
+  /// is drawn on. See [`MessageRow::seen_by`].
+  app: SessionApp,
   /// The last status the screen was told, so `status` answers the same thing whether or
   /// not a connection exists.
   status: Mutex<Status>,
@@ -160,18 +164,19 @@ pub(super) struct Mqtt {
 
 impl Mqtt {
   pub(super) fn new(
-    role: Role,
+    app: SessionApp,
     store: Arc<Store>,
     notifier: Arc<Notifier>,
     config: Arc<ConfigStore>,
     events: broadcast::Sender<SessionEvent>,
   ) -> Self {
     Self {
-      role,
+      role: app.role(),
       connection: AsyncMutex::new(None),
       lifecycle: AsyncMutex::new(()),
       quitting: watch::channel(false).0,
       shared: Arc::new(Shared {
+        app,
         status: Mutex::new(Status::disconnected()),
         received: AtomicU64::new(0),
         store,
@@ -381,7 +386,10 @@ async fn pump(shared: Arc<Shared>, mut incoming: mpsc::Receiver<IncomingMessage>
       // another terminal UI, and is new to this one.
       continue;
     }
-    shared.emit(SessionEvent::Message(MessageRow::from(insertion.message)));
+    shared.emit(SessionEvent::Message(MessageRow::seen_by(
+      insertion.message,
+      shared.app,
+    )));
     if let Some(rule_id) = shared.notifier.notify(&message.topic, &parsed) {
       shared.emit(SessionEvent::NotificationFired {
         rule_id,
@@ -434,7 +442,7 @@ mod tests {
     let directory = tempfile::tempdir().unwrap();
     let config = Arc::new(ConfigStore::open(&directory.path().join("HiveMe.json")).unwrap());
     let mqtt = Arc::new(Mqtt::new(
-      Role::Gui,
+      SessionApp::Gui,
       Arc::new(Store::open(&config.database_path()).unwrap()),
       Arc::new(Notifier::new(&config.get(), Arc::new(Silent))),
       config,
@@ -469,7 +477,7 @@ mod tests {
     let directory = tempfile::tempdir().unwrap();
     let config = Arc::new(ConfigStore::open(&directory.path().join("HiveMe.json")).unwrap());
     let mqtt = Mqtt::new(
-      Role::Tui,
+      SessionApp::Tui,
       Arc::new(Store::in_memory().unwrap()),
       Arc::new(Notifier::new(&config.get(), Arc::new(Silent))),
       config,

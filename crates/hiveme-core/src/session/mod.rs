@@ -130,13 +130,7 @@ impl Session {
   ) -> Arc<Self> {
     let notifier = Arc::new(Notifier::new(&config.get(), toaster));
     let events = broadcast::channel(EVENT_CAPACITY).0;
-    let mqtt = Mqtt::new(
-      app.role(),
-      store.clone(),
-      notifier.clone(),
-      config.clone(),
-      events.clone(),
-    );
+    let mqtt = Mqtt::new(app, store.clone(), notifier.clone(), config.clone(), events.clone());
     Arc::new(Self {
       app,
       config,
@@ -255,7 +249,7 @@ impl Session {
   /// One page of a topic's history and all its descendants, oldest first.
   pub fn messages(&self, topic: &str, before: Option<i64>, limit: u32) -> Result<Vec<MessageRow>> {
     let rows = self.store.messages(topic, before, limit)?;
-    Ok(rows.into_iter().map(MessageRow::from).collect())
+    Ok(rows.into_iter().map(|row| MessageRow::seen_by(row, self.app)).collect())
   }
 
   /// Clears the unread counts of a topic and all its descendants.
@@ -320,7 +314,11 @@ impl Session {
       payload
     };
 
-    let row = NewMessage::from_payload(topic, payload, qos.as_u8(), retain, true);
+    let mut row = NewMessage::from_payload(topic, payload, qos.as_u8(), retain, true);
+    // A raw JSON publish carries no envelope, so the parser found no `sender.app` to
+    // read and the row would not know which of the two applications sent it. It is
+    // this one: say so, or the bubble that was just composed here arrives on the left.
+    row.app.get_or_insert_with(|| self.app.app_id().to_owned());
     let insertion = self.store.insert(&row)?;
     let shared = self.mqtt.shared();
     shared.remember(&row.topic, &row.msg_id);
@@ -329,7 +327,7 @@ impl Session {
         topic: topic.to_owned(),
       });
     }
-    let message = MessageRow::from(insertion.message);
+    let message = MessageRow::seen_by(insertion.message, self.app);
     shared.emit(SessionEvent::Message(message.clone()));
     Ok(message)
   }

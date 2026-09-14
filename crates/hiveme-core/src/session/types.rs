@@ -31,6 +31,8 @@ use serde::{Deserialize, Serialize};
 use crate::mqtt::State;
 use crate::storage::StoredMessage;
 
+use super::SessionApp;
+
 /// What the About tab shows.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct About {
@@ -163,12 +165,24 @@ pub struct MessageRow {
   pub raw_length: u64,
   pub qos: u8,
   pub retain: bool,
+  /// Whether the application reading this row is the one that published it, which is
+  /// what puts a bubble on the right. See [`MessageRow::seen_by`].
   pub outgoing: bool,
 }
 
-impl From<StoredMessage> for MessageRow {
-  fn from(stored: StoredMessage) -> Self {
+impl MessageRow {
+  /// One stored row, as `app` sees it.
+  ///
+  /// [`StoredMessage::outgoing`] says that this installation published the message,
+  /// which is not the same question. `hmc` and `hmg` share one `HiveMe.db`, so a
+  /// message either of them sends is outgoing in the database for both of them, and
+  /// asking the column alone would put the other application's messages on the right.
+  /// Pairing it with the producing application answers the narrower question the view
+  /// is really asking, and both halves are stored, so a restart reads the same answer
+  /// the live event gave.
+  pub fn seen_by(stored: StoredMessage, app: SessionApp) -> Self {
     let raw_length = stored.raw.len() as u64;
+    let outgoing = stored.outgoing && stored.app.as_deref() == Some(app.app_id());
     let raw = match String::from_utf8(stored.raw) {
       Ok(text) => text,
       Err(error) => hex(error.as_bytes()),
@@ -190,7 +204,7 @@ impl From<StoredMessage> for MessageRow {
       raw_length,
       qos: stored.qos,
       retain: stored.retain,
-      outgoing: stored.outgoing,
+      outgoing,
     }
   }
 }
@@ -265,6 +279,10 @@ mod tests {
   use super::*;
 
   fn stored(raw: Vec<u8>, tier: &str, outgoing: bool) -> StoredMessage {
+    stored_from("hmc", raw, tier, outgoing)
+  }
+
+  fn stored_from(app: &str, raw: Vec<u8>, tier: &str, outgoing: bool) -> StoredMessage {
     StoredMessage {
       row_id: 1,
       topic: "hiveme/info".to_owned(),
@@ -273,7 +291,7 @@ mod tests {
       received_ts: "2026-09-12T09:41:23.512Z".to_owned(),
       sender_id: None,
       sender_name: None,
-      app: None,
+      app: Some(app.to_owned()),
       tier: tier.to_owned(),
       level: None,
       title: None,
@@ -287,7 +305,7 @@ mod tests {
 
   #[test]
   fn a_payload_that_is_not_text_reaches_the_view_as_hex() {
-    let row = MessageRow::from(stored(vec![0xff, 0xfe, 0x00], "bytes", false));
+    let row = MessageRow::seen_by(stored(vec![0xff, 0xfe, 0x00], "bytes", false), SessionApp::Tui);
 
     assert_eq!(row.raw, "fffe00");
     assert_eq!(row.raw_length, 3);
@@ -295,11 +313,35 @@ mod tests {
 
   #[test]
   fn a_text_payload_reaches_the_view_unchanged() {
-    let row = MessageRow::from(stored(b"hello".to_vec(), "text", true));
+    let row = MessageRow::seen_by(stored(b"hello".to_vec(), "text", true), SessionApp::Tui);
 
     assert_eq!(row.raw, "hello");
     assert_eq!(row.raw_length, 5);
     assert!(row.outgoing);
+  }
+
+  #[test]
+  fn a_row_is_outgoing_only_to_the_application_that_published_it() {
+    let sent_by_hmc = stored_from("hmc", b"hello".to_vec(), "text", true);
+
+    assert!(MessageRow::seen_by(sent_by_hmc.clone(), SessionApp::Tui).outgoing);
+    assert!(
+      !MessageRow::seen_by(sent_by_hmc, SessionApp::Gui).outgoing,
+      "hmc and hmg share one database, so hmg must not read hmc's message as its own"
+    );
+
+    let sent_by_hmg = stored_from("hmg", b"hello".to_vec(), "text", true);
+
+    assert!(MessageRow::seen_by(sent_by_hmg.clone(), SessionApp::Gui).outgoing);
+    assert!(!MessageRow::seen_by(sent_by_hmg, SessionApp::Tui).outgoing);
+  }
+
+  #[test]
+  fn a_row_this_installation_never_published_is_incoming_to_both() {
+    let from_elsewhere = stored_from("hmc", b"hello".to_vec(), "text", false);
+
+    assert!(!MessageRow::seen_by(from_elsewhere.clone(), SessionApp::Tui).outgoing);
+    assert!(!MessageRow::seen_by(from_elsewhere, SessionApp::Gui).outgoing);
   }
 
   #[test]
@@ -346,7 +388,7 @@ mod tests {
     ] {
       assert!(status.get(key).is_some(), "Status has no {key}");
     }
-    let row = serde_json::to_value(MessageRow::from(stored(Vec::new(), "text", false))).unwrap();
+    let row = serde_json::to_value(MessageRow::seen_by(stored(Vec::new(), "text", false), SessionApp::Tui)).unwrap();
     for key in ["rowId", "receivedTs", "senderId", "senderName", "rawLength"] {
       assert!(row.get(key).is_some(), "MessageRow has no {key}");
     }

@@ -520,7 +520,12 @@ fn two_sessions_on_one_database_each_raise_what_arrives_once() {
         events_within(&mut gui_events, Duration::from_secs(3)),
         events_within(&mut tui_events, Duration::from_secs(3))
       );
+      let arrived = match summaries(gui_seen.clone()).as_slice() {
+        [(row_id, false)] => *row_id,
+        other => panic!("hmg saw {other:?} rather than one incoming row"),
+      };
       assert_eq!(rows(gui_seen), ["Disk full"]);
+      assert_eq!(summaries(tui_seen.clone()), [(arrived, false)]);
       assert_eq!(rows(tui_seen), ["Disk full"]);
       assert_eq!(gui.messages("hiveme", None, 0).unwrap().len(), 1);
       assert_eq!(tui.topic_tree().unwrap()[0].unread, 1);
@@ -529,26 +534,70 @@ fn two_sessions_on_one_database_each_raise_what_arrives_once() {
       assert_eq!(tui_toasts.shown(), shown);
 
       // Sent from one of them: that one raises its own row only, and its echo is
-      // recognized; the other shows it as it arrives, as this device's message.
-      let sent = gui
+      // recognized; the other shows it as it arrives, and on the incoming side. The
+      // two share a device and a database, but they are two applications, and the
+      // message came from the other one.
+      let sent_by_gui = gui
         .publish("hiveme", "Deployed", PublishOptions::default())
         .await
         .expect("the broker acknowledges the publish");
+      assert!(sent_by_gui.outgoing, "hmg composed it");
       let (gui_seen, tui_seen) = tokio::join!(
         events_within(&mut gui_events, Duration::from_secs(3)),
         events_within(&mut tui_events, Duration::from_secs(3))
       );
       assert_eq!(rows(gui_seen), ["Deployed"]);
-      let tui_rows: Vec<MessageRowSummary> = tui_seen
-        .into_iter()
-        .filter_map(|event| match event {
-          SessionEvent::Message(row) => Some((row.row_id, row.outgoing)),
-          _ => None,
-        })
-        .collect();
-      assert_eq!(tui_rows, [(sent.row_id, true)]);
+      assert_eq!(summaries(tui_seen), [(sent_by_gui.row_id, false)]);
       assert_eq!(gui.messages("hiveme", None, 0).unwrap().len(), 2);
       assert_eq!(tui_toasts.shown().len(), 1, "this device's own message raises nothing");
+
+      // And the same question asked the other way around, which is the one the shared
+      // `outgoing` column used to get wrong: hmc's message is hmc's own, and hmg reads
+      // it as incoming however quickly the echo arrives.
+      let sent_by_tui = tui
+        .publish("hiveme", "Restarted", PublishOptions::default())
+        .await
+        .expect("the broker acknowledges the publish");
+      assert!(sent_by_tui.outgoing, "hmc composed it");
+      let (gui_seen, tui_seen) = tokio::join!(
+        events_within(&mut gui_events, Duration::from_secs(3)),
+        events_within(&mut tui_events, Duration::from_secs(3))
+      );
+      assert_eq!(summaries(gui_seen), [(sent_by_tui.row_id, false)]);
+      assert_eq!(
+        summaries(tui_seen),
+        [(sent_by_tui.row_id, true)],
+        "hmc raises its own row once, and recognizes the echo"
+      );
+
+      // Read back from the database rather than taken from the live event, because
+      // that is what a restart does and the answer has to be the same one.
+      let stored = |session: &Session| -> Vec<MessageRowSummary> {
+        session
+          .messages("hiveme", None, 0)
+          .unwrap()
+          .into_iter()
+          .map(|row| (row.row_id, row.outgoing))
+          .collect()
+      };
+      assert_eq!(
+        stored(&gui),
+        [
+          (arrived, false),
+          (sent_by_gui.row_id, true),
+          (sent_by_tui.row_id, false)
+        ],
+        "hmg owns only what hmg sent"
+      );
+      assert_eq!(
+        stored(&tui),
+        [
+          (arrived, false),
+          (sent_by_gui.row_id, false),
+          (sent_by_tui.row_id, true)
+        ],
+        "hmc owns only what hmc sent"
+      );
 
       publisher.disconnect().await.expect("the publisher says goodbye");
       gui.shutdown().await.expect("the first session ends");
@@ -559,3 +608,14 @@ fn two_sessions_on_one_database_each_raise_what_arrives_once() {
 
 /// A row event reduced to its row id and direction.
 type MessageRowSummary = (i64, bool);
+
+/// The message events among `events`, each as its row id and direction.
+fn summaries(events: Vec<SessionEvent>) -> Vec<MessageRowSummary> {
+  events
+    .into_iter()
+    .filter_map(|event| match event {
+      SessionEvent::Message(row) => Some((row.row_id, row.outgoing)),
+      _ => None,
+    })
+    .collect()
+}

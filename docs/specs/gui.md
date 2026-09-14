@@ -120,8 +120,8 @@ and events, while the same envelope on two topics remains two rows.
 
 | Message | Rendering |
 |---------|-----------|
-| Sent by this device (`sender.id == device.id`) | Rounded bubble aligned right; regular messages use a dark fill with white text |
-| Sent by anyone else | Rounded bubble aligned left with available sender details above it |
+| Sent by this application (`outgoing`, see [session.md](session.md#which-side-a-message-is-on)) | Rounded bubble aligned right; regular messages use a dark fill with white text |
+| Sent by anyone else, `hmc` on the same device included | Rounded bubble aligned left with available sender details above it |
 | Envelope tier | `title` in bold, `body`, and a collapsed `data` JSON tree; metadata is in the hover row |
 | Raw JSON tier | Monospace bubble with a collapsible JSON tree |
 | Raw text tier | Monospace bubble |
@@ -663,11 +663,25 @@ language this window is in. See [config.md](config.md#the-setup-string).
 
 ## Window
 
-`window.rs` owns window state, as in the reference project. `setup` sets the title to
-`HiveMe v<version>`, restores the size and position from `gui.window`, centers the
-window when the stored position is negative, shows the window, and starts the update
-check when it is due. `on_window_event` persists size and position on move and
-resize, ignoring minimized windows and sizes below 600 x 450.
+`window.rs` owns window state, as in the reference project. `place` writes the title
+`HiveMe v<version>` and the remembered `gui.window` geometry into the window's own
+configuration, and `lib.rs` calls it on the generated context before the builder runs.
+A size below 600 x 450 is clamped there and the clamped size written back once; a
+negative stored coordinate asks for `center` instead of a corner, which is what a fresh
+config's `-1, -1` does. `setup` then only shows the window and starts the update check
+when it is due. `on_window_event` persists size and position on move and resize,
+ignoring minimized windows and sizes below 600 x 450.
+
+The geometry is set before the window exists rather than after, because a window that is
+built somewhere and moved afterwards is drawn in both places. macOS is where that shows:
+`NSWindow` frame changes are not thread safe, so tao defers every move, resize, and
+retitle to the main dispatch queue, while showing a window already on the main thread
+runs inline. `setup` runs on the main thread before the event loop turns, so a `show`
+there went first and the queued move landed a frame later — the window opened where
+macOS had centered it and jumped to the remembered place mid-animation. Tauri resolves
+both an explicit position and `center` into the frame the window is built with, so
+nothing is left to defer. The `width`, `height`, and `title` in `tauri.conf.json` are
+only the defaults this overrides.
 
 Closing the main window or quitting through the system menu first ends the MQTT
 connection and broker session. The event loop stays alive while cleanup runs, and
