@@ -53,6 +53,15 @@ Its layout and architecture deliberately mirror the sibling project
 +--------------------------------------------------------------+
 ```
 
+All text inputs throughout the window follow the five **Editor** settings:
+autocomplete, autocorrection, automatic capitalization, spellchecking, and writing
+suggestions. Each defaults to off. This includes the topic filter, message body and
+options, broker credentials, numeric settings, and subscription and notification-rule
+editors. The shared Material UI input defaults apply the native attributes to both
+inputs and textareas, including dynamically created rows. Changes apply immediately.
+Writing suggestions use the HTML
+[`writingsuggestions` attribute](https://html.spec.whatwg.org/multipage/interaction.html#writing-suggestions).
+
 ### Toolbar
 
 `ButtonGroup`s of small `IconButton`s with tooltips that name their shortcut.
@@ -586,11 +595,19 @@ Light Mode, and Dark Mode buttons with icons; Theme and Language use dropdown li
 |----------|-------------|-------------------|
 | Appearance | `gui` | `displayMode`, `theme`, `language` |
 | Broker | `broker` | `url` as a protocol list and the rest of the URL, then `username` and `password` on one row, with a visibility toggle and **Copy CLI setup**; **Connection** with `clientIdPrefix`, `keepAliveSecs`, `sessionExpirySecs`, `connectTimeoutSecs`; **Reconnect** with `reconnect.initialDelayMs`, `reconnect.maxDelayMs` |
-| Topics | `topics` | **Subscriptions**, where each row is a filter and an "absolute" box |
-| Notifications | `notifications` | `enabled`, `notifyOwnMessages`; **Rules**, a table of `id`, `topic`, `level`, `enabled`, `title`, `body` with add and delete |
+| Editor | `gui.editor` | Autocomplete, Autocorrect, Automatic capitalization, Spellcheck, Writing suggestions; one checkbox per row, all unchecked by default |
 | History | `gui.history` | `maxMessagesPerTopic`, `retentionDays` |
+| Notifications | `notifications` | `enabled`, `notifyOwnMessages`; **Rules**, a table of `id`, `topic`, `level`, `enabled`, `title`, `body` with add and delete |
+| Topics | `topics` | **Subscriptions**, where each row is a filter and an "absolute" box |
 | Update | `update` | `checkInterval` |
 | Advanced | `encryption`, `cloudApi` | Read only placeholders until phase 6 |
+
+Categories appear in the table's order. Editor is available only in `hmg`; `hmc`
+uses the same order with Editor omitted. Each Editor checkbox is saved automatically
+and controls its own native attribute: `autoComplete` and `autoCorrect` use `off` or
+`on`, `autoCapitalize` uses `none` or `sentences`, `spellCheck` uses a boolean, and
+`writingsuggestions` uses `"false"` or `"true"`. Support for each feature depends on
+the webview and input type.
 
 `broker.url` is one string in the config file, and `src/lib/brokerUrl.ts` takes the
 scheme off the front of it for the form and puts it back afterward. That is the whole

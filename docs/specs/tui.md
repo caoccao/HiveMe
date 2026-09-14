@@ -308,12 +308,14 @@ on its `✕` closes it. Closing a tab selects the one that took its place.
 
 *Phase 5, which replaced the Broker fields phase 3 built for a first run.*
 
-A vertical category list (Appearance, Broker, Topics, Notifications, History, Update,
+A vertical category list (Appearance, Broker, History, Notifications, Topics, Update,
 Advanced) and the panel of the selected category beside it, centered together with the
 panel 96 columns at most, as the GUI centers its sidebar and panel. Both are rounded
 blocks, and the one with the focus has its border in the primary color. The selected
 category is bold in the primary color, and reversed while the list has the focus.
 Appearance opens first; a first run opens on Broker with the URL focused.
+The order matches `hmg` with its Editor category omitted. Browser text assistance
+is available only in `hmg`; `hmc` preserves `gui.editor` when saving other settings.
 
 Every panel is one description of rows, `settings/form.rs`, which gives its drawing, its
 focus order, and its scrolling alike. A labeled row has a label column as wide as the
@@ -341,9 +343,9 @@ primary color while one of its controls has the focus.
 |----------|------|
 | Appearance | Mode, a radio row of Auto Mode, Light Mode, and Dark Mode; Theme, a select listing each palette in its own primary color; Language, a select of the names of the languages in themselves, `LANGUAGE_LABELS` |
 | Broker | Protocol, a select of the four transports; URL; the line that says the URL that will be saved and its port, or `settings.urlHint` while the box is empty; Username; Password, masked until `Ctrl+H`, and the `Ctrl+H` hint; the TLS note; **Copy CLI setup** and `settings.copyCliSetupHint`, the GUI's tooltip; **Connection** with the client id prefix, keep alive, session expiry, and connect timeout; **Reconnect** with the first and the longest retry |
-| Topics | **Subscriptions** with Add at the right end, then a row per subscription: the filter, the Absolute checkbox, and `[✕]` to remove it |
-| Notifications | Raise OS notifications and Notify about messages this device sent as checkboxes; **Rules** with Add at the right end, a header row, and a row per rule: Id, Topic filter, Level as a select in the level's color, Enabled, Title template, Body template, and `[✕]` |
 | History | `settings.historyHint`, Messages per topic, and Retention (days) |
+| Notifications | Raise OS notifications and Notify about messages this device sent as checkboxes; **Rules** with Add at the right end, a header row, and a row per rule: Id, Topic filter, Level as a select in the level's color, Enabled, Title template, Body template, and `[✕]` |
+| Topics | **Subscriptions** with Add at the right end, then a row per subscription: the filter, the Absolute checkbox, and `[✕]` to remove it |
 | Update | Check for updates, a select of Daily, Weekly, and Monthly |
 | Advanced | `settings.advancedHint`, then **Encryption** and **Cloud API**, each saying `settings.notImplemented`. Nothing takes the focus |
 

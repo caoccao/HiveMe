@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+* The GUI's new Editor settings offer separate checkboxes for autocomplete,
+  autocorrection, automatic capitalization, spellchecking, and writing suggestions.
+  All default to unchecked and apply immediately to every text field.
+* Settings now follow Appearance, Broker, Editor, History, Notifications, Topics,
+  Update, Advanced. The terminal UI follows the same order with Editor omitted.
+
 * Installations created together now have distinct MQTT client IDs. Transient broker
   refusals retry, timed-out publishes keep acknowledgement ownership, and queued
   messages survive bursts beyond 1,024 deliveries.

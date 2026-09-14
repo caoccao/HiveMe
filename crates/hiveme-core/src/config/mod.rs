@@ -629,7 +629,7 @@ impl Rule {
 }
 
 /// The settings of the user interface. `hmg` reads all of them; the terminal UI of `hmc`
-/// reads all but `window`, and publish mode reads `language`.
+/// reads all but `window` and `editor`, and publish mode reads `language`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Gui {
@@ -638,6 +638,7 @@ pub struct Gui {
   /// A BCP 47 tag. Both applications support de, en-US, es, fr, it, ja, zh-CN, zh-HK,
   /// and zh-TW; another tag resolves to the nearest of those, or to en-US.
   pub language: String,
+  pub editor: Editor,
   pub history: History,
   pub window: Window,
 }
@@ -648,10 +649,23 @@ impl Default for Gui {
       display_mode: DisplayMode::default(),
       theme: Theme::default(),
       language: "en-US".to_owned(),
+      editor: Editor::default(),
       history: History::default(),
       window: Window::default(),
     }
   }
+}
+
+/// Browser text assistance in `hmg` only. Each feature is opt-in.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Editor {
+  pub auto_complete: bool,
+  pub auto_correct: bool,
+  /// When enabled, capitalize sentences in input methods that support it.
+  pub auto_capitalize: bool,
+  pub spell_check: bool,
+  pub writing_suggestions: bool,
 }
 
 /// Which color scheme the GUI follows.

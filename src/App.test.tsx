@@ -23,7 +23,7 @@
 // backend log looks healthy while the user sees an empty rectangle. Only the rendered
 // output says whether the layout is there.
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
@@ -155,6 +155,115 @@ describe('the application window', () => {
 
     await useAppStore.getState().clearSelectedTopic();
     expect(screen.getByRole('treeitem', { name: 'hiveme' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it.each([Protocol.DisplayMode.Light, Protocol.DisplayMode.Dark])(
+    'disables text suggestions and corrections in every input in %s mode',
+    async (displayMode) => {
+      backendConfig.gui = { language: 'en-US', displayMode };
+      backendConfig.notifications = {
+        rules: [{ id: 'info', topic: '#', level: 'info', title: '{title}', body: '{body}' }],
+      };
+      const { container } = render(<App />);
+      await waitFor(() => expect(useAppStore.getState().status.state).toBe('Connected'));
+
+      const checkInputs = () => {
+        const inputs = container.querySelectorAll(
+          'input:not([type="checkbox"]):not([type="radio"]):not([aria-hidden="true"]), textarea:not([aria-hidden="true"])'
+        );
+        expect(inputs.length).toBeGreaterThan(0);
+        for (const input of inputs) {
+          expect(input).toHaveAttribute('autocomplete', 'off');
+          expect(input).toHaveAttribute('autocorrect', 'off');
+          expect(input).toHaveAttribute('autocapitalize', 'none');
+          expect(input).toHaveAttribute('spellcheck', 'false');
+          expect(input).toHaveAttribute('writingsuggestions', 'false');
+        }
+      };
+
+      checkInputs(); // Topic filter and multiline composer, both with custom input props.
+      const options = await screen.findByRole('button', { name: i18n.t('composer.options') });
+      if (options.getAttribute('aria-expanded') !== 'true') await userEvent.click(options);
+      expect(await screen.findByLabelText('Title')).toBeInTheDocument();
+      checkInputs();
+
+      await userEvent.click(screen.getByLabelText('Settings (F10)'));
+      for (const category of ['Broker', 'Topics', 'Notifications', 'History']) {
+        await userEvent.click(screen.getByRole('tab', { name: category }));
+        checkInputs();
+        if (category === 'Broker') {
+          expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password');
+          await userEvent.click(screen.getByLabelText(i18n.t('settings.showPassword')));
+          expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'text');
+          checkInputs();
+        } else if (category === 'Topics' || category === 'Notifications') {
+          await userEvent.click(
+            screen.getByRole('button', {
+              name: i18n.t(category === 'Topics' ? 'settings.addSubscription' : 'settings.addRule'),
+            })
+          );
+          checkInputs();
+        }
+      }
+    }
+  );
+
+  it('applies Editor switches independently, saves them, and restores them on startup', async () => {
+    const options = [
+      ['autoComplete', 'autocomplete', 'on', 'off'],
+      ['autoCorrect', 'autocorrect', 'on', 'off'],
+      ['autoCapitalize', 'autocapitalize', 'sentences', 'none'],
+      ['spellCheck', 'spellcheck', 'true', 'false'],
+      ['writingSuggestions', 'writingsuggestions', 'true', 'false'],
+    ] as const;
+    const view = render(<App />);
+    await waitFor(() => expect(useAppStore.getState().config).not.toBeNull());
+    const checkInputs = (enabled: readonly string[]) => {
+      const inputs = document.querySelectorAll(
+        'input:not([type="checkbox"]):not([type="radio"]):not([aria-hidden="true"]), textarea:not([aria-hidden="true"])'
+      );
+      expect(inputs.length).toBeGreaterThan(0);
+      for (const input of inputs) {
+        for (const [key, attribute, on, off] of options) {
+          expect(input).toHaveAttribute(attribute, enabled.includes(key) ? on : off);
+        }
+      }
+    };
+    await userEvent.click(screen.getByLabelText('Settings (F10)'));
+    await userEvent.click(screen.getByRole('tab', { name: 'Editor' }));
+    for (const [key] of options) {
+      await userEvent.click(screen.getByRole('checkbox', { name: i18n.t(`settings.${key}`) }));
+      checkInputs([key]);
+      expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(1);
+      await act(async () => {
+        await useAppStore.getState().flushConfig();
+      });
+      expect(backendConfig.gui?.editor?.[key]).toBe(true);
+      await userEvent.click(screen.getByRole('tab', { name: 'Broker' }));
+      checkInputs([key]); // Newly mounted settings fields use the same policy.
+      await userEvent.click(screen.getByRole('tab', { name: 'Editor' }));
+      await userEvent.click(screen.getByRole('checkbox', { name: i18n.t(`settings.${key}`) }));
+      checkInputs([]);
+    }
+    await act(async () => {
+      await useAppStore.getState().flushConfig();
+    });
+    for (const [key] of options) expect(backendConfig.gui?.editor?.[key]).toBe(false);
+
+    for (const [key] of options) {
+      await userEvent.click(screen.getByRole('checkbox', { name: i18n.t(`settings.${key}`) }));
+    }
+    await act(async () => {
+      await useAppStore.getState().flushConfig();
+    });
+    view.unmount();
+    useAppStore.setState({ config: null, tabSettingsStatus: Protocol.ControlStatus.Hidden });
+    render(<App />);
+    await waitFor(() => expect(useAppStore.getState().config?.gui?.editor?.writingSuggestions).toBe(true));
+    checkInputs(options.map(([key]) => key));
+    await userEvent.click(screen.getByLabelText('Settings (F10)'));
+    await userEvent.click(screen.getByRole('tab', { name: 'Editor' }));
+    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(5);
   });
 
   it.each(Protocol.LANGUAGES)('loads the saved %s language throughout the window', async (language) => {

@@ -57,14 +57,14 @@ const PANEL_MAX_WIDTH: u16 = 96;
 /// How many rows one wheel notch scrolls the panel.
 const WHEEL_ROWS: u16 = 3;
 
-/// A category of the list, in the order `hmg` shows them.
+/// A category of the list, in `hmg` order with its browser-only Editor omitted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Category {
   Appearance,
   Broker,
-  Topics,
-  Notifications,
   History,
+  Notifications,
+  Topics,
   Update,
   Advanced,
 }
@@ -73,9 +73,9 @@ impl Category {
   pub const ALL: [Self; 7] = [
     Self::Appearance,
     Self::Broker,
-    Self::Topics,
-    Self::Notifications,
     Self::History,
+    Self::Notifications,
+    Self::Topics,
     Self::Update,
     Self::Advanced,
   ];

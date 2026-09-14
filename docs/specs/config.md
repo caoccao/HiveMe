@@ -9,7 +9,8 @@ BetterMediaInfo's nested `Default` and `#[serde(default)]` pattern: present valu
 are retained and missing sections or children receive their defaults in memory.
 The CLI uses the full shared schema, including GUI-only fields and their defaults.
 `hmc` reads `gui.language` for its help and the lines it prints, and the interactive
-mode of `hmc` reads the rest of the `gui` block as well, except the window; the block
+mode of `hmc` reads the rest of the `gui` block as well, except the window and editor;
+those settings are preserved when `hmc` saves the config. The block
 keeps its name because renaming it would break every existing file for a word.
 
 The machine readable schema is [`schemas/config.schema.json`](../../schemas/config.schema.json),
@@ -125,6 +126,13 @@ value the applications use when the key is absent.
     "displayMode": "Auto",
     "theme": "Ocean",
     "language": "en-US",
+    "editor": {
+      "autoComplete": false,
+      "autoCorrect": false,
+      "autoCapitalize": false,
+      "spellCheck": false,
+      "writingSuggestions": false
+    },
     "history": {
       "maxMessagesPerTopic": 1000,
       "retentionDays": 30
@@ -177,6 +185,11 @@ value the applications use when the key is absent.
 | `gui.displayMode` | `Auto`, `Light`, `Dark` | no | `Auto` | `Auto` follows `prefers-color-scheme` in `hmg` and the terminal's own colors in interactive `hmc`; see [tui.md](tui.md#theme). |
 | `gui.theme` | theme name | no | `Ocean` | One of the twenty palette names listed in [gui.md](gui.md#theme). Honored by both applications. |
 | `gui.language` | BCP 47 tag | no | `en-US` | Supports `de`, `en-US`, `es`, `fr`, `it`, `ja`, `zh-CN`, `zh-HK`, and `zh-TW`. Regional tags resolve to a bundled locale; unsupported tags fall back to English. Read by `hmg` and by `hmc`, and written by `hmc --init` from the setup string. See [GUI languages](gui.md#languages), [CLI languages](cli.md#languages), and [tui.md](tui.md#languages). |
+| `gui.editor.autoComplete` | boolean | no | false | `hmg` only. Enables native input autocomplete (`on` instead of `off`). |
+| `gui.editor.autoCorrect` | boolean | no | false | `hmg` only. Enables native input autocorrection (`on` instead of `off`). |
+| `gui.editor.autoCapitalize` | boolean | no | false | `hmg` only. Enables sentence capitalization (`sentences` instead of `none`). |
+| `gui.editor.spellCheck` | boolean | no | false | `hmg` only. Enables native input spellchecking. |
+| `gui.editor.writingSuggestions` | boolean | no | false | `hmg` only. Enables native writing suggestions (`writingsuggestions="true"` instead of `"false"`). |
 | `gui.history.maxMessagesPerTopic` | integer | no | 1000 | Older rows beyond this count are deleted per topic. 0 keeps everything. Pruning runs in whichever application holds the database. |
 | `gui.history.retentionDays` | integer | no | 30 | 0 disables time based pruning. |
 | `gui.window.position` | `{ x, y }` | no | `-1, -1` | Negative means "center the window". `hmg` only. |

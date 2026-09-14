@@ -105,6 +105,42 @@ fn config_deserialization_uses_defaults_for_missing_nodes() {
 }
 
 #[test]
+fn editor_options_default_off_and_preserve_explicit_values_and_extensions() {
+  let off = serde_json::json!({
+    "autoComplete": false, "autoCorrect": false, "autoCapitalize": false,
+    "spellCheck": false, "writingSuggestions": false
+  });
+  for text in ["{}", r#"{"gui":{}}"#, r#"{"gui":{"editor":{}}}"#] {
+    let config: Config = serde_json::from_str(text).unwrap();
+    assert_eq!(serde_json::to_value(config.gui.editor).unwrap(), off);
+  }
+
+  let directory = tempfile::tempdir().unwrap();
+  let path = directory.path().join("HiveMe.json");
+  let mut value = serde_json::to_value(valid()).unwrap();
+  value["gui"]["editor"] = serde_json::json!({"autoCorrect": true, "spellCheck": false, "futureOption": "keep"});
+  let mut file = ConfigFile::from_text(&path, &value.to_string()).unwrap();
+  assert!(file.config().gui.editor.auto_correct);
+  assert!(!file.config().gui.editor.auto_complete);
+  assert!(!file.config().gui.editor.spell_check);
+
+  for enabled in [true, false] {
+    file.config_mut().gui.editor = hiveme_core::config::Editor {
+      auto_complete: enabled,
+      auto_correct: enabled,
+      auto_capitalize: enabled,
+      spell_check: enabled,
+      writing_suggestions: enabled,
+    };
+    file.save().unwrap();
+    let reloaded = ConfigFile::load(&path).unwrap();
+    assert_eq!(reloaded.config().gui.editor, file.config().gui.editor);
+    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(saved["gui"]["editor"]["futureOption"], "keep");
+  }
+}
+
+#[test]
 fn the_documented_defaults_are_the_real_defaults() {
   let config = Config::default();
   assert_eq!(config.version, CONFIG_VERSION);

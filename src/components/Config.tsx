@@ -52,6 +52,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import DeleteIcon from '@mui/icons-material/Delete';
 import HistoryIcon from '@mui/icons-material/History';
+import EditNoteIcon from '@mui/icons-material/EditNote';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import LinkIcon from '@mui/icons-material/Link';
 import LockIcon from '@mui/icons-material/Lock';
@@ -76,12 +77,15 @@ import { useAppStore } from '../lib/store';
 export enum ConfigCategory {
   Appearance = 'Appearance',
   Broker = 'Broker',
-  Topics = 'Topics',
-  Notifications = 'Notifications',
+  Editor = 'Editor',
   History = 'History',
+  Notifications = 'Notifications',
+  Topics = 'Topics',
   Update = 'Update',
   Advanced = 'Advanced',
 }
+
+const EDITOR_FIELDS = ['autoComplete', 'autoCorrect', 'autoCapitalize', 'spellCheck', 'writingSuggestions'] as const;
 
 /** The broker fields `hmc --init` needs, which is also what makes a connection possible. */
 export function isBrokerUsable(broker: Protocol.Broker | undefined): boolean {
@@ -652,6 +656,29 @@ export default function Config() {
     </Box>
   );
 
+  const editorPanel = (
+    <Box>
+      <SectionHeader icon={<EditNoteIcon fontSize="small" />} title={t('settings.editor')} />
+      <Stack spacing={1}>
+        {EDITOR_FIELDS.map((field) => (
+          <FormControlLabel
+            key={field}
+            sx={{ m: 0 }}
+            control={
+              <Checkbox
+                checked={gui.editor?.[field] ?? false}
+                onChange={(event) =>
+                  update((next) => (((next.gui ??= {}).editor ??= {})[field] = event.target.checked))
+                }
+              />
+            }
+            label={t(`settings.${field}`)}
+          />
+        ))}
+      </Stack>
+    </Box>
+  );
+
   const historyPanel = (
     <Box>
       <SectionHeader icon={<HistoryIcon fontSize="small" />} title={t('settings.history')} />
@@ -720,9 +747,10 @@ export default function Config() {
   const panels: Record<ConfigCategory, React.ReactNode> = {
     [ConfigCategory.Appearance]: appearancePanel,
     [ConfigCategory.Broker]: brokerPanel,
-    [ConfigCategory.Topics]: topicsPanel,
-    [ConfigCategory.Notifications]: notificationsPanel,
+    [ConfigCategory.Editor]: editorPanel,
     [ConfigCategory.History]: historyPanel,
+    [ConfigCategory.Notifications]: notificationsPanel,
+    [ConfigCategory.Topics]: topicsPanel,
     [ConfigCategory.Update]: updatePanel,
     [ConfigCategory.Advanced]: advancedPanel,
   };
@@ -773,10 +801,16 @@ export default function Config() {
           label={t('settings.broker')}
         />
         <Tab
-          value={ConfigCategory.Topics}
-          icon={<TopicIcon sx={{ fontSize: 18 }} />}
+          value={ConfigCategory.Editor}
+          icon={<EditNoteIcon sx={{ fontSize: 18 }} />}
           iconPosition="start"
-          label={t('settings.topics')}
+          label={t('settings.editor')}
+        />
+        <Tab
+          value={ConfigCategory.History}
+          icon={<HistoryIcon sx={{ fontSize: 18 }} />}
+          iconPosition="start"
+          label={t('settings.history')}
         />
         <Tab
           value={ConfigCategory.Notifications}
@@ -785,10 +819,10 @@ export default function Config() {
           label={t('settings.notifications')}
         />
         <Tab
-          value={ConfigCategory.History}
-          icon={<HistoryIcon sx={{ fontSize: 18 }} />}
+          value={ConfigCategory.Topics}
+          icon={<TopicIcon sx={{ fontSize: 18 }} />}
           iconPosition="start"
-          label={t('settings.history')}
+          label={t('settings.topics')}
         />
         <Tab
           value={ConfigCategory.Update}

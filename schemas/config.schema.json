@@ -142,6 +142,33 @@
         }
       ]
     },
+    "Editor": {
+      "description": "Browser text assistance in `hmg` only. Each feature is opt-in.",
+      "properties": {
+        "autoCapitalize": {
+          "default": false,
+          "description": "When enabled, capitalize sentences in input methods that support it.",
+          "type": "boolean"
+        },
+        "autoComplete": {
+          "default": false,
+          "type": "boolean"
+        },
+        "autoCorrect": {
+          "default": false,
+          "type": "boolean"
+        },
+        "spellCheck": {
+          "default": false,
+          "type": "boolean"
+        },
+        "writingSuggestions": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "Encryption": {
       "description": "Message encryption. Designed in `docs/specs/message.md`, implemented in phase 6.",
       "properties": {
@@ -180,11 +207,21 @@
       ]
     },
     "Gui": {
-      "description": "The settings of the user interface. `hmg` reads all of them; the terminal UI of `hmc`\nreads all but `window`, and publish mode reads `language`.",
+      "description": "The settings of the user interface. `hmg` reads all of them; the terminal UI of `hmc`\nreads all but `window` and `editor`, and publish mode reads `language`.",
       "properties": {
         "displayMode": {
           "$ref": "#/$defs/DisplayMode",
           "default": "Auto"
+        },
+        "editor": {
+          "$ref": "#/$defs/Editor",
+          "default": {
+            "autoCapitalize": false,
+            "autoComplete": false,
+            "autoCorrect": false,
+            "spellCheck": false,
+            "writingSuggestions": false
+          }
         },
         "history": {
           "$ref": "#/$defs/History",
@@ -706,6 +743,13 @@
       "$ref": "#/$defs/Gui",
       "default": {
         "displayMode": "Auto",
+        "editor": {
+          "autoCapitalize": false,
+          "autoComplete": false,
+          "autoCorrect": false,
+          "spellCheck": false,
+          "writingSuggestions": false
+        },
         "history": {
           "maxMessagesPerTopic": 1000,
           "retentionDays": 30

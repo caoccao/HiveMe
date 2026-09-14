@@ -115,6 +115,32 @@ async function renderBroker() {
 }
 
 describe('the settings tab', () => {
+  it('orders the categories and gives Editor five unchecked rows', async () => {
+    render(<Config />);
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Appearance',
+      'Broker',
+      'Editor',
+      'History',
+      'Notifications',
+      'Topics',
+      'Update',
+      'Advanced',
+    ]);
+    await userEvent.click(screen.getByRole('tab', { name: 'Editor' }));
+    const boxes = screen.getAllByRole('checkbox');
+    expect(boxes).toHaveLength(5);
+    const labels = ['Autocomplete', 'Autocorrect', 'Automatic capitalization', 'Spellcheck', 'Writing suggestions'];
+    const rows = boxes.map((box, index) => {
+      expect(box).not.toBeChecked();
+      expect(box).toHaveAccessibleName(labels[index]);
+      return box.closest('label');
+    });
+    expect(new Set(rows).size).toBe(5);
+    expect(rows[0]?.parentElement?.children).toHaveLength(5);
+    expect(Service.setConfig).not.toHaveBeenCalled();
+  });
+
   it('fills the broker fields from the config', async () => {
     await renderBroker();
     expect(screen.getByLabelText('URL')).toHaveValue('abc123.s1.eu.hivemq.cloud:8883');

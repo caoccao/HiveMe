@@ -191,13 +191,14 @@ export interface KeyEntry {
 }
 /**
  * The settings of the user interface. `hmg` reads all of them; the terminal UI of `hmc`
- * reads all but `window`, and publish mode reads `language`.
+ * reads all but `window` and `editor`, and publish mode reads `language`.
  */
 export interface Gui {
   /**
    * Which color scheme the GUI follows.
    */
   displayMode?: ('Light' | 'Dark') | 'Auto';
+  editor?: Editor;
   history?: History;
   /**
    * A BCP 47 tag. Both applications support de, en-US, es, fr, it, ja, zh-CN, zh-HK,
@@ -229,6 +230,19 @@ export interface Gui {
     | 'Forest'
     | 'Emerald';
   window?: Window;
+}
+/**
+ * Browser text assistance in `hmg` only. Each feature is opt-in.
+ */
+export interface Editor {
+  /**
+   * When enabled, capitalize sentences in input methods that support it.
+   */
+  autoCapitalize?: boolean;
+  autoComplete?: boolean;
+  autoCorrect?: boolean;
+  spellCheck?: boolean;
+  writingSuggestions?: boolean;
 }
 /**
  * How much message history to keep.

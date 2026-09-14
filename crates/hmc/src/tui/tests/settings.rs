@@ -92,6 +92,28 @@ fn wheel(up: bool, column: u16, row: u16) -> Input {
 }
 
 #[test]
+fn category_navigation_uses_the_requested_order_without_the_gui_editor() {
+  let (_service, mut app, _receivers) = settings_on(configured("en-US"), Category::Appearance);
+  let order = [
+    "Appearance",
+    "Broker",
+    "History",
+    "Notifications",
+    "Topics",
+    "Update",
+    "Advanced",
+  ];
+  let screen = render(&mut app, 120, 40).join("\n");
+  assert!(!screen.contains("Editor"));
+  for (index, label) in order.into_iter().enumerate() {
+    assert_eq!(t(app.locale, app.settings.category.label_key()), label);
+    if index + 1 < order.len() {
+      press(&mut app, key(KeyCode::Down));
+    }
+  }
+}
+
+#[test]
 fn every_category_renders_in_every_size_and_language() {
   for (tag, locale) in [
     ("en-US", Locale::EnUs),
@@ -164,7 +186,7 @@ fn tab_enters_the_panel_from_the_list_and_goes_round_back_to_it() {
   press(&mut app, key(KeyCode::Down));
   assert_eq!(
     app.settings.category,
-    Category::Update,
+    Category::Notifications,
     "on the list, Down is the next category"
   );
   press(&mut app, key(KeyCode::Tab));

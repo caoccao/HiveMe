@@ -133,7 +133,7 @@ set of habits.
 | `NotificationSnackbar.tsx` driven by the store | the same | |
 | `lib/store.tsx` Zustand, `lib/service.ts` invoke wrappers, `lib/constants.ts`, `lib/format.ts` | the same | Components never call Tauri APIs directly. |
 | `src/i18n` with react-i18next and nine locales | the same structure and locale set | |
-| `Config.tsx` settings tab with a vertical category strip, `SectionHeader` sections, and `SettingRow` appearance controls | the same, with HiveMe's categories | Appearance (default), Broker, Topics, Notifications, History, Update, Advanced. |
+| `Config.tsx` settings tab with a vertical category strip, `SectionHeader` sections, and `SettingRow` appearance controls | the same, with HiveMe's categories | Appearance (default), Broker, Editor (`hmg` only), History, Notifications, Topics, Update, Advanced. |
 | `About.tsx` | the same | |
 | Update check against GitHub releases | the same, for `caoccao/HiveMe` | |
 | Three per-OS build workflows | the same, plus lint, test, and spec checks | |
@@ -260,6 +260,7 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Frontend localization in nine languages | [gui.md](gui.md#languages) | `src/i18n`, `src/components`, `src/lib/format.ts` | 6 | done |
 | Review 01 fixes: connection identity/retries, indexed history, responsive UIs, shared helpers and regression coverage | [config.md](config.md), [session.md](session.md), [gui.md](gui.md), [tui.md](tui.md) | workspace | Review 01 | done |
 | Startup recreates corrupt or incompatible development history while preserving config | [gui.md](gui.md#storage), [session.md](session.md) | `hiveme-core::storage` | Review 01 | done |
+| Editor settings in `hmg` control five input assistance options, all off by default; settings categories reordered in both apps | [gui.md](gui.md#settings), [config.md](config.md), [tui.md](tui.md#settings) | `src/App.tsx`, `src/components/Config.tsx`, `hiveme-core::config`, `crates/hmc/src/tui/settings` | Input behavior | done |
 
 The rows below are the phases of [the terminal UI plan](../plans/plan-terminal-ui.md).
 Their phase numbers are that plan's, not the initialization plan's.

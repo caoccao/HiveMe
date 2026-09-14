@@ -15,7 +15,7 @@
 * limitations under the License.
 */
 
-import { useEffect, useMemo, useState } from 'react';
+import { type InputHTMLAttributes, useEffect, useMemo, useState } from 'react';
 import { Box, CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import { listen } from '@tauri-apps/api/event';
 import * as Protocol from './lib/protocol';
@@ -24,6 +24,19 @@ import { useAppStore } from './lib/store';
 import { changeLanguage } from './i18n';
 import Layout from './components/Layout';
 import NotificationSnackbar from './components/NotificationSnackbar';
+
+// The lowercase HTML writing-suggestions attribute is not yet in React's DOM types.
+function textInputAttributes(
+  editor: Protocol.Gui['editor']
+): InputHTMLAttributes<HTMLInputElement> & { writingsuggestions: 'true' | 'false' } {
+  return {
+    autoComplete: editor?.autoComplete ? 'on' : 'off',
+    autoCorrect: editor?.autoCorrect ? 'on' : 'off',
+    autoCapitalize: editor?.autoCapitalize ? 'sentences' : 'none',
+    spellCheck: editor?.spellCheck ?? false,
+    writingsuggestions: editor?.writingSuggestions ? 'true' : 'false',
+  };
+}
 
 /** The twenty palettes of the reference project, keyed by `gui.theme`. */
 const PALETTES: Record<Protocol.Theme, { primary: string; secondary: string }> = {
@@ -58,6 +71,7 @@ function App() {
   const displayMode = useAppStore((state) => state.config?.gui?.displayMode ?? Protocol.DisplayMode.Auto);
   const selectedTheme = useAppStore((state) => state.config?.gui?.theme ?? Protocol.Theme.Ocean);
   const language = useAppStore((state) => state.config?.gui?.language);
+  const editor = useAppStore((state) => state.config?.gui?.editor);
   const initConfig = useAppStore((state) => state.initConfig);
   const initAbout = useAppStore((state) => state.initAbout);
   const initStatus = useAppStore((state) => state.initStatus);
@@ -126,6 +140,11 @@ function App() {
           MuiButton: { defaultProps: { size: 'small' } },
           MuiButtonGroup: { defaultProps: { size: 'small' } },
           MuiTextField: { defaultProps: { size: 'small' } },
+          MuiInputBase: {
+            defaultProps: {
+              slotProps: { input: textInputAttributes(editor) },
+            },
+          },
           MuiSelect: { defaultProps: { size: 'small' } },
           MuiFormControl: { defaultProps: { size: 'small' } },
           MuiCheckbox: { defaultProps: { size: 'small' } },
@@ -136,7 +155,7 @@ function App() {
           MuiTableCell: { styleOverrides: { root: { padding: '4px 8px', fontSize: '0.75rem' } } },
         },
       }),
-    [mode, selectedTheme]
+    [mode, selectedTheme, editor]
   );
 
   return (
