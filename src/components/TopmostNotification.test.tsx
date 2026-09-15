@@ -22,6 +22,7 @@ import { listen } from '@tauri-apps/api/event';
 import * as Service from '../lib/service';
 import type { TopmostSnapshot } from '../lib/protocol';
 import TopmostNotification from './TopmostNotification';
+import appIconUrl from '../../src-tauri/icons/128x128.png';
 
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
 vi.mock('../lib/service', () => ({
@@ -63,12 +64,24 @@ it('replaces the same dialog with the latest message and dismisses that revision
   expect(screen.queryByText('first')).not.toBeInTheDocument();
   expect(screen.queryByText('second')).not.toBeInTheDocument();
   expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeInTheDocument();
-  expect(document.querySelector('img')).toBeNull();
+  const appIcon = screen.getByRole('img', { name: 'HiveMe' });
+  expect(appIcon).toHaveAttribute('src', appIconUrl);
+  expect(document.querySelectorAll('img')).toHaveLength(1);
   await waitFor(() => expect(Service.readyTopmostNotification).toHaveBeenCalledWith(3));
   await userEvent.click(screen.getByRole('button', { name: 'Close' }));
   expect(Service.closeTopmostNotification).toHaveBeenLastCalledWith(3);
   fireEvent.keyDown(document, { key: 'Escape' });
   expect(Service.closeTopmostNotification).toHaveBeenCalledTimes(2);
+});
+
+it('renders the translated Close label supplied by each session without reloading the window', async () => {
+  vi.mocked(Service.getTopmostNotification).mockResolvedValue({ ...content(1, 'first'), closeLabel: 'Schließen' });
+  render(<TopmostNotification />);
+  expect(await screen.findByRole('button', { name: 'Schließen' })).toBeInTheDocument();
+  act(() => receive({ payload: { ...content(2, 'second'), closeLabel: '关闭' } }));
+  expect(screen.queryByRole('button', { name: 'Schließen' })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: '关闭' }));
+  expect(Service.closeTopmostNotification).toHaveBeenLastCalledWith(2);
 });
 
 it('does not replace a live update with an older initial read or out-of-order event', async () => {

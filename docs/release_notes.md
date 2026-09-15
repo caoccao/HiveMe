@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+* macOS notifications now use HiveMe's existing app identity and icon instead of a
+  separate notification-helper identity. Packaged builds reuse the signed HiveMe
+  bundle, and unbundled builds use that same identity for both hmg and hmc.
+
+* Fixed intermittent macOS OS notification failures while the topmost window was
+  updating. Delivery no longer mistakes a busy UI thread for a stopped event loop.
+
+* OS notifications and the topmost window now display the HiveMe app icon, including
+  when running unbundled binaries. The topmost Close button uses the saved language
+  instead of displaying a translation key, and follows language changes.
+* macOS notification hosts refresh their Launch Services registration before launch
+  so updated bundle metadata is available to the OS.
+
 * Rules now have separate OS Notification and Topmost Window checkboxes beside
   Title Template and Body Template. Both default to unchecked; Enabled stays checked.
 * Pause stops both notification channels and discards queued deliveries. Resuming

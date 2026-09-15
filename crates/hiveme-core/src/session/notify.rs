@@ -185,7 +185,7 @@ impl Notifier {
         level: notification.level.clone(),
         close_label: crate::i18n::t(
           *self.locale.read().unwrap_or_else(|poisoned| poisoned.into_inner()),
-          "common.close",
+          "tabs.close",
         ),
       };
       if !self.permits(permit) {
@@ -453,14 +453,38 @@ mod tests {
     let notifications = recorder.topmost.lock().unwrap();
     assert_eq!(notifications.len(), 3);
     assert_eq!(notifications.last().unwrap().body, "latest");
-    assert_eq!(
-      notifications.last().unwrap().close_label,
-      crate::i18n::t(crate::i18n::Locale::De, "common.close")
-    );
+    assert_eq!(notifications.last().unwrap().close_label, "Schließen");
     drop(notifications);
     notifier.set_paused(true);
     assert!(notifier.notify("hiveme", &error_from_elsewhere("paused")).is_none());
     assert_eq!(recorder.topmost.lock().unwrap().len(), 3);
+  }
+
+  #[test]
+  fn topmost_close_label_uses_the_saved_language_in_every_catalog_and_after_reload() {
+    let recorder = Arc::new(Channels::default());
+    let mut config = configured();
+    config.notifications.topmost_enabled = true;
+    for rule in &mut config.notifications.rules {
+      rule.topmost = true;
+    }
+    let notifier = Notifier::new(&config, recorder.clone());
+    for (language, expected) in [
+      ("de", "Schließen"),
+      ("en-US", "Close"),
+      ("es", "Cerrar"),
+      ("fr", "Fermer"),
+      ("it", "Chiudi"),
+      ("ja", "閉じる"),
+      ("zh-CN", "关闭"),
+      ("zh-HK", "關閉"),
+      ("zh-TW", "關閉"),
+    ] {
+      config.gui.language = language.to_owned();
+      notifier.reload(&config);
+      assert!(notifier.notify("hiveme", &error_from_elsewhere("message")).is_some());
+      assert_eq!(recorder.topmost.lock().unwrap().last().unwrap().close_label, expected);
+    }
   }
 
   #[test]

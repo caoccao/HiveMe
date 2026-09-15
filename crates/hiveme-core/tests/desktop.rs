@@ -23,6 +23,44 @@ use hiveme_core::desktop::DesktopToaster;
 use hiveme_core::session::{Toaster, TopmostNotification};
 
 #[test]
+#[ignore = "raises native OS notifications while updating the window; requires hmg and an explicit notification cache"]
+fn native_os_delivery_succeeds_while_the_topmost_window_is_updating() {
+  std::env::var_os("HIVEME_NOTIFICATION_DIR").expect("choose the notification cache explicitly");
+  let toaster = DesktopToaster::new();
+  // Warm up the host, so both workers exercise the same running process.
+  toaster
+    .show_topmost(&TopmostNotification {
+      title: "HiveMe concurrent notification test".into(),
+      body: "Preparing UI updates".into(),
+      level: hiveme_core::Level::Info,
+      close_label: "Close".into(),
+    })
+    .unwrap();
+  let start = std::sync::Barrier::new(2);
+  std::thread::scope(|scope| {
+    let ui = scope.spawn(|| {
+      start.wait();
+      for revision in 1..=24 {
+        toaster
+          .show_topmost(&TopmostNotification {
+            title: format!("HiveMe UI update {revision}"),
+            body: format!("Update {revision}: OS delivery must work while this window changes."),
+            level: hiveme_core::Level::Success,
+            close_label: "Close".into(),
+          })
+          .unwrap();
+      }
+    });
+    start.wait();
+    let results: Vec<_> = (1..=6)
+      .map(|number| toaster.show("HiveMe delivery test", &format!("OS notification {number} of 6")))
+      .collect();
+    ui.join().unwrap();
+    assert!(results.iter().all(Result::is_ok), "{results:?}");
+  });
+}
+
+#[test]
 #[ignore = "opens a native window; requires hmg and an explicitly isolated notification cache"]
 fn the_native_host_reuses_one_window_for_the_latest_message() {
   let directory = std::path::PathBuf::from(std::env::var_os("HIVEME_NOTIFICATION_DIR").expect("use a temporary cache"));
@@ -31,7 +69,7 @@ fn the_native_host_reuses_one_window_for_the_latest_message() {
     title: "HiveMe notification test".to_owned(),
     body: body.to_owned(),
     level: hiveme_core::Level::Success,
-    close_label: "Close".to_owned(),
+    close_label: hiveme_core::i18n::t(hiveme_core::i18n::Locale::De, "tabs.close"),
   };
   toaster.show_topmost(&content("First message")).unwrap();
   let endpoint = std::fs::read(directory.join("endpoint.json")).unwrap();

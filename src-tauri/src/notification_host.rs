@@ -173,11 +173,14 @@ fn show_system(title: &str, body: &str) -> Result<(), String> {
   if !mac_usernotifications::blocking::request_auth().map_err(|e| e.to_string())? {
     return Err("OS notification permission is denied; enable HiveMe in System Settings > Notifications".to_owned());
   }
-  mac_usernotifications::Notification::new()
+  let notification = mac_usernotifications::Notification::new()
     .title(title)
     .message(body)
-    .default_sound()
-    .send_blocking()
+    .default_sound();
+  // Schedule the request and wait only for OS acceptance. Notification::send_blocking
+  // first checks CFRunLoopIsWaiting, which is false whenever the UI is doing work
+  // even though Tauri is driving its event loop. That races with topmost rendering.
+  mac_usernotifications::blocking::send(notification)
     .map(|_| ())
     .map_err(|e| e.to_string())
 }

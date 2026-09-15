@@ -34,6 +34,8 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { listen } from '@tauri-apps/api/event';
 import type { TopmostSnapshot } from '../lib/protocol';
 import * as Service from '../lib/service';
+import { APP_NAME } from '../lib/constants';
+import appIconUrl from '../../src-tauri/icons/128x128.png';
 
 export default function TopmostNotification() {
   const [notification, setNotification] = useState<TopmostSnapshot | null>(null);
@@ -117,6 +119,7 @@ export default function TopmostNotification() {
       >
         <Stack spacing={1.25} sx={{ height: '100%' }}>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <Box component="img" src={appIconUrl} alt={APP_NAME} width={32} height={32} sx={{ flexShrink: 0 }} />
             {icon}
             <Typography id="notification-title" variant="h6" component="h1" noWrap title={notification?.title}>
               {notification?.title}

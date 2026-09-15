@@ -355,7 +355,9 @@ after resuming. Already-delivered OS banners and topmost content stay until dism
 Both channels use the rule's rendered title and body. OS notification clicks do not
 select a topic. Topmost notifications follow the sibling BatchMkvMerge design: a
 440 × 240 logical-pixel frameless, nonresizable window, always on top and omitted
-from the taskbar, with a severity icon, title, scrollable body, and Close button.
+from the taskbar, with the HiveMe app icon, severity icon, title, scrollable body,
+and Close button. The session resolves the Close label from the saved language's
+`tabs.close` translation for each notification, including after a language change.
 Escape also dismisses it. It follows the OS light/dark mode and appears at the
 mathematical center of its screen. Rust reads the monitor's physical size and
 desktop origin and the window's physical outer size, then sets its physical
@@ -397,22 +399,44 @@ Both apps use `hiveme_core::desktop::DesktopToaster`, which returns native deliv
 errors instead of dropping them inside the desktop notification plugin.
 
 - **Windows:** register `HKCU\SOFTWARE\Classes\AppUserModelId\HiveMe` and send
-  through `tauri-winrt-notification` under that identity. Registration failures are
+  through `tauri-winrt-notification` under that identity, with the HiveMe PNG icon
+  supplied both to the identity and each toast. Registration failures are
   reported instead of silently using the console host's identity.
 - **Linux:** send through `notify-rust` over D-Bus, escaping body markup so plain MQTT
-  text remains text. A running notification daemon is required; a delivery failure is
-  logged while the message remains in history.
+  text remains text, with an explicit HiveMe PNG icon path. Windows and Linux cache
+  the embedded icon so unbundled binaries also show it. A running notification daemon
+  is required; a delivery failure is logged while the message remains in history.
 - **macOS:** the shared host uses `UNUserNotificationCenter` through
   `mac-usernotifications`, requests actual authorization, and supplies foreground
-  presentation support. This replaces the legacy API and the plugin's unconditional
+  presentation support. Its delivery worker uses `blocking::send`, which waits for
+  OS acceptance without probing whether the UI run loop is currently waiting.
+  A busy UI thread is still running; topmost rendering must not reject OS delivery.
+  This replaces the legacy API and the plugin's unconditional
   permission result. Denied permission is reported with the System Settings location.
+  Both applications deliver under HiveMe's existing `com.caoccao.hiveme` identity,
+  so the OS uses HiveMe's app icon and notification settings. As in `jenkins-buddy`,
+  the sending process belongs to the application, rather than a separately identified
+  notification app. A packaged installation starts its existing `Contents/MacOS/hmg`
+  with `--notification-host`, preserving the app's signature and resources. Symlinks
+  are resolved before detecting the bundle.
   macOS requires a signed application bundle, so unbundled hmg and hmc use a cached,
-  ad-hoc-signed accessory bundle (`com.caoccao.hiveme.notifications`, displayed as
-  HiveMe) containing the already-built hmg executable. The bundle is refreshed when
-  that executable changes. Config and history are never opened by this host.
+  ad-hoc-signed accessory bundle with the same `com.caoccao.hiveme` identity,
+  containing the already-built hmg executable and the HiveMe ICNS resource declared
+  through `CFBundleIconFile`. This fallback is refreshed and signed when the
+  executable, icon, or bundle metadata changes or a resource is missing. Config and
+  history are never opened by this host. Earlier development builds used a separate
+  helper identity; macOS may retain that unused entry in Notification settings.
+  HiveMe does not modify the OS notification preferences to remove it.
+  Before launching, `LSRegisterURL` forces Launch Services to refresh the bundle's
+  registration, including on cache hits. Updating files inside the bundle does not
+  change the bundle directory's timestamp, so automatic registration can otherwise
+  retain the old generic icon. Like the sibling `jenkins-buddy` macOS application,
+  notifications use `UNUserNotificationCenter` and the registered application icon;
+  the icon is not supplied as a notification attachment.
 
 The macOS API requirements follow [Apple's authorization documentation](https://developer.apple.com/documentation/usernotifications/asking-permission-to-use-notifications)
 and the [native wrapper's bundle requirements](https://docs.rs/mac-usernotifications/0.3.1/mac_usernotifications/).
+Registration refresh follows [Apple's Launch Services guide](https://developer.apple.com/library/archive/documentation/Carbon/Conceptual/LaunchServicesConcepts/LSCConcepts/LSCConcepts.html).
 OS settings such as denied permission or Do Not Disturb still govern OS banners.
 
 The manual checklist per OS:
@@ -430,6 +454,9 @@ The manual checklist per OS:
    topmost notifications, send a burst, and verify there is one window with the last
    message. Repeat with both hmg and hmc receiving. Close it and confirm the next
    matching message reopens the same window. Disable both and see neither channel.
+   Check the HiveMe app icon in both notification surfaces, including unbundled
+   builds. Change the saved language and verify the next topmost notification uses
+   the translated Close button, which still dismisses the window.
 5. Publish from a composer's current MQTT session and see no notification in that
    session. With hmg and hmc running on the same config, verify that the other
    session runs the rules and raises both enabled channels. Repeat with two hmc

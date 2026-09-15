@@ -65,7 +65,7 @@ applications.
 | `crates/hmc/src/tui/about.rs` | The About tab: the gradient letters, the cards and the links, and the table |
 | `crates/hmc/src/tui/widgets/` | The one-line text input, the multi-line editor, `truncate`, and `wrap`. The select popup, checkbox, radio row, number field, and editable table are rows of `settings/form.rs`, the one place that uses them |
 | `crates/hmc/src/tui/clipboard.rs` | `arboard`, then the OSC 52 escape sequence |
-| `crates/hmc/src/tui/notify.rs` | The `Toaster` of [session.md](session.md#notifications): `notify-rust`, under the bundle identifier of `hmg` on macOS, or the Windows toast crate |
+| `crates/hmc/src/tui/notify.rs` | The shared `DesktopToaster` of [session.md](session.md#notifications), using HiveMe's application identity and notification host on macOS |
 | `crates/hmc/src/tui/open.rs` | Opens URLs and the config directory |
 | `crates/hiveme-core/src/i18n/` | Locale resolution, the catalogs, plural rules, formatting; see [Languages](#languages). Built in phase 2 |
 | `crates/hmc/src/tui/tests/` | The in-process tests: `mod.rs` holds the scripted session and the shell, `messages.rs` the Messages tab, `settings.rs` the Settings and About tabs, `performance.rs` a large history and a terminal that changes size |
@@ -620,9 +620,14 @@ notifications, and there is no device-based checkbox.
 
 Both applications use `hiveme_core::desktop::DesktopToaster`: native D-Bus notifications
 on Linux, the registered HiveMe toast identity on Windows, and the modern macOS
-notification API in a signed helper bundle. Topmost notifications use the single
+notification API under HiveMe's `com.caoccao.hiveme` application identity. Packaged
+hmc reuses its sibling hmg's signed application bundle; unbundled hmc uses a cached
+bundle with the same identity and HiveMe icon. Topmost notifications use the single
 `hmg --notification-host` window on every desktop OS. `hmg` must be installed beside
 `hmc` or on PATH; both executables ship together. The host opens no config or database.
+OS notifications and the topmost window display the HiveMe app icon. Each topmost
+notification carries its Close label translated into the session's saved language,
+so changing languages also works when the same host serves both applications.
 See [GUI platform notes](gui.md#platform-notes) for authorization, failure handling,
 and the per-OS manual checklist, which also applies to interactive hmc.
 

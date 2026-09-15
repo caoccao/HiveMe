@@ -12,7 +12,7 @@ repository.workspace = true
 test-support = ["session", "dep:testcontainers", "dep:tempfile"]
 default = []
 # Native desktop delivery and the shared topmost notification host.
-desktop = ["session", "dep:directories", "dep:notify-rust", "dep:tauri-winrt-notification"]
+desktop = ["session", "dep:directories", "dep:notify-rust", "dep:tauri-winrt-notification", "dep:plist"]
 # The message history; pulls in the bundled SQLite library.
 storage = ["dep:rusqlite"]
 # The backend both applications run on: broker connection, history, notification
@@ -61,3 +61,6 @@ tauri-winrt-notification = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 notify-rust = { workspace = true, optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+plist = { workspace = true, optional = true }

@@ -277,6 +277,8 @@ hmc sharing the same config. There is no device-based notification option.
 The session asks its `Toaster` to show content through `show(title, body)` for OS
 notifications and `show_topmost(TopmostNotification)` for the topmost window.
 `TopmostNotification` carries `title`, `body`, `level`, and the translated `closeLabel`.
+The label uses `tabs.close` in the saved `gui.language`; reloading settings updates
+the label on subsequent notifications without restarting the shared host.
 Both applications use the same `hiveme_core::desktop::DesktopToaster`; platform details
 and the single host are described in [gui.md](gui.md#notifications).
 
