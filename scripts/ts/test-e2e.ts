@@ -450,15 +450,23 @@ try {
   await expectMessageMetadata("Nested child", "ci", true);
   const buildExpanded = () => execute<string>(`return Array.from(document.querySelectorAll('[role="treeitem"]'))
     .find(e => e.querySelector(':scope > .MuiTreeItem-content .MuiTypography-root')?.textContent === 'build')?.getAttribute('aria-expanded');`);
+  // The group mounts and unmounts through a Collapse, whose children cannot be clicked mid-animation.
+  const buildGroupSettled = (expanded: boolean) => until(`build group ${expanded ? "expanded" : "collapsed"}`, () => execute(`
+    const item = Array.from(document.querySelectorAll('[role="treeitem"]'))
+      .find(e => e.querySelector(':scope > .MuiTreeItem-content .MuiTypography-root')?.textContent === 'build');
+    const group = item?.querySelector(':scope > [role="group"]');
+    return arguments[0] ? group?.classList.contains('MuiCollapse-entered') : item && !group;`, [expanded]));
   assert.equal(await buildExpanded(), "true", "Selecting the parent must not collapse its children.");
   const buildIcon = await find("//*[@role='treeitem'][./*[contains(@class,'MuiTreeItem-content')]//*[normalize-space(.)='build']]/*[contains(@class,'MuiTreeItem-content')]/*[contains(@class,'MuiTreeItem-iconContainer')]", "xpath");
   await click(buildIcon);
   assert.equal(await buildExpanded(), "false");
+  await buildGroupSettled(false);
   await click(await find("//*[@role='treeitem']/*[contains(@class,'MuiTreeItem-content')]//*[normalize-space(.)='build']", "xpath"));
   assert.equal(await buildExpanded(), "false", "Selecting the parent must not expand its children.");
   await expectVisible(["Nested child"]);
   await click(buildIcon);
   assert.equal(await buildExpanded(), "true");
+  await buildGroupSettled(true);
   assert.deepEqual((await rows("hiveme/build")).map((row) => row.topic), ["hiveme/build/ci"]);
   await click(await find("//*[@role='treeitem']/*[contains(@class,'MuiTreeItem-content')]//*[normalize-space(.)='ci']", "xpath"));
   await expectMessageMetadata("Nested child", "", true);
