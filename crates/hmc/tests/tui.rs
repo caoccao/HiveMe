@@ -37,7 +37,7 @@ use std::time::{Duration, Instant};
 
 use assert_cmd::Command;
 use hiveme_core::config::{Config, DATABASE_FILE_NAME};
-use hiveme_core::i18n::{Locale, t};
+use hiveme_core::i18n::{Locale, t, t_count};
 use hiveme_core::session::{SHUTDOWN_TIMEOUT, Session, SessionApp};
 use hiveme_core::storage::Store;
 use portable_pty::{Child, CommandBuilder, ExitStatus, MasterPty, PtySize, native_pty_system};
@@ -425,6 +425,30 @@ impl Terminal {
       .await;
   }
 
+  /// Waits until the terminal UI is connected and the broker has acknowledged its
+  /// subscription.
+  ///
+  /// The toolbar offers Disconnect from the moment a connection starts, before the
+  /// broker has answered, and a message published before the SUBACK has no subscriber
+  /// to be delivered to. The status bar reads `connected` and counts the subscription
+  /// only once the broker has acknowledged it, so that is what a test that publishes
+  /// waits for.
+  async fn wait_until_subscribed(&mut self) {
+    let en = |key: &str| t(Locale::EnUs, key);
+    self
+      .wait_for_text(&format!("[F2 {}]", en("tui.toolbar.disconnect")))
+      .await;
+    let connected = en("footer.state.Connected");
+    let subscription = t_count(Locale::EnUs, "footer.subscriptions", 1);
+    self
+      .wait_for("the status bar counting an acknowledged subscription", |screen| {
+        screen.rows(0, COLUMNS).last().is_some_and(|footer| {
+          footer.split_whitespace().any(|word| word == connected) && footer.contains(&subscription)
+        })
+      })
+      .await;
+  }
+
   /// Waits for the process to end.
   async fn wait_for_exit(&mut self) -> ExitStatus {
     let deadline = Instant::now() + EXIT_TIMEOUT;
@@ -581,10 +605,8 @@ fn the_terminal_ui_meets_a_real_broker_and_ends_its_session_on_ctrl_q() {
       let en = |key: &str| t(Locale::EnUs, key);
       let mut terminal = fixture.open_terminal_ui();
 
-      // The frame comes up and connects on its own.
-      terminal
-        .wait_for_text(&format!("[F2 {}]", en("tui.toolbar.disconnect")))
-        .await;
+      // The frame comes up, connects, and subscribes on its own.
+      terminal.wait_until_subscribed().await;
       let contents = terminal.contents();
       assert!(
         contents.starts_with(&format!(" HiveMe v{}", hiveme_core::VERSION)),
@@ -661,9 +683,7 @@ fn closing_the_terminal_ends_the_broker_session_all_the_same() {
     "closing_the_terminal_ends_the_broker_session_all_the_same",
     |fixture| async move {
       let mut terminal = fixture.open_terminal_ui();
-      terminal
-        .wait_for_text(&format!("[F2 {}]", t(Locale::EnUs, "tui.toolbar.disconnect")))
-        .await;
+      terminal.wait_until_subscribed().await;
 
       // SIGHUP on Unix, CTRL_CLOSE_EVENT on Windows.
       tokio::task::block_in_place(|| terminal.close());
@@ -697,9 +717,7 @@ use hiveme_core::test_support::Recorder;
 fn hmg_and_the_terminal_ui_share_one_installation() {
   with_broker("hmg_and_the_terminal_ui_share_one_installation", |fixture| async move {
     let mut terminal = fixture.open_terminal_ui();
-    terminal
-      .wait_for_text(&format!("[F2 {}]", t(Locale::EnUs, "tui.toolbar.disconnect")))
-      .await;
+    terminal.wait_until_subscribed().await;
     let recorder = Arc::new(Recorder::default());
     let gui =
       Session::open(Some(&fixture.config_path), SessionApp::Gui, recorder.clone()).expect("hmg's session opens");

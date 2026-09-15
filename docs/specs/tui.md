@@ -814,8 +814,11 @@ bundles: every installer already carries `hmc` beside `hmg`.
   from `portable-pty`, openpty on Linux and macOS and ConPTY on Windows, against the
   Docker broker of `publish.rs`. `vt100` reads what `hmc` writes back into a screen, and
   the test answers the cursor position and device attribute queries a terminal answers.
-  One run waits for the frame to connect; sees a message that one-shot `hmc` published
-  as another device appear under that device's name; types a message, presses `Enter`,
+  Every run waits for the status bar to read `connected` with one subscription, which
+  the session reports only once the broker has acknowledged the subscription; the
+  Disconnect tool appears as soon as a connection starts, and a message published
+  before then has no subscriber to reach. One run sees a message that one-shot `hmc`
+  published as another device appear under that device's name; types a message, presses `Enter`,
   and finds the bubble above an empty message box and one outgoing row in `HiveMe.db`;
   changes the language with `F10`, `Tab`, and the Language select, and finds the German
   toolbar and `gui.language` saved; and leaves with `Ctrl+Q`: exit 0, the frame and every
