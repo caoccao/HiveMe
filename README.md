@@ -19,109 +19,141 @@ and Windows.
 > [docs/installation.md](docs/installation.md) and the remaining work in
 > [docs/todos.md](docs/todos.md).
 
+## How it works
+
+![HiveMe data flow: hmc and hmg each keep an MQTT session with HiveMQ Cloud, and share one config and one local cache on the machine](docs/images/data-flow.svg)
+
+* **One cluster in the middle.** `hmc` and `hmg` each open their own MQTT session with
+  your HiveMQ Cloud cluster, under their own client ID, so both can be connected at
+  once. Whatever one publishes, the other receives.
+* **Topics live under `hiveme`.** `hmc "Build finished"` goes to `hiveme`, and
+  `hmc -t build/ci "…"` goes to `hiveme/build/ci`. Every topic shows up in the topic
+  tree on its own.
+* **One config, one cache.** Both read and write `HiveMe.json`, so the cluster,
+  subscriptions, and notification rules are set up once. `hmg` and the terminal UI keep
+  their message history in `HiveMe.db`, so a restart loses nothing and both show the
+  same topics.
+* **Rules decide what pops up.** A rule matches a topic filter and a level (`info`,
+  `success`, `warn`, or `error`) and raises an OS notification, a topmost window, or
+  both.
+
 ## Quick start
 
-From nothing to a desktop notification. Steps 1 and 2 happen once, in a browser.
+From nothing to your first notification in about ten minutes. All you need is a free
+HiveMQ Cloud account.
 
-### 1. Create a cluster
+### 1. Create a free cluster
 
-Sign up at [hivemq.com](https://www.hivemq.com/) and create a **Serverless** cluster,
-which is free and is the plan HiveMe supports today. On the cluster's **Overview** tab,
-note the hostname; the TLS MQTT port is 8883.
+1. Sign up at [hivemq.com](https://www.hivemq.com/) and create a **Serverless**
+   cluster. It is free, and it is the plan HiveMe supports today.
+2. On the cluster's **Overview** tab, copy the **TLS MQTT URL**. It looks like
+   `abc123.s1.eu.hivemq.cloud:8883`.
+3. On the **Access Management** tab, open **Credentials**, choose **Edit**, then
+   **Add Credentials**, and save a username and a password.
 
-### 2. Create credentials
+> [!TIP]
+> New credentials can take up to a minute to become active. If the first connection
+> is refused, wait a minute and press **Connect** on the toolbar.
 
-On the cluster's **Access Management** tab, open **Credentials**, choose **Edit**, then
-**Add Credentials**, and save a username and a password. On Serverless the default
-permission set is publish and subscribe on everything, which is what HiveMe needs.
+### 2. Install HiveMe
 
-Credentials take up to a minute to become active. A connection refused straight after
-creating them usually just means waiting.
+Download the installer for your platform from the
+[Releases](https://github.com/caoccao/HiveMe/releases) page. Every installer contains
+both `hmg` and `hmc`. On Linux, the deb and rpm packages put `hmc` on your `PATH`; on
+macOS and Windows, [docs/installation.md](docs/installation.md#what-is-published) says
+where to find it.
 
-### 3. Install, or build
-
-Take the artifacts for your platform from the
-[Releases](https://github.com/caoccao/HiveMe/releases) page and follow
-[docs/installation.md](docs/installation.md). To build instead:
+<details>
+<summary>Build from source instead</summary>
 
 ```sh
 pnpm install
 cargo build -r -p hmc  # the CLI, at target/release/hmc
-pnpm tauri build       # the bundle for this OS, carrying both, under target/release/bundle/
+pnpm tauri build       # the installer for this OS, with both apps, under target/release/bundle/
 ```
 
-[docs/development.md](docs/development.md#commands) has the rest of the commands, and
-what each one is for.
+[docs/development.md](docs/development.md#commands) lists every command.
 
-### 4. Tell HiveMe about the cluster
+</details>
 
-Start HiveMe, press **F10** for the Settings tab, select **Broker**, and fill in:
+### 3. Connect to your cluster
 
-| Field | Value |
-|-------|-------|
-| Protocol | TLS MQTT, which is what it starts on |
-| URL | the **TLS MQTT URL** from the console, copied as it is shown |
-| Username | the username from step 2 |
-| Password | the password from step 2 |
+Pick the app you want to start with. Both save automatically when you pause typing, and
+both use the same config file, so you only do this once per machine.
 
-The console shows that URL as `<your-cluster>.s1.eu.hivemq.cloud:8883`, with no scheme
-in front of it, and that is exactly what goes in the box. The protocol list beside it is
-where `mqtts://` comes from, so there is nothing to add, remove, or retype.
+**On the desktop, with `hmg`:** open HiveMe, press **F10** for **Settings**, choose
+**Broker**, and fill in:
 
-Changes save automatically when you pause typing. The status bar at the bottom turns
-to **connected**. There is nothing to configure for TLS: a HiveMQ Cloud certificate
-chains to an authority your operating system already trusts.
+| Field | What to enter |
+|-------|---------------|
+| Protocol | Leave it on **TLS MQTT** |
+| URL | The TLS MQTT URL from step 1, pasted as it is |
+| Username | The username from step 1 |
+| Password | The password from step 1 |
 
-**Or stay in the terminal.** Run `hmc` with nothing after it. The first time, with no
-config yet, it opens on the same Broker fields in its own Settings tab, with the cursor
-in the URL box: paste the URL, press **Tab** to reach the username and again for the
-password, and type them. It saves when you pause, and the status bar at the bottom turns
-to **connected**. Its Messages tab, **Alt+1**, is the same tree and chat view as the
-GUI's; **?** lists every key, and **Ctrl+Q** quits. The terminal UI writes the config
-file the CLI reads, so on this machine step 5 is already done.
+**In a terminal, with `hmc`:** run `hmc` with nothing after it. The first time, it opens
+on the same Broker fields with the cursor in **URL**. Paste the URL, press **Tab** for
+the username and again for the password.
 
-### 5. Tell the CLI, without retyping any of it
+Either way, the status bar at the bottom turns to **connected**. There is nothing to set
+up for TLS, and no `mqtts://` to type.
 
-In that same Broker section, press **Copy CLI setup**, paste the copied command into
-your terminal, and run it. The clipboard already contains `hmc --init` and the quoted
-JSON, so there is nothing to add. The terminal UI has the same button, for setting up
-`hmc` on another machine.
+> [!TIP]
+> In the terminal UI, **Alt+1** opens Messages, **F10** opens Settings, **?** lists
+> every key, and **Ctrl+Q** quits.
 
-Both applications share the same config file and Rust config implementation. The
-command reports whether the config was unchanged, updated, or created. Matching
-settings leave the file untouched; updates preserve all other values. A new file gets
-the complete shared defaults, including GUI settings.
+### 4. Set up the CLI
 
-The string carries the password in plain text, so paste it and do not commit it or
-leave it in a shared shell history.
+Skip this step if you connected with `hmc` in step 3. It is already set up.
 
-Installing HiveMe installed `hmc` too, beside `hmg`. On Linux that is `/usr/bin/hmc`
-and a shell finds it already; elsewhere it is in the install folder, and
-[docs/installation.md](docs/installation.md#what-is-published) says where.
+In `hmg`, under **Settings** > **Broker**, press **Copy CLI setup**. Paste the command
+into a terminal and run it. It starts with `hmc --init` and carries everything `hmc`
+needs, and it replies whether the config was created, updated, or already up to date.
 
-### 6. Send a message
+Use the same button to set up `hmc` on another machine, such as a build server.
+
+> [!WARNING]
+> The copied command contains your password in plain text. Paste it straight into a
+> terminal. Do not commit it, or share it.
+
+### 5. Send your first message
 
 ```sh
-hmc "Build finished"                  # info payload on hiveme
-hmc --level warn "Disk at 87%"         # warn payload on hiveme
-hmc --level error "Build failed"       # error payload on hiveme
-hmc -t build/ci "Custom topic"         # info payload on hiveme/build/ci
+hmc "Build finished"                          # info, on hiveme
+hmc --level success "Deploy complete"         # success, on hiveme
+hmc --level warn "Disk at 87%"                # warn, on hiveme
+hmc --level error -t build/ci "Tests failed"  # error, on hiveme/build/ci
 ```
 
-The CLI confirms each successful publish with `Message sent to <topic>.`.
+`hmc` replies `Message sent to <topic>.`, and the message appears right away in `hmg`
+or the terminal UI, under its topic in the tree. To reply from either app, type in
+the box at the bottom and press **Enter**.
 
-Each one appears in the GUI, or in the terminal UI, within a moment, under its topic in
-the tree on the left, and raises a desktop notification: the three built-in rules match
-the payload levels `info`, `warn`, and `error`. Message boxes use regular, warning, and
-error colors. `hiveme` is always visible, selected, and highlighted when either starts,
-even without history or when the CLI default is customized. Type in the box at the
-bottom to publish back to it.
+### 6. Turn on notifications
 
-That is the whole loop. Put `hmc` at the end of a long build, a backup script, or a
-cron job, and the machine tells you when it is done.
+Notifications are off until you choose which messages deserve one. Open **Settings** >
+**Notifications**:
 
-When something does not work, [docs/development.md](docs/development.md#troubleshooting)
-lists what usually goes wrong and what to do about it.
+1. Keep **Raise OS Notifications** checked. Also check **Raise Topmost Window
+   Notifications** if you want a window that stays above the others.
+2. In each rule you care about, such as `warn` and `error`, check **OS Notification**,
+   **Topmost Window**, or both.
+
+Send `hmc --level error "Tests failed"` again, and your desktop tells you.
+
+### Put it to work
+
+Add `hmc` to the end of anything that takes a while:
+
+```sh
+make test && hmc --level success "Tests passed" || hmc --level error "Tests failed"
+```
+
+A build, a backup, or a cron job now tells you when it is done, on every machine
+running HiveMe.
+
+Something not working? [docs/development.md](docs/development.md#troubleshooting) lists
+the usual causes and fixes.
 
 ## Documentation
 
