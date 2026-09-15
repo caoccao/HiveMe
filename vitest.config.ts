@@ -28,5 +28,10 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     restoreMocks: true,
+    // The component tests mount MUI in jsdom and drive it with user-event, which is CPU
+    // bound. Every file runs in its own worker at once, and on a shared CI runner a test
+    // that takes one second alone can take five, the Vitest default. A hung test still
+    // fails, only later.
+    testTimeout: 20_000,
   },
 });

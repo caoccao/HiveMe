@@ -208,7 +208,7 @@ describe('the application window', () => {
     }
   );
 
-  it('applies Editor switches independently, saves them, and restores them on startup', async () => {
+  describe('the Editor switches', () => {
     const options = [
       ['autoComplete', 'autocomplete', 'on', 'off'],
       ['autoCorrect', 'autocorrect', 'on', 'off'],
@@ -216,8 +216,6 @@ describe('the application window', () => {
       ['spellCheck', 'spellcheck', 'true', 'false'],
       ['writingSuggestions', 'writingsuggestions', 'true', 'false'],
     ] as const;
-    const view = render(<App />);
-    await waitFor(() => expect(useAppStore.getState().config).not.toBeNull());
     const checkInputs = (enabled: readonly string[]) => {
       const inputs = document.querySelectorAll(
         'input:not([type="checkbox"]):not([type="radio"]):not([aria-hidden="true"]), textarea:not([aria-hidden="true"])'
@@ -229,41 +227,55 @@ describe('the application window', () => {
         }
       }
     };
-    await userEvent.click(screen.getByLabelText('Settings (F10)'));
-    await userEvent.click(screen.getByRole('tab', { name: 'Editor' }));
-    for (const [key] of options) {
+    const flushConfig = () =>
+      act(async () => {
+        await useAppStore.getState().flushConfig();
+      });
+    const openEditor = async () => {
+      await userEvent.click(screen.getByLabelText('Settings (F10)'));
+      await userEvent.click(screen.getByRole('tab', { name: 'Editor' }));
+    };
+
+    // One case per switch rather than one loop over all five: each pass mounts the
+    // whole window and a second settings panel, which is more than a shared CI runner
+    // reliably finishes inside one test's time budget.
+    it.each(options.map(([key]) => key))('applies %s independently and saves it', async (key) => {
+      render(<App />);
+      await waitFor(() => expect(useAppStore.getState().config).not.toBeNull());
+      await openEditor();
+
       await userEvent.click(screen.getByRole('checkbox', { name: i18n.t(`settings.${key}`) }));
       checkInputs([key]);
       expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(1);
-      await act(async () => {
-        await useAppStore.getState().flushConfig();
-      });
+      await flushConfig();
       expect(backendConfig.gui?.editor?.[key]).toBe(true);
       await userEvent.click(screen.getByRole('tab', { name: 'Broker' }));
       checkInputs([key]); // Newly mounted settings fields use the same policy.
+
       await userEvent.click(screen.getByRole('tab', { name: 'Editor' }));
       await userEvent.click(screen.getByRole('checkbox', { name: i18n.t(`settings.${key}`) }));
       checkInputs([]);
-    }
-    await act(async () => {
-      await useAppStore.getState().flushConfig();
+      await flushConfig();
+      expect(backendConfig.gui?.editor?.[key]).toBe(false);
     });
-    for (const [key] of options) expect(backendConfig.gui?.editor?.[key]).toBe(false);
 
-    for (const [key] of options) {
-      await userEvent.click(screen.getByRole('checkbox', { name: i18n.t(`settings.${key}`) }));
-    }
-    await act(async () => {
-      await useAppStore.getState().flushConfig();
+    it('restores every switch on startup', async () => {
+      const view = render(<App />);
+      await waitFor(() => expect(useAppStore.getState().config).not.toBeNull());
+      await openEditor();
+      for (const [key] of options) {
+        await userEvent.click(screen.getByRole('checkbox', { name: i18n.t(`settings.${key}`) }));
+      }
+      await flushConfig();
+      view.unmount();
+
+      useAppStore.setState({ config: null, tabSettingsStatus: Protocol.ControlStatus.Hidden });
+      render(<App />);
+      await waitFor(() => expect(useAppStore.getState().config?.gui?.editor?.writingSuggestions).toBe(true));
+      checkInputs(options.map(([key]) => key));
+      await openEditor();
+      expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(5);
     });
-    view.unmount();
-    useAppStore.setState({ config: null, tabSettingsStatus: Protocol.ControlStatus.Hidden });
-    render(<App />);
-    await waitFor(() => expect(useAppStore.getState().config?.gui?.editor?.writingSuggestions).toBe(true));
-    checkInputs(options.map(([key]) => key));
-    await userEvent.click(screen.getByLabelText('Settings (F10)'));
-    await userEvent.click(screen.getByRole('tab', { name: 'Editor' }));
-    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(5);
   });
 
   it.each(Protocol.LANGUAGES)('loads the saved %s language throughout the window', async (language) => {
