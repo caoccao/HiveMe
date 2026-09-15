@@ -281,7 +281,7 @@ mod tests {
   #[test]
   fn every_level_uses_the_same_default_or_custom_topic() {
     let config = config();
-    for level in ["debug", "info", "success", "warn", "error"] {
+    for level in ["info", "success", "warn", "error"] {
       for (arguments, expected) in [
         (vec!["--level", level, "hello"], "hiveme"),
         (

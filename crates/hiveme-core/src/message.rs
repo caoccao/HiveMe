@@ -56,7 +56,6 @@ fn default_kind() -> String {
 /// makes a message unreadable.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub enum Level {
-  Debug,
   #[default]
   Info,
   Success,
@@ -70,7 +69,6 @@ impl Level {
   /// The wire form of this level.
   pub fn as_str(&self) -> &str {
     match self {
-      Self::Debug => "debug",
       Self::Info => "info",
       Self::Success => "success",
       Self::Warn => "warn",
@@ -82,7 +80,6 @@ impl Level {
   /// Reads a level from its wire form. An unrecognized value becomes [`Level::Other`].
   pub fn parse(raw: &str) -> Self {
     match raw.to_lowercase().as_str() {
-      "debug" => Self::Debug,
       "info" => Self::Info,
       "success" => Self::Success,
       "warn" => Self::Warn,
@@ -102,8 +99,8 @@ impl Level {
   }
 
   /// Every level this build knows, in display order.
-  pub const fn known() -> [Self; 5] {
-    [Self::Debug, Self::Info, Self::Success, Self::Warn, Self::Error]
+  pub const fn known() -> [Self; 4] {
+    [Self::Info, Self::Success, Self::Warn, Self::Error]
   }
 }
 
@@ -140,7 +137,7 @@ impl schemars::JsonSchema for Level {
     schemars::json_schema!({
       "type": "string",
       "description": "Message severity, normalized to lowercase. An open enum: a value outside the examples is preserved in lowercase and displayed as `info`.",
-      "examples": ["debug", "info", "success", "warn", "error"],
+      "examples": ["info", "success", "warn", "error"],
       "default": "info",
     })
   }

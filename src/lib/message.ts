@@ -183,7 +183,6 @@ export function senderLabel(sender: Sender | null): string {
 export function displayedLevel(level: string | null | undefined): Level {
   const normalized = level?.toLowerCase();
   switch (normalized) {
-    case Level.Debug:
     case Level.Info:
     case Level.Success:
     case Level.Warn:
@@ -198,11 +197,7 @@ export function displayedLevel(level: string | null | undefined): Level {
 export function isKnownLevel(level: string | null | undefined): boolean {
   const normalized = level?.toLowerCase();
   return (
-    normalized === Level.Debug ||
-    normalized === Level.Info ||
-    normalized === Level.Success ||
-    normalized === Level.Warn ||
-    normalized === Level.Error
+    normalized === Level.Info || normalized === Level.Success || normalized === Level.Warn || normalized === Level.Error
   );
 }
 

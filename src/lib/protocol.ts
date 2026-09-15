@@ -158,14 +158,13 @@ export interface UpdateCheckResult {
 
 /** Message severity, as it travels in the envelope. */
 export enum Level {
-  Debug = 'debug',
   Info = 'info',
   Success = 'success',
   Warn = 'warn',
   Error = 'error',
 }
 
-export const LEVELS: Level[] = [Level.Debug, Level.Info, Level.Success, Level.Warn, Level.Error];
+export const LEVELS: Level[] = [Level.Info, Level.Success, Level.Warn, Level.Error];
 
 /** Which color scheme the GUI follows. */
 export enum DisplayMode {

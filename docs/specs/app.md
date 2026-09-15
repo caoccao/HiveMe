@@ -240,7 +240,7 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Backend commands and events | [gui.md](gui.md#ipc) | `src-tauri` | 4.3 | done |
 | Payload levels independent of MQTT topics; message-box severity colors | [gui.md](gui.md#message-view), [cli.md](cli.md#the-message) | `hiveme-core::rules`, `crates/hmc`, `src/components/MessageView.tsx` | 4.4 | done |
 | Success level in shared messages, CLI publishing, notification-rule choices, and MUI success colors | [message.md](message.md#payload), [gui.md](gui.md#message-view) | `hiveme-core::message`, `crates/hmc`, `src/components/MessageView.tsx` | 4.4 | done |
-| Case-insensitive CLI levels and lowercase serialized/stored values with capitalized display labels | [message.md](message.md#payload), [cli.md](cli.md#the-message) | `hiveme-core::message`, `hiveme-core::storage`, `crates/hmc` | 4.4 | done |
+| Four defined levels (Info, Success, Warn, Error), case-insensitive CLI input, and lowercase serialized/stored values | [message.md](message.md#payload), [cli.md](cli.md#the-message) | `hiveme-core::message`, `hiveme-core::storage`, `crates/hmc` | 4.4 | done |
 | Recursive topic selection with database filtering, shared pagination, and live descendant updates | [gui.md](gui.md#storage) | `hiveme-core::storage`, `src/lib/store.tsx`, `src-tauri/src/controller.rs` | 4.4 | done |
 | Rounded message bubbles with hover controls and direct copy | [gui.md](gui.md#message-view) | `src/components/MessageView.tsx` | 4.4 | done |
 | Incoming sender headers and relative topic paths before the level badge below each message | [gui.md](gui.md#message-view) | `src/components/MessageView.tsx` | 4.4 | done |

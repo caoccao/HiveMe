@@ -194,7 +194,6 @@
   },
   "levels": {
     "success": "Successo",
-    "debug": "Debug",
     "info": "Informazioni",
     "warn": "Avviso",
     "error": "Errore"
@@ -237,7 +236,7 @@
     "topic": "Argomento relativo a hiveme; le barre iniziali vengono ignorate [predefinito: hiveme]",
     "json": "Pubblica MESSAGE (o stdin) come payload JSON grezzo, senza la busta",
     "title": "Titolo facoltativo del messaggio",
-    "level": "debug | info | success | warn | error [predefinito: info; indipendente dall’argomento]",
+    "level": "info | success | warn | error [predefinito: info; indipendente dall’argomento]",
     "qos": "0 | 1 | 2 [predefinito: publish.qos]",
     "retain": "Imposta il flag retain",
     "config": "Percorso del file di configurazione",

@@ -186,7 +186,6 @@
   },
   "levels": {
     "success": "成功",
-    "debug": "デバッグ",
     "info": "情報",
     "warn": "警告",
     "error": "エラー"
@@ -229,7 +228,7 @@
     "topic": "hiveme からの相対トピック。先頭のスラッシュは無視されます [既定: hiveme]",
     "json": "MESSAGE（または stdin）をエンベロープなしの生の JSON ペイロードとして送信します",
     "title": "メッセージの任意のタイトル",
-    "level": "debug | info | success | warn | error [既定: info。トピックとは無関係]",
+    "level": "info | success | warn | error [既定: info。トピックとは無関係]",
     "qos": "0 | 1 | 2 [既定: publish.qos]",
     "retain": "retain フラグを設定します",
     "config": "設定ファイルのパス",

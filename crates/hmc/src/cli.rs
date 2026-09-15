@@ -37,7 +37,7 @@ use crate::failure::{Failure, Result};
 
 /// The levels `--level` accepts, which are the ones `hiveme_core::Level` knows.
 fn known_levels() -> impl Iterator<Item = &'static str> {
-  static LEVELS: [hiveme_core::Level; 5] = hiveme_core::Level::known();
+  static LEVELS: [hiveme_core::Level; 4] = hiveme_core::Level::known();
   LEVELS.iter().map(hiveme_core::Level::as_str)
 }
 
@@ -90,7 +90,7 @@ pub struct Cli {
   #[arg(long, value_name = "TITLE")]
   pub title: Option<String>,
 
-  /// debug | info | success | warn | error [default: info; independent of topic]
+  /// info | success | warn | error [default: info; independent of topic]
   #[arg(short = 'l', long, value_name = "LEVEL", value_parser = PossibleValuesParser::new(known_levels()).map(|level| level.to_ascii_lowercase()), ignore_case = true, hide_possible_values = true)]
   pub level: Option<String>,
 
@@ -540,8 +540,10 @@ mod tests {
 
   #[test]
   fn a_level_the_message_format_does_not_define_is_refused() {
-    let error = parse(&["hmc", "-l", "critical", "boom"]).unwrap_err();
-    assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
+    for input in ["critical", "debug", "DEBUG", "DeBuG"] {
+      let error = parse(&["hmc", "-l", input, "boom"]).unwrap_err();
+      assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue, "{input}");
+    }
     for level in known_levels() {
       for input in [
         level.to_owned(),

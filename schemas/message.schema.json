@@ -27,7 +27,6 @@
       "default": "info",
       "description": "Message severity, normalized to lowercase. An open enum: a value outside the examples is preserved in lowercase and displayed as `info`.",
       "examples": [
-        "debug",
         "info",
         "success",
         "warn",

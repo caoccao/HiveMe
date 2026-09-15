@@ -190,7 +190,6 @@
   },
   "levels": {
     "success": "Success",
-    "debug": "Debug",
     "info": "Info",
     "warn": "Warn",
     "error": "Error"
@@ -233,7 +232,7 @@
     "topic": "Topic relative to hiveme; leading slashes are ignored [default: hiveme]",
     "json": "Publish MESSAGE (or stdin) as a raw JSON payload without the envelope",
     "title": "Optional title for the message",
-    "level": "debug | info | success | warn | error [default: info; independent of topic]",
+    "level": "info | success | warn | error [default: info; independent of topic]",
     "qos": "0 | 1 | 2 [default: publish.qos]",
     "retain": "Set the retain flag",
     "config": "Config file path",

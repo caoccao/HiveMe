@@ -194,7 +194,6 @@
   },
   "levels": {
     "success": "Succès",
-    "debug": "Débogage",
     "info": "Info",
     "warn": "Avertissement",
     "error": "Erreur"
@@ -237,7 +236,7 @@
     "topic": "Sujet relatif à hiveme ; les barres obliques initiales sont ignorées [par défaut : hiveme]",
     "json": "Publier MESSAGE (ou stdin) comme charge utile JSON brute, sans l’enveloppe",
     "title": "Titre facultatif du message",
-    "level": "debug | info | success | warn | error [par défaut : info ; indépendant du sujet]",
+    "level": "info | success | warn | error [par défaut : info ; indépendant du sujet]",
     "qos": "0 | 1 | 2 [par défaut : publish.qos]",
     "retain": "Activer l’indicateur de conservation",
     "config": "Chemin du fichier de configuration",

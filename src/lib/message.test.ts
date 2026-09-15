@@ -88,7 +88,7 @@ describe('the parse tiers', () => {
     expect(displayedLevel(level)).toBe(Level.Success);
   });
 
-  it.each(['INFO', 'Error', 'SuCcEsS', 'WARN', 'DeBuG'])(
+  it.each(['INFO', 'Error', 'SuCcEsS', 'WARN'])(
     'normalizes %s before choosing its display label and color',
     (level) => {
       const message = JSON.parse(fixture('success.json'));
@@ -101,6 +101,11 @@ describe('the parse tiers', () => {
       expect(isKnownLevel(level)).toBe(true);
     }
   );
+
+  it.each(['debug', 'DEBUG', 'DeBuG'])('treats %s as an unknown level with the Info fallback', (level) => {
+    expect(isKnownLevel(level)).toBe(false);
+    expect(displayedLevel(level)).toBe(Level.Info);
+  });
 
   it('displays a level it does not know as info while keeping the raw value', () => {
     const parsed = parseText(fixture('unknown_level.json'));

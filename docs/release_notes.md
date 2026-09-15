@@ -26,6 +26,8 @@ desktop, through your own HiveMQ Cloud cluster.
   binary payloads are shown too. Copy a message, or its raw JSON, in one click.
 * **Composer.** Write multi-line messages and choose the level, title, topic, QoS, and
   retain flag, or send raw JSON. Drafts are kept per topic while the app runs.
+* **Four message levels.** Info, Success, Warn, and Error are the only defined levels
+  in the CLI, desktop app, and terminal UI, including notification rules.
 * **Status bar.** Shows the connection, the subscriptions, the messages received, and
   the size of the history.
 * **Remembers its window.** HiveMe opens at the size and position you left it.

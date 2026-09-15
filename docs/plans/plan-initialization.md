@@ -27,7 +27,7 @@ Answers gathered before writing this plan. They are binding for the phases below
 | 13 | CLI scope | `hmc <message>`, `hmc -t <topic> <message>`, read from stdin when no message argument, `--json` for a raw JSON payload. No subcommands, in phase 1 or later: a bare word is the message, so every mode is an option such as `--init`. |
 | 14 | MQTT version | MQTT 5 via `rumqttc` v5 client. |
 | 15 | GUI publishing | The message view is a chat view (WhatsApp-like). Messages for the selected topic are shown as bubbles, with an input box and a send button at the bottom. Sending publishes to the selected topic. |
-| 16 | Payload fields | `title` (optional), `body`, `level` (`debug`, `info`, `success`, `warn`, `error`), `sender` in the envelope, plus a free-form `data` object. |
+| 16 | Payload fields | `title` (optional), `body`, `level` (`info`, `success`, `warn`, `error`), `sender` in the envelope, plus a free-form `data` object. |
 | 17 | Reference architecture | UI layout and Tauri app architecture follow `../BetterMediaInfo`: Tauri app at the repository root (`src/`, `src-tauri/`), thin `#[tauri::command]` wrappers in `lib.rs` delegating to `controller.rs`, `protocol.rs`/`protocol.ts` pair, `config.rs` with camelCase keys, `window.rs` for window state, Zustand store plus `service.ts` invoke layer, tabbed main content with Settings and About tabs, react-i18next, per-OS build workflows, Deno version-bump script, Apache-2.0 license headers, rustfmt `max_width = 120`, `tab_spaces = 2`. Section 3 lists the concrete mapping. |
 
 ---
@@ -415,7 +415,7 @@ Spec file: `docs/specs/message.md`. Schema: `schemas/message.schema.json` (gener
 |-------|------|----------|-------|
 | `body` | string | yes | Main text. May be empty when `data` carries the content. |
 | `title` | string | no | Used as the notification title when present. |
-| `level` | string | no, default `info` | Case-insensitive open enum: `debug`, `info`, `success`, `warn`, `error`. Serialized JSON and database level fields use lowercase; display labels start with a capital. Unknown values retain their lowercase name with the Info fallback. |
+| `level` | string | no, default `info` | Case-insensitive open enum: `info`, `success`, `warn`, `error`. Serialized JSON and database level fields use lowercase; display labels start with a capital. Unknown values retain their lowercase name with the Info fallback. |
 | `data` | object | no | Free-form JSON for scripts. Rendered as a collapsible JSON tree in the GUI. |
 | `contentType` | string | no | Hint for `body`, for example `text/markdown`. Default `text/plain`. |
 
@@ -607,7 +607,7 @@ Options:
   -t, --topic <TOPIC>        Topic relative to hiveme; leading slashes are ignored [default: hiveme]
       --json                 Publish MESSAGE (or stdin) as a raw JSON payload without the envelope
       --title <TITLE>        Optional title for the message
-  -l, --level <LEVEL>        debug | info | success | warn | error [default: info; independent of topic]
+  -l, --level <LEVEL>        info | success | warn | error [default: info; independent of topic]
   -q, --qos <QOS>            0 | 1 | 2 [default: publish.qos]
   -r, --retain               Set the retain flag
   -c, --config <PATH>        Config file path

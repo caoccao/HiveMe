@@ -154,7 +154,7 @@ headers stay visible. Relative paths appear with the entire metadata row only
 while the pointer is over the message. Labels wrap when needed.
 
 Bubble colors follow `payload.level`, independently of the topic or direction:
-`info` and `debug` use the regular background. `success` uses MUI's success palette,
+`info` uses the regular background. `success` uses MUI's success palette,
 `warn` uses its warning palette, and `error` uses its error palette for the border,
 tinted bubble background, and level badge.
 Colors come from the active theme and work in both light and dark modes. Unknown
@@ -315,7 +315,7 @@ the same notifications, see [tui.md](tui.md#notifications).
 | `id` | string | required | Unique within the config. The built-ins are `info`, `success`, `warn`, `error`. |
 | `topic` | string | required | MQTT topic filter, relative to `hiveme` unless `absolute` is true. `+` and `#` are allowed. |
 | `absolute` | boolean | false | |
-| `level` | string | `info` | The `payload.level` to match: `debug`, `info`, `success`, `warn`, or `error`. The topic never determines a message's level; publishing defaults to `info`. |
+| `level` | string | `info` | The `payload.level` to match: `info`, `success`, `warn`, or `error`. The topic never determines a message's level; publishing defaults to `info`. |
 | `enabled` | boolean | true | Checked for built-in and newly added rules. |
 | `os` | boolean | false | OS Notification checkbox beside Title Template. This rule raises an OS notification only when this and the global OS channel are enabled. |
 | `topmost` | boolean | false | Topmost Window checkbox beside Body Template. This rule raises a topmost notification only when this and the global topmost channel are enabled. |

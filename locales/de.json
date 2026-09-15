@@ -190,7 +190,6 @@
   },
   "levels": {
     "success": "Erfolg",
-    "debug": "Debug",
     "info": "Info",
     "warn": "Warnung",
     "error": "Fehler"
@@ -233,7 +232,7 @@
     "topic": "Topic relativ zu hiveme; führende Schrägstriche werden ignoriert [Standard: hiveme]",
     "json": "MESSAGE (oder stdin) als unverarbeitete JSON-Nutzdaten ohne Umschlag senden",
     "title": "Optionaler Titel der Nachricht",
-    "level": "debug | info | success | warn | error [Standard: info; unabhängig vom Topic]",
+    "level": "info | success | warn | error [Standard: info; unabhängig vom Topic]",
     "qos": "0 | 1 | 2 [Standard: publish.qos]",
     "retain": "Das Retain-Flag setzen",
     "config": "Pfad der Konfigurationsdatei",

@@ -430,6 +430,12 @@ describe('the settings tab', () => {
     await userEvent.click(screen.getByLabelText('Raise OS Notifications'));
     expect(useAppStore.getState().config?.notifications?.enabled).toBe(false);
     await userEvent.click(screen.getByRole('combobox', { name: 'Level' }));
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Info',
+      'Success',
+      'Warn',
+      'Error',
+    ]);
     await userEvent.click(screen.getByRole('option', { name: 'Success' }));
     expect(useAppStore.getState().config?.notifications?.rules?.[0].level).toBe('success');
   });

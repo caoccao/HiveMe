@@ -180,7 +180,7 @@ describe('message severity colors', () => {
     const theme = createTheme({ palette: { mode } });
     render(
       <ThemeProvider theme={theme}>
-        {['info', 'warn', 'error', 'debug', 'success'].flatMap((level) =>
+        {['info', 'warn', 'error', 'success'].flatMap((level) =>
           [false, true].map((outgoing) => (
             <Bubble selectedTopic="hiveme" key={`${level}-${outgoing}`} row={row({ level, outgoing })} />
           ))
@@ -188,17 +188,15 @@ describe('message severity colors', () => {
       </ThemeProvider>
     );
     const bubbles = screen.getAllByRole('article').map((article) => article.querySelector('.message-bubble')!);
-    for (const index of [0, 6]) {
-      expect(bubbles[index]).toHaveStyle({ backgroundColor: theme.palette.action.hover });
-      expect(bubbles[index + 1]).toHaveStyle({
-        backgroundColor: mode === 'dark' ? theme.palette.grey[800] : theme.palette.common.black,
-        color: theme.palette.common.white,
-      });
-    }
+    expect(bubbles[0]).toHaveStyle({ backgroundColor: theme.palette.action.hover });
+    expect(bubbles[1]).toHaveStyle({
+      backgroundColor: mode === 'dark' ? theme.palette.grey[800] : theme.palette.common.black,
+      color: theme.palette.common.white,
+    });
     for (const [index, severity] of [
       [2, 'warning'],
       [4, 'error'],
-      [8, 'success'],
+      [6, 'success'],
     ] as const) {
       for (const bubble of bubbles.slice(index, index + 2)) {
         expect(bubble).toHaveStyle({

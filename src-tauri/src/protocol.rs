@@ -33,7 +33,7 @@
 //!
 //! The frontend's Language enum lists its bundled translations. `gui.language`
 //! remains a BCP 47 string in the shared config; no IPC enum or conversion is needed.
-//! Its Level enum mirrors hiveme_core::message::Level (debug, info, success, warn,
+//! Its Level enum mirrors hiveme_core::message::Level (info, success, warn,
 //! error); level fields cross IPC as strings so unknown levels remain readable.
 
 use std::sync::Arc;

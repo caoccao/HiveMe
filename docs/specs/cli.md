@@ -27,7 +27,7 @@ Options:
   -t, --topic <TOPIC>  Topic relative to hiveme; leading slashes are ignored [default: hiveme]
       --json           Publish MESSAGE (or stdin) as a raw JSON payload without the envelope
       --title <TITLE>  Optional title for the message
-  -l, --level <LEVEL>  debug | info | success | warn | error [default: info; independent of topic]
+  -l, --level <LEVEL>  info | success | warn | error [default: info; independent of topic]
   -q, --qos <QOS>      0 | 1 | 2 [default: publish.qos]
   -r, --retain         Set the retain flag
       --no-retain      Clear the retain flag
@@ -137,6 +137,7 @@ authority, which the operating system already trusts. See
 ### The message
 
 - `--level` defaults to `info` independently of the MQTT topic and notification rules.
+  Only `info`, `success`, `warn`, and `error` are accepted; any other level is a usage error.
   Input is case-insensitive: `info`, `INFO`, `Info`, and mixed-case spellings are
   accepted and normalized to lowercase before publishing. For example,
   `hmc --level SUCCESS "Build succeeded"` writes `"level":"success"` in JSON.

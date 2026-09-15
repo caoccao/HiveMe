@@ -186,7 +186,6 @@
   },
   "levels": {
     "success": "成功",
-    "debug": "调试",
     "info": "信息",
     "warn": "警告",
     "error": "错误"
@@ -229,7 +228,7 @@
     "topic": "相对于 hiveme 的主题；忽略开头的斜杠 [默认：hiveme]",
     "json": "将 MESSAGE（或 stdin）作为不带信封的原始 JSON 载荷发布",
     "title": "消息的可选标题",
-    "level": "debug | info | success | warn | error [默认：info；与主题无关]",
+    "level": "info | success | warn | error [默认：info；与主题无关]",
     "qos": "0 | 1 | 2 [默认：publish.qos]",
     "retain": "设置保留标志",
     "config": "配置文件路径",

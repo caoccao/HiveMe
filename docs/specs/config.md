@@ -22,6 +22,9 @@ JSON keys are camelCase. Enum values that exist only inside the config are
 PascalCase (`Auto`, `Ocean`, `Weekly`, `Off`). Values that also travel inside
 messages keep their wire casing (`level`, `alg`, `kid`).
 
+Message levels are `info`, `success`, `warn`, and `error`. Notification-rule level
+selectors in both applications offer these four values, with capitalized display labels.
+
 ## Location and precedence
 
 The config path is resolved in this order:

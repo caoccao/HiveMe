@@ -30,7 +30,7 @@ use crate::tui::app::App;
 use crate::tui::service::Service;
 
 /// The levels a rule matches, in the order of `LEVELS` in `src/lib/protocol.ts`.
-const LEVELS: [Level; 5] = [Level::Debug, Level::Info, Level::Success, Level::Warn, Level::Error];
+const LEVELS: [Level; 4] = Level::known();
 
 /// The name a level is shown with: translated when it is known, as written otherwise.
 fn level_name<S: Service>(app: &App<S>, level: &Level) -> String {
@@ -209,7 +209,7 @@ pub fn choices<S: Service>(app: &App<S>, field: Field) -> (Vec<(String, Style)>,
       .iter()
       .map(|level| (level_name(app, level), level_style(app, level)))
       .collect(),
-    LEVELS.iter().position(|level| Some(level) == current).unwrap_or(1),
+    LEVELS.iter().position(|level| Some(level) == current).unwrap_or(0),
   )
 }
 

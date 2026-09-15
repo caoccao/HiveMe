@@ -75,7 +75,7 @@ fn success_is_a_known_level_and_survives_serialization() {
 
 #[test]
 fn levels_are_case_insensitive_and_serialize_in_lowercase() {
-  for input in ["INFO", "Error", "SuCcEsS", "WARN", "DeBuG", "CUSTOM"] {
+  for input in ["INFO", "Error", "SuCcEsS", "WARN", "CUSTOM"] {
     let expected = input.to_lowercase();
     let level: Level = serde_json::from_value(serde_json::json!(input)).unwrap();
     assert_eq!(level.to_string(), expected);
@@ -83,6 +83,17 @@ fn levels_are_case_insensitive_and_serialize_in_lowercase() {
     assert_eq!(level.is_known(), expected != "custom");
   }
   assert_eq!(serde_json::to_value(Level::Other("CUSTOM".into())).unwrap(), "custom");
+}
+
+#[test]
+fn only_the_four_defined_levels_are_known() {
+  assert_eq!(Level::known(), [Level::Info, Level::Success, Level::Warn, Level::Error]);
+  for input in ["debug", "DEBUG", "DeBuG"] {
+    let level = Level::parse(input);
+    assert_eq!(level, Level::Other("debug".to_owned()));
+    assert!(!level.is_known());
+    assert_eq!(level.displayed(), Level::Info);
+  }
 }
 
 /// Rule 3: an unknown level parses, is kept verbatim, and displays as `info`.

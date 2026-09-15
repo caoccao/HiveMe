@@ -194,7 +194,6 @@
   },
   "levels": {
     "success": "Éxito",
-    "debug": "Depuración",
     "info": "Información",
     "warn": "Advertencia",
     "error": "Error"
@@ -237,7 +236,7 @@
     "topic": "Tema relativo a hiveme; se ignoran las barras iniciales [predeterminado: hiveme]",
     "json": "Publicar MESSAGE (o stdin) como carga útil JSON sin procesar, sin el sobre",
     "title": "Título opcional del mensaje",
-    "level": "debug | info | success | warn | error [predeterminado: info; independiente del tema]",
+    "level": "info | success | warn | error [predeterminado: info; independiente del tema]",
     "qos": "0 | 1 | 2 [predeterminado: publish.qos]",
     "retain": "Activar el indicador de retención",
     "config": "Ruta del archivo de configuración",

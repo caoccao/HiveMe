@@ -230,8 +230,8 @@ on its `✕` closes it. Closing a tab selects the one that took its place.
   gets the `newer version` chip. A tree opens its top level and closes every branch
   below it, as `JsonTree` does, and lists the keys in the order the payload wrote them.
   Text wraps at spaces, and inside a word only when the word is wider than the bubble.
-- Colors follow `payload.level`, independently of the topic or direction. `info` and
-  `debug` use the regular fill and a muted border; `success`, `warn`, and `error` use
+- Colors follow `payload.level`, independently of the topic or direction. `info` uses
+  the regular fill and a muted border; `success`, `warn`, and `error` use
   the MUI palette values (`#2e7d32`, `#ed6c02`, `#d32f2f`) for the border and the badge,
   with a tinted fill only when a display mode is forced, because a tint needs a known
   background. An unknown level renders as `info` while the badge shows the raw name

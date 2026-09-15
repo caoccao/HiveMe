@@ -50,7 +50,7 @@ type SavedConfig = {
   update: { lastChecked: number };
 };
 
-async function command(executable: string, args: string[], timeout = 30_000): Promise<string> {
+async function command(executable: string, args: string[], timeout = 30_000, expectedCode = 0): Promise<string> {
   const child = new Deno.Command(executable, {
     args: executable === hmc ? ["--config", configPath, ...args] : args,
     cwd: artifacts, env, stdin: "null", stdout: "piped", stderr: "piped",
@@ -61,7 +61,7 @@ async function command(executable: string, args: string[], timeout = 30_000): Pr
     const stdout = decoder.decode(output.stdout);
     const stderr = decoder.decode(output.stderr);
     await Deno.writeTextFile(join(artifacts, "commands.log"), `${executable} ${args.join(" ")}\n${stdout}${stderr}\n`, { append: true });
-    assert(output.success, `${executable} exited ${output.code}: ${stderr}`);
+    assert.equal(output.code, expectedCode, `${executable} exited ${output.code}: ${stderr}`);
     return stdout.trim();
   } finally {
     clearTimeout(timer);
@@ -366,14 +366,17 @@ try {
   console.info("PASS: Appearance opens first, changes save immediately, and there is no default-topic setting.");
 
   const bodies = ["haha"];
+  for (const level of ["debug", "DEBUG", "DeBuG"]) {
+    assert.equal(await command(hmc, ["--level", level, "unsupported level"], 30_000, 2), "");
+  }
   await publish("haha");
-  for (const level of ["DEBUG", "Info", "sUcCeSs", "WARN", "error"]) {
+  for (const level of ["Info", "sUcCeSs", "WARN", "error"]) {
     const body = `CLI ${level.toLowerCase()}`;
     bodies.push(body);
     await publish(body, ["--level", level]);
   }
   const received = await rows();
-  assert.equal(received.length, 6);
+  assert.equal(received.length, bodies.length);
   for (const row of received) {
     const level = row.body === "haha" ? "info" : row.body.slice(4);
     assert.equal(row.topic, "hiveme");

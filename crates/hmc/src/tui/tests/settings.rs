@@ -557,10 +557,10 @@ fn the_switches_the_rules_and_their_levels_change_the_notifications_block() {
 
   render(&mut app, 120, 40);
   click_on(&mut app, Action::SettingsField(Field::RuleLevel(0)));
-  assert_eq!(app.settings.popup, Some(1), "Info is highlighted");
+  assert_eq!(app.settings.popup, Some(0), "Info is highlighted");
   let screen = render(&mut app, 120, 40).join("\n");
-  assert!(screen.contains("Debug") && screen.contains("Success"), "{screen}");
-  click_on(&mut app, Action::SettingsChoice(Field::RuleLevel(0), 2));
+  assert!(!screen.contains("Debug") && screen.contains("Success"), "{screen}");
+  click_on(&mut app, Action::SettingsChoice(Field::RuleLevel(0), 1));
   assert_eq!(app.config.notifications.rules[0].level, Level::Success);
 
   render(&mut app, 120, 40);

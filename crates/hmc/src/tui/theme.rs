@@ -100,8 +100,8 @@ impl Theme {
     Style::new().fg(self.muted).add_modifier(Modifier::DIM)
   }
 
-  /// The MUI palette color of a level: success, warning, or error, and none for `info`
-  /// and `debug`, which use the regular colors. `levelColor` in `src/lib/message.ts`.
+  /// The MUI palette color of a level: success, warning, or error, and none for `info`,
+  /// which uses the regular colors. `levelColor` in `src/lib/message.ts`.
   pub fn severity(&self, level: &Level) -> Option<Color> {
     match level {
       Level::Success => Some(self.success),

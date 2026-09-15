@@ -186,7 +186,6 @@
   },
   "levels": {
     "success": "成功",
-    "debug": "偵錯",
     "info": "資訊",
     "warn": "警告",
     "error": "錯誤"
@@ -229,7 +228,7 @@
     "topic": "相對於 hiveme 的主題；會忽略開頭的斜線 [預設：hiveme]",
     "json": "將 MESSAGE（或 stdin）作為不含信封的原始 JSON 負載發佈",
     "title": "訊息的選用標題",
-    "level": "debug | info | success | warn | error [預設：info；與主題無關]",
+    "level": "info | success | warn | error [預設：info；與主題無關]",
     "qos": "0 | 1 | 2 [預設：publish.qos]",
     "retain": "設定保留旗標",
     "config": "設定檔路徑",
