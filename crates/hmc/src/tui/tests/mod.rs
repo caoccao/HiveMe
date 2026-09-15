@@ -1181,3 +1181,43 @@ fn slow_history_writes_leave_input_and_drawing_responsive() {
   }
   assert_eq!(*service.cleared.lock().unwrap(), ["hiveme"]);
 }
+
+#[test]
+fn clearing_a_topic_removes_its_subtree_and_selects_the_nearest_remaining_topic() {
+  let service = Scripted::in_language("en-US");
+  for topic in ["hiveme", "hiveme/build/ci", "hiveme/build/ci/deep", "hiveme/build/cd"] {
+    service.keep(topic, topic.as_bytes(), false);
+  }
+  let (mut app, _receivers) = open_app(&service);
+  let now = Instant::now();
+  app.select_topic("hiveme/build/ci/deep", now);
+  app.select_topic("hiveme/build/ci", now);
+  assert_eq!(app.selected_messages().len(), 2);
+
+  // The clear runs off the event loop and its answer is applied on a tick.
+  app.clear_selected_topic(now);
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while app.selected_topic.as_deref() == Some("hiveme/build/ci") {
+    assert!(Instant::now() < deadline, "the cleared topic was never applied");
+    app.on_tick(Instant::now());
+    std::thread::sleep(Duration::from_millis(5));
+  }
+
+  assert_eq!(app.selected_topic.as_deref(), Some("hiveme/build"));
+  let bodies: Vec<&str> = app.selected_messages().iter().map(|row| row.body.as_str()).collect();
+  assert_eq!(bodies, ["hiveme/build/cd"]);
+  assert!(!app.messages.contains_key("hiveme/build/ci"));
+  assert!(!app.messages.contains_key("hiveme/build/ci/deep"));
+  fn ids(nodes: &[TopicNode]) -> Vec<String> {
+    nodes
+      .iter()
+      .flat_map(|node| std::iter::once(node.id.clone()).chain(ids(&node.children)))
+      .collect()
+  }
+  assert_eq!(
+    ids(&app.topics),
+    ["hiveme", "hiveme/build", "hiveme/build/cd"],
+    "the cleared topic and its subtopic are gone from the tree"
+  );
+  assert_eq!(service.store.message_count().unwrap(), 2);
+}

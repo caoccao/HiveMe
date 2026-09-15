@@ -657,8 +657,8 @@ impl<S: Service> App<S> {
     }
   }
 
-  /// Deletes the selected topic's history, then reloads every cached view that
-  /// contained it, as `clearSelectedTopic` does.
+  /// Deletes the selected topic and its subtopics with their history, then forgets or
+  /// reloads every cached view that overlaps them, as `clearSelectedTopic` does.
   pub fn clear_selected_topic(&mut self, _now: Instant) {
     let Some(topic) = self.selected_topic.clone() else {
       return;
@@ -675,11 +675,12 @@ impl<S: Service> App<S> {
   }
 
   fn topic_cleared(&mut self, topic: &str, now: Instant) {
+    // The subtopics' views are empty now and every ancestor's has changed.
     let roots: Vec<String> = self
       .messages
       .keys()
       .chain(self.loaded_topics.iter())
-      .filter(|root| belongs_to_topic(topic, root))
+      .filter(|root| belongs_to_topic(topic, root) || belongs_to_topic(root, topic))
       .cloned()
       .collect();
     for root in roots {
@@ -687,12 +688,13 @@ impl<S: Service> App<S> {
       self.loaded_topics.remove(&root);
       self.has_older.remove(&root);
     }
-    match self.selected_topic.clone() {
-      Some(selected) if belongs_to_topic(topic, &selected) => {
-        self.messages_tab.view.reset();
-        self.select_topic(&selected, now);
-      }
-      _ => self.refresh_topics(now),
+    self.refresh_topics(now);
+    // A cleared selection has left the tree, so select the nearest topic that stays.
+    if let Some(selected) = self.selected_topic.clone()
+      && (belongs_to_topic(topic, &selected) || belongs_to_topic(&selected, topic))
+    {
+      self.messages_tab.view.reset();
+      self.select_topic(&nearest_remaining_topic(&self.topics, &selected), now);
     }
   }
 
@@ -970,6 +972,21 @@ fn belongs_to_topic(topic: &str, root: &str) -> bool {
   topic == root || topic.strip_prefix(root).is_some_and(|rest| rest.starts_with('/'))
 }
 
+/// The topic itself when the tree still has it, else its nearest ancestor that it has.
+fn nearest_remaining_topic(topics: &[TopicNode], topic: &str) -> String {
+  fn has_node(nodes: &[TopicNode], id: &str) -> bool {
+    nodes.iter().any(|node| node.id == id || has_node(&node.children, id))
+  }
+  let mut candidate = topic;
+  while candidate != STARTUP_TOPIC && !has_node(topics, candidate) {
+    match candidate.rfind('/') {
+      Some(parent) if parent > 0 => candidate = &candidate[..parent],
+      _ => return STARTUP_TOPIC.to_owned(),
+    }
+  }
+  candidate.to_owned()
+}
+
 /// Merges pages and live rows by row id, in the order they were stored.
 fn merge(mut rows: Vec<MessageRow>, more: Vec<MessageRow>) -> Vec<MessageRow> {
   for row in more {
@@ -992,6 +1009,33 @@ mod tests {
     assert!(belongs_to_topic("hiveme/build/ci", "hiveme"));
     assert!(!belongs_to_topic("hivemeow", "hiveme"));
     assert!(!belongs_to_topic("hiveme", "hiveme/build"));
+  }
+
+  #[test]
+  fn a_cleared_selection_falls_back_to_its_nearest_remaining_ancestor() {
+    fn node(id: &str, children: Vec<TopicNode>) -> TopicNode {
+      TopicNode {
+        id: id.to_owned(),
+        label: id.rsplit('/').next().unwrap().to_owned(),
+        topic: Some(id.to_owned()),
+        unread: 0,
+        messages: 0,
+        children,
+      }
+    }
+    let topics = vec![
+      node(
+        "hiveme",
+        vec![node("hiveme/build", vec![]), node("hiveme/building", vec![])],
+      ),
+      node("other", vec![]),
+    ];
+    assert_eq!(nearest_remaining_topic(&topics, "hiveme/build"), "hiveme/build");
+    assert_eq!(nearest_remaining_topic(&topics, "hiveme/build/ci/deep"), "hiveme/build");
+    assert_eq!(nearest_remaining_topic(&topics, "hiveme/gone/deep"), "hiveme");
+    assert_eq!(nearest_remaining_topic(&topics, "other/gone"), "other");
+    assert_eq!(nearest_remaining_topic(&topics, "elsewhere/gone"), "hiveme");
+    assert_eq!(nearest_remaining_topic(&[], "hiveme/gone"), "hiveme");
   }
 
   #[test]

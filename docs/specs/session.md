@@ -110,7 +110,7 @@ inputs, and answers, minus the Tauri wrapping.
 | `topic_tree` | none | `TopicNode[]`, built by splitting every stored topic on `/`, with unread and message counts rolled up |
 | `messages` | topic, `before`, `limit` | `MessageRow[]` for the topic and all descendants, oldest first; no cursor means the newest page, no limit means 200 |
 | `mark_read` | topic | none; clears unread counts throughout the subtree |
-| `clear_topic` | topic | how many rows were deleted; only rows stored directly on that topic |
+| `clear_topic` | topic | how many messages were deleted. Deletes the topic and all its descendants from both the `topics` and the `messages` tables, in one transaction |
 | `publish` | topic, body, `PublishOptions` | the stored `MessageRow`; see [Publishing](#publishing) |
 | `set_notifications_paused` | bool | `Status` |
 | `update_result` | none | `UpdateCheckResult`, or nothing while the check is still running |
@@ -134,7 +134,7 @@ the terminal UI applies each one to its state.
 |-------|---------|------|
 | `Status` | `Status` | every connection state change, every reconnect countdown, every pause toggle, and the end of a `connect` or `disconnect` |
 | `Message` | `MessageRow` | once per stored row, whether it arrived or was published here. The echo of a message this installation published raises no second event, because it collapses into the row that is already there |
-| `TopicAdded` | topic | the first message ever stored on a topic |
+| `TopicAdded` | topic | the first message stored on a topic the store does not have, including one that was cleared |
 | `NotificationFired` | rule id, message id, topic | a rule raised a desktop notification |
 
 A receiver that falls behind loses the oldest events, which is the broadcast
@@ -293,7 +293,7 @@ promise a visible banner if the user has silenced notifications in system settin
 The store of [gui.md](gui.md#storage) is unchanged. The session adds what used to be
 in `controller.rs`: the tree built by splitting every stored topic on `/` with counts
 rolled up into every parent, paging across a subtree with the row id as cursor,
-marking a subtree read, clearing one topic, and the prune loop that runs at startup and
+marking a subtree read, clearing a subtree, and the prune loop that runs at startup and
 every ten minutes with `gui.history`.
 
 The tree is at most 64 levels deep, and the rest of a deeper topic becomes a single node

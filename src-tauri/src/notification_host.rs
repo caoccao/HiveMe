@@ -171,6 +171,17 @@ fn show_system(title: &str, body: &str) -> Result<(), String> {
   // The modern API checks actual OS authorization and presents banners even when
   // the notification window has focus. The host is a signed accessory app.
   if !mac_usernotifications::blocking::request_auth().map_err(|e| e.to_string())? {
+    // The wrapper drops the NSError. A request that leaves the status undetermined
+    // was refused without asking, which macOS does for an invalidly signed bundle.
+    let settings = mac_usernotifications::blocking::get_notification_settings().map_err(|e| e.to_string())?;
+    if settings.authorization_status == mac_usernotifications::AuthorizationStatus::NotDetermined {
+      return Err(format!(
+        "macOS refused to register {} for notifications; its application bundle is not validly signed",
+        std::env::current_exe()
+          .map(|path| path.display().to_string())
+          .unwrap_or_else(|_| "hmg".to_owned())
+      ));
+    }
     return Err("OS notification permission is denied; enable HiveMe in System Settings > Notifications".to_owned());
   }
   let notification = mac_usernotifications::Notification::new()

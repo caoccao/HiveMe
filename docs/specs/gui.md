@@ -70,7 +70,7 @@ Writing suggestions use the HTML
 |-------|--------|-------|
 | Connection | Connect / Disconnect | Icon reflects the current state |
 | Notifications | Pause notifications | Toggle, uses the active color while paused |
-| History | Clear selected topic | Deletes the stored history of the selected topic |
+| History | Clear selected topic | Deletes the selected topic and all its subtopics with their stored history |
 | Tabs | Settings (F10) | Opens or focuses the Settings tab |
 | Tabs | About | Opens or focuses the About tab |
 
@@ -413,13 +413,21 @@ errors instead of dropping them inside the desktop notification plugin.
   A busy UI thread is still running; topmost rendering must not reject OS delivery.
   This replaces the legacy API and the plugin's unconditional
   permission result. Denied permission is reported with the System Settings location.
+  The wrapper drops the `NSError`, so a refusal that leaves the authorization status
+  undetermined is reported as an invalidly signed bundle instead: macOS refuses such
+  a bundle (`UNErrorDomain` 1) without prompting or listing it in Notification settings.
   Both applications deliver under HiveMe's existing `com.caoccao.hiveme` identity,
   so the OS uses HiveMe's app icon and notification settings. As in `jenkins-buddy`,
   the sending process belongs to the application, rather than a separately identified
   notification app. A packaged installation starts its existing `Contents/MacOS/hmg`
   with `--notification-host`, preserving the app's signature and resources. Symlinks
-  are resolved before detecting the bundle.
-  macOS requires a signed application bundle, so unbundled hmg and hmc use a cached,
+  are resolved before detecting the bundle. The app is reused only when
+  `codesign --verify --strict` accepts it with the designated requirement
+  `identifier "com.caoccao.hiveme"`. `tauri.conf.json` sets `signingIdentity` to `-`,
+  so an unnotarized bundle is ad-hoc signed and seals its `Info.plist`; without it,
+  Tauri leaves only the linker's signature on `hmg`, which macOS refuses.
+  macOS requires a signed application bundle, so unbundled hmg and hmc, and an app
+  that fails the signature check, use a cached,
   ad-hoc-signed accessory bundle with the same `com.caoccao.hiveme` identity,
   containing the already-built hmg executable and the HiveMe ICNS resource declared
   through `CFBundleIconFile`. This fallback is refreshed and signed when the
@@ -529,9 +537,13 @@ one database are in [session.md](session.md#two-processes-one-installation).
 - History is read a page at a time across the entire selected subtree, from the newest
   end and handed back oldest first. The cursor is the row id, so paging upwards asks
   for what is `before` the oldest row on screen, regardless of its child topic.
-- Clearing a topic deletes only messages stored directly on that topic and keeps the
-  node and descendant messages. Cached ancestor views are invalidated and the active
-  view is reloaded; stale pending pages cannot restore deleted messages.
+- Clearing a topic deletes the same subtree a selection shows: the topic and every
+  descendant, from both `topics` and `messages`, in one immediate transaction. The
+  cleared nodes leave the tree until a message arrives on one of them again, which
+  records its topic anew. `hiveme` stays in the tree regardless. Cached views of the
+  cleared topics are dropped and those of their ancestors reloaded; stale pending pages
+  cannot restore deleted messages. A selection that was cleared moves to its nearest
+  ancestor still in the tree, or to `hiveme`.
 - Pruning runs at startup and every ten minutes, using
   `gui.history.maxMessagesPerTopic` and `gui.history.retentionDays`. Either limit set
   to 0 means no limit.
@@ -566,7 +578,7 @@ shows.
 
 | Command | Request | Response |
 |---------|---------|----------|
-| `clear_topic` | `{ "topic": "hiveme" }` | how many messages were deleted |
+| `clear_topic` | `{ "topic": "hiveme" }` | how many messages were deleted from the topic and all its descendants, which are deleted too |
 | `connect` | none | `Status` |
 | `disconnect` | none | none |
 | `get_about` | none | `About` |

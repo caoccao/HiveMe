@@ -663,19 +663,29 @@ impl Store {
     Ok(())
   }
 
-  /// Deletes the history of one topic, keeping the topic itself.
+  /// Deletes a topic and all its descendants, with every message stored on them, and
+  /// returns how many messages went.
   ///
-  /// The node stays in the tree because the user is still subscribed to it and asked
-  /// to forget the messages, not the topic.
+  /// This is the subtree the chat view shows for the topic, so clearing it leaves
+  /// nothing behind in that view or in the tree. A message that arrives afterward
+  /// records its topic again. The messages and the topics are one transaction, so the
+  /// other application never reads a topic whose messages are already gone.
   pub fn clear_topic(&self, topic: &str) -> Result<u64> {
+    let (descendants, after_descendants) = descendant_topic_bounds(topic);
     let mut connection = self.lock();
     let transaction = connection
       .transaction_with_behavior(TransactionBehavior::Immediate)
       .map_err(|source| failed("begin clearing a topic", source))?;
     let deleted = transaction
       .execute(
-        "DELETE FROM messages WHERE topic_id IN (SELECT id FROM topics WHERE topic = ?1)",
-        params![topic],
+        "DELETE FROM messages WHERE topic_id IN (SELECT id FROM topics WHERE topic = ?1 OR (topic >= ?2 AND topic < ?3))",
+        params![topic, descendants, after_descendants],
+      )
+      .map_err(|source| failed("clear a topic", source))?;
+    transaction
+      .execute(
+        "DELETE FROM topics WHERE topic = ?1 OR (topic >= ?2 AND topic < ?3)",
+        params![topic, descendants, after_descendants],
       )
       .map_err(|source| failed("clear a topic", source))?;
     transaction.commit().map_err(|source| failed("clear a topic", source))?;
@@ -836,11 +846,9 @@ mod review_tests {
       (store.topics().unwrap()[0].messages, store.topics().unwrap()[0].unread),
       (100, 100)
     );
-    store.clear_topic("hiveme/child").unwrap();
-    assert_eq!(
-      (store.topics().unwrap()[0].messages, store.topics().unwrap()[0].unread),
-      (0, 0)
-    );
+    assert_eq!(store.clear_topic("hiveme/child").unwrap(), 100);
+    assert!(store.topics().unwrap().is_empty());
+    assert_eq!(store.message_count().unwrap(), 0);
   }
   #[test]
   fn an_incompatible_development_layout_is_recreated_and_can_store_new_history() {

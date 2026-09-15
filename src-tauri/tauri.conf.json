@@ -56,7 +56,8 @@
     "macOS": {
       "files": {
         "MacOS/hmc": "../target/release/hmc"
-      }
+      },
+      "signingIdentity": "-"
     },
     "windows": {
       "webviewInstallMode": {

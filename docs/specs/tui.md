@@ -154,7 +154,7 @@ columns every language fits.
 |------|-----|----------|
 | Connect / Disconnect | `F2` | As [gui.md](gui.md#toolbar): Disconnect is offered while Connecting, Connected, or Reconnecting |
 | Pause notifications | `F3` | The session's pause toggle; the footer says `notifications paused` while it is on |
-| Clear selected topic | `F4` | Deletes the stored history of the selected topic, invalidates cached ancestor views, reloads the selection |
+| Clear selected topic | `F4` | Deletes the selected topic and all its subtopics with their stored history, drops their cached views, reloads cached ancestor views, and moves the selection to the nearest remaining ancestor |
 | Settings | `F10` | Opens or focuses the Settings tab |
 | About | `F1` | Opens or focuses the About tab |
 | Help | `?` outside a text field, `Ctrl+/` anywhere | The key binding overlay. Not a GUI feature; a terminal has no tooltips to name the keys |

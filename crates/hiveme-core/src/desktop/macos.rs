@@ -108,6 +108,7 @@ fn select_host(directory: &Path, source: &Path) -> Result<PathBuf, String> {
   if is_app_executable(&source) {
     // Reuse the real app, including its icon resources and signing identity. Both
     // hmg and the hmc shipped beside it launch this executable with the host flag.
+    // An app without a valid signature falls through to the signed cached bundle.
     return Ok(source);
   }
   prepare_bundle(directory, &source)
@@ -130,6 +131,21 @@ fn is_app_executable(source: &Path) -> bool {
   string("CFBundleIdentifier") == Some(APP_IDENTIFIER)
     && string("CFBundleExecutable") == Some("hmg")
     && string("CFBundleIconFile").is_some_and(|icon| bundle.join("Contents/Resources").join(icon).is_file())
+    && is_signed_as_app(bundle)
+}
+
+/// usernoted refuses authorization (UNErrorDomain 1, without a prompt) to a bundle
+/// whose signature does not seal its Info.plist under the bundle identifier. A merely
+/// linker-signed executable, as an unsigned `tauri build` produces, is such a bundle.
+fn is_signed_as_app(bundle: &Path) -> bool {
+  Command::new("/usr/bin/codesign")
+    .args(["--verify", "--strict", "-R"])
+    .arg(format!("=identifier \"{APP_IDENTIFIER}\""))
+    .arg(bundle)
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::null())
+    .status()
+    .is_ok_and(|status| status.success())
 }
 
 fn prepare_bundle(directory: &Path, source: &Path) -> Result<PathBuf, String> {
@@ -277,6 +293,32 @@ mod tests {
     fs::write(bundle.join("Contents/Info.plist"), INFO_PLIST).unwrap();
     fs::remove_file(bundle.join("Contents/Resources/icon.icns")).unwrap();
     assert!(!is_app_executable(&binary));
+  }
+
+  #[test]
+  fn an_app_without_a_bundle_signature_delivers_from_the_signed_cache_instead() {
+    let directory = tempfile::tempdir().unwrap();
+    // An unsigned tauri build: complete metadata, but only the executable's own
+    // signature, which neither seals Info.plist nor carries the bundle identifier.
+    let bundle = directory.path().join("HiveMe.app");
+    let contents = bundle.join("Contents");
+    fs::create_dir_all(contents.join("MacOS")).unwrap();
+    fs::create_dir_all(contents.join("Resources")).unwrap();
+    fs::write(contents.join("Info.plist"), INFO_PLIST).unwrap();
+    fs::write(contents.join("Resources/icon.icns"), ICON).unwrap();
+    let binary = contents.join("MacOS/hmg");
+    copy_executable(Path::new("/usr/bin/true"), &binary).unwrap();
+    let original = fs::read(&binary).unwrap();
+    assert!(!is_signed_as_app(&bundle));
+    assert!(!is_app_executable(&binary.canonicalize().unwrap()));
+    let cache = directory.path().join("cache");
+    let host = select_host(&cache, &binary).unwrap();
+    assert_eq!(host, cache.join("HiveMe Notifications.app/Contents/MacOS/hmg"));
+    assert!(is_signed_as_app(host.ancestors().nth(3).unwrap()));
+    assert!(is_app_executable(&host));
+    // The installed application itself is never re-signed in place.
+    assert_eq!(fs::read(&binary).unwrap(), original);
+    assert!(!is_signed_as_app(&bundle));
   }
 
   #[test]

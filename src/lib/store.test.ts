@@ -17,7 +17,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
-import type { Config, MessageRow } from './protocol';
+import type { Config, MessageRow, TopicNode } from './protocol';
 import { MESSAGE_PAGE_SIZE } from './constants';
 import * as Service from './service';
 import { INITIAL_STATUS, useAppStore } from './store';
@@ -154,36 +154,70 @@ describe('recursive topic history', () => {
             finishOld = resolve;
           })
       )
-      .mockResolvedValueOnce([message(2, 'hiveme/child')]);
+      .mockResolvedValueOnce([]);
     const selecting = useAppStore.getState().selectTopic('hiveme');
     await useAppStore.getState().clearSelectedTopic();
     finishOld([message(1, 'hiveme'), message(2, 'hiveme/child')]);
     await selecting;
-    expect(useAppStore.getState().messages.get('hiveme')).toEqual([message(2, 'hiveme/child')]);
+    expect(useAppStore.getState().selectedTopic).toBe('hiveme');
+    expect(useAppStore.getState().messages.get('hiveme')).toEqual([]);
   });
 
-  it('refreshes affected ancestor caches after exact-topic clearing and keeps descendants', async () => {
+  it('forgets the cleared subtree, reloads its ancestors, and selects the nearest remaining topic', async () => {
     const root = message(1, 'hiveme');
-    const child = message(2, 'hiveme/child');
-    const grandchild = message(3, 'hiveme/child/deep');
+    const ci = message(2, 'hiveme/build/ci');
+    const deep = message(3, 'hiveme/build/ci/deep');
+    const cd = message(4, 'hiveme/build/cd');
     useAppStore.setState({
-      selectedTopic: 'hiveme/child',
-      loadedTopics: new Set(['hiveme', 'hiveme/child', 'hiveme/child/deep']),
+      selectedTopic: 'hiveme/build/ci',
+      loadedTopics: new Set(['hiveme', 'hiveme/build/ci', 'hiveme/build/ci/deep', 'hiveme/build/cd']),
       messages: new Map([
-        ['hiveme', [root, child, grandchild]],
-        ['hiveme/child', [child, grandchild]],
-        ['hiveme/child/deep', [grandchild]],
+        ['hiveme', [root, ci, deep, cd]],
+        ['hiveme/build/ci', [ci, deep]],
+        ['hiveme/build/ci/deep', [deep]],
+        ['hiveme/build/cd', [cd]],
       ]),
     });
-    vi.mocked(Service.getMessages).mockResolvedValueOnce([grandchild]);
+    const node = (id: string, children: TopicNode[] = []): TopicNode => ({
+      id,
+      label: id.slice(id.lastIndexOf('/') + 1),
+      topic: id,
+      unread: 0,
+      messages: 1,
+      children,
+    });
+    vi.mocked(Service.listTopics).mockResolvedValueOnce([
+      node('hiveme', [node('hiveme/build', [node('hiveme/build/cd')])]),
+    ]);
+    vi.mocked(Service.getMessages).mockResolvedValueOnce([cd]);
+
     await useAppStore.getState().clearSelectedTopic();
-    expect(Service.clearTopic).toHaveBeenCalledExactlyOnceWith('hiveme/child');
-    expect(useAppStore.getState().messages.get('hiveme/child')).toEqual([grandchild]);
-    expect(useAppStore.getState().messages.get('hiveme/child/deep')).toEqual([grandchild]);
-    expect(useAppStore.getState().loadedTopics.has('hiveme')).toBe(false);
-    vi.mocked(Service.getMessages).mockResolvedValueOnce([root, grandchild]);
+
+    expect(Service.clearTopic).toHaveBeenCalledExactlyOnceWith('hiveme/build/ci');
+    const state = useAppStore.getState();
+    expect(state.selectedTopic).toBe('hiveme/build');
+    expect(Service.getMessages).toHaveBeenCalledExactlyOnceWith('hiveme/build', null, MESSAGE_PAGE_SIZE);
+    expect(state.messages.get('hiveme/build')).toEqual([cd]);
+    for (const gone of ['hiveme/build/ci', 'hiveme/build/ci/deep']) {
+      expect(state.messages.has(gone)).toBe(false);
+      expect(state.loadedTopics.has(gone)).toBe(false);
+    }
+    expect(state.loadedTopics.has('hiveme')).toBe(false);
+    expect(state.messages.get('hiveme/build/cd')).toEqual([cd]);
+    vi.mocked(Service.getMessages).mockResolvedValueOnce([root, cd]);
     await useAppStore.getState().selectTopic('hiveme');
-    expect(useAppStore.getState().messages.get('hiveme')).toEqual([root, grandchild]);
+    expect(useAppStore.getState().messages.get('hiveme')).toEqual([root, cd]);
+  });
+
+  it('selects hiveme once nothing between it and a cleared topic remains', async () => {
+    useAppStore.setState({
+      selectedTopic: 'hiveme/child/deep',
+      loadedTopics: new Set(['hiveme/child/deep']),
+      messages: new Map([['hiveme/child/deep', [message(1, 'hiveme/child/deep')]]]),
+    });
+    await useAppStore.getState().clearSelectedTopic();
+    expect(useAppStore.getState().selectedTopic).toBe('hiveme');
+    expect(useAppStore.getState().messages.has('hiveme/child/deep')).toBe(false);
   });
 });
 

@@ -351,16 +351,55 @@ fn a_parent_without_direct_messages_pages_across_its_children() {
 }
 
 #[test]
-fn clearing_an_exact_topic_preserves_children_in_its_recursive_view() {
+fn clearing_a_topic_removes_it_and_every_subtopic_with_their_messages() {
   let store = Store::in_memory().unwrap();
-  for topic in ["hiveme", "hiveme/child", "hiveme/child/deep"] {
+  for topic in [
+    "hiveme",
+    "hiveme/build",
+    "hiveme/build/ci",
+    "hiveme/build/ci/deep",
+    "hiveme/building",
+    "hiveme/Build",
+  ] {
     store.insert(&incoming(topic, &envelope("device-1", topic))).unwrap();
   }
-  assert_eq!(store.clear_topic("hiveme").unwrap(), 1);
-  let rows = store.messages("hiveme", None, 100).unwrap();
+  store
+    .insert(&incoming("hiveme/build/ci", &envelope("device-1", "second")))
+    .unwrap();
+
+  assert_eq!(store.clear_topic("hiveme/build").unwrap(), 4);
+
+  assert!(store.messages("hiveme/build", None, 100).unwrap().is_empty());
+  let topics = store.topics().unwrap();
   assert_eq!(
-    rows.iter().map(|row| row.topic.as_str()).collect::<Vec<_>>(),
-    ["hiveme/child", "hiveme/child/deep"]
+    topics.iter().map(|row| row.topic.as_str()).collect::<Vec<_>>(),
+    ["hiveme", "hiveme/Build", "hiveme/building"],
+    "the ancestor and topics that only share a prefix or differ in case stay"
+  );
+  assert!(topics.iter().all(|row| (row.messages, row.unread) == (1, 1)));
+  assert_eq!(store.message_count().unwrap(), 3);
+
+  // A message that arrives afterward records its topic again.
+  let again = store
+    .insert(&incoming("hiveme/build/ci", &envelope("device-1", "again")))
+    .unwrap();
+  assert!(again.is_new && again.topic_is_new);
+}
+
+#[test]
+fn clearing_the_root_topic_removes_everything_under_it() {
+  let store = Store::in_memory().unwrap();
+  for topic in ["hiveme", "hiveme/child", "hiveme/child/deep", "other/topic"] {
+    store.insert(&incoming(topic, &envelope("device-1", topic))).unwrap();
+  }
+
+  assert_eq!(store.clear_topic("hiveme").unwrap(), 3);
+
+  assert!(store.messages("hiveme", None, 100).unwrap().is_empty());
+  let topics = store.topics().unwrap();
+  assert_eq!(
+    topics.iter().map(|row| row.topic.as_str()).collect::<Vec<_>>(),
+    ["other/topic"]
   );
 }
 
@@ -376,7 +415,7 @@ fn one_message_can_be_looked_up_by_its_id() {
 }
 
 #[test]
-fn clearing_a_topic_forgets_its_messages_and_keeps_the_node() {
+fn clearing_a_topic_leaves_its_siblings_alone() {
   let store = Store::in_memory().unwrap();
   store
     .insert(&incoming("hiveme/info", &envelope("device-1", "one")))
@@ -391,10 +430,9 @@ fn clearing_a_topic_forgets_its_messages_and_keeps_the_node() {
   let topics = store.topics().unwrap();
   assert_eq!(
     topics.iter().map(|row| row.topic.as_str()).collect::<Vec<_>>(),
-    ["hiveme/info", "hiveme/warn"],
-    "the tree keeps a topic the user is still subscribed to"
+    ["hiveme/warn"]
   );
-  assert_eq!(topics[0].unread, 0);
+  assert_eq!((topics[0].messages, topics[0].unread), (1, 1));
   assert_eq!(store.message_count().unwrap(), 1);
 }
 

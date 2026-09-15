@@ -55,7 +55,9 @@ desktop, through your own HiveMQ Cloud cluster.
   `info`, `success`, `warn`, and `error`, and you can add your own, with templates for
   the title and the body.
 * **OS notification or topmost window.** Each rule chooses a native OS notification, a
-  window that stays above the others, or both.
+  window that stays above the others, or both. On macOS, HiveMe asks for permission the
+  first time it raises an OS notification and appears in System Settings >
+  Notifications.
 * **Pause.** Silence notifications from the toolbar without losing any messages.
 * **No spam.** A burst of messages is summarized as "and N more messages", and a
   message never notifies the app that sent it.
@@ -65,7 +67,7 @@ desktop, through your own HiveMQ Cloud cluster.
 * **Local history.** Topics and messages survive a restart, and are shared by the
   desktop app and the terminal UI.
 * **You decide how much to keep.** Limit the messages kept per topic and the number of
-  days they are kept, or clear a topic from the toolbar.
+  days they are kept, or clear a topic and all its subtopics from the toolbar.
 
 ### Appearance and languages
 

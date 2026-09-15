@@ -104,6 +104,21 @@ function belongsToTopic(topic: string, root: string): boolean {
   return topic === root || topic.startsWith(root + '/');
 }
 
+function hasTopicNode(nodes: Protocol.TopicNode[], id: string): boolean {
+  return nodes.some((node) => node.id === id || hasTopicNode(node.children, id));
+}
+
+/** The topic itself when the tree still has it, else its nearest ancestor that it has. */
+function nearestRemainingTopic(nodes: Protocol.TopicNode[], topic: string): string {
+  let candidate = topic;
+  while (candidate !== STARTUP_TOPIC && !hasTopicNode(nodes, candidate)) {
+    const parent = candidate.lastIndexOf('/');
+    if (parent <= 0) return STARTUP_TOPIC;
+    candidate = candidate.slice(0, parent);
+  }
+  return candidate;
+}
+
 /** Merge pages and live updates by database row id, preserving arrival order. */
 function mergeMessages(...groups: Protocol.MessageRow[][]): Protocol.MessageRow[] {
   const rows = new Map(groups.flat().map((row) => [row.rowId, row]));
@@ -307,10 +322,11 @@ export const useAppStore = create<AppState>((set, get) => {
         const messages = new Map(get().messages);
         const hasOlder = new Map(get().hasOlder);
         const loadedTopics = new Set(get().loadedTopics);
-        // Exact-topic clearing also changes cached ancestor views. Reload them from
-        // the database so descendants and pagination still reflect stored history.
+        // The topic and its subtopics are gone, which empties their cached views and
+        // changes every ancestor's. Reload those from the database so what remains and
+        // its pagination still reflect stored history.
         for (const root of new Set([...messages.keys(), ...historyRequests.keys(), ...loadedTopics])) {
-          if (belongsToTopic(topic, root)) {
+          if (belongsToTopic(topic, root) || belongsToTopic(root, topic)) {
             historyRequests.delete(root);
             messages.delete(root);
             hasOlder.delete(root);
@@ -318,9 +334,12 @@ export const useAppStore = create<AppState>((set, get) => {
           }
         }
         set({ messages, hasOlder, loadedTopics });
+        await get().refreshTopics();
+        // A cleared selection has left the tree, so select the nearest topic that stays.
         const selected = get().selectedTopic;
-        if (selected && belongsToTopic(topic, selected)) await get().selectTopic(selected);
-        else await get().refreshTopics();
+        if (selected && (belongsToTopic(topic, selected) || belongsToTopic(selected, topic))) {
+          await get().selectTopic(nearestRemainingTopic(get().topics, selected));
+        }
       } catch (error) {
         get().notifyError(error);
       }
