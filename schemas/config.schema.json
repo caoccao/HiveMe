@@ -333,15 +333,11 @@
       "type": "string"
     },
     "Notifications": {
-      "description": "The rule based OS notification system.",
+      "description": "The rule based desktop notification system.",
       "properties": {
         "enabled": {
           "default": true,
-          "type": "boolean"
-        },
-        "notifyOwnMessages": {
-          "default": false,
-          "description": "When false, a message this installation sent never raises a notification.",
+          "description": "Raise OS notifications.",
           "type": "boolean"
         },
         "rules": {
@@ -351,31 +347,52 @@
               "enabled": true,
               "id": "info",
               "level": "info",
+              "os": false,
               "title": "{title|topic}",
-              "topic": "#"
+              "topic": "#",
+              "topmost": false
+            },
+            {
+              "body": "{body}",
+              "enabled": true,
+              "id": "success",
+              "level": "success",
+              "os": false,
+              "title": "{title|topic}",
+              "topic": "#",
+              "topmost": false
             },
             {
               "body": "{body}",
               "enabled": true,
               "id": "warn",
               "level": "warn",
+              "os": false,
               "title": "{title|topic}",
-              "topic": "#"
+              "topic": "#",
+              "topmost": false
             },
             {
               "body": "{body}",
               "enabled": true,
               "id": "error",
               "level": "error",
+              "os": false,
               "title": "{title|topic}",
-              "topic": "#"
+              "topic": "#",
+              "topmost": false
             }
           ],
-          "description": "Absent means the three built-in rules. Present, even empty, replaces them.",
+          "description": "Absent means the four built-in rules. Present, even empty, replaces them.",
           "items": {
             "$ref": "#/$defs/Rule"
           },
           "type": "array"
+        },
+        "topmostEnabled": {
+          "default": false,
+          "description": "Raise a single topmost window, replacing its content with the latest match.",
+          "type": "boolean"
         }
       },
       "type": "object"
@@ -454,6 +471,11 @@
             "null"
           ]
         },
+        "os": {
+          "default": false,
+          "description": "Include this rule in OS notifications when the global channel is enabled.",
+          "type": "boolean"
+        },
         "title": {
           "default": "{title|topic}",
           "type": "string"
@@ -461,6 +483,11 @@
         "topic": {
           "description": "An MQTT topic filter, relative to `hiveme` unless `absolute` is true.",
           "type": "string"
+        },
+        "topmost": {
+          "default": false,
+          "description": "Include this rule in topmost window notifications when the global channel is enabled.",
+          "type": "boolean"
         }
       },
       "required": [
@@ -772,33 +799,49 @@
       "$ref": "#/$defs/Notifications",
       "default": {
         "enabled": true,
-        "notifyOwnMessages": false,
         "rules": [
           {
             "body": "{body}",
             "enabled": true,
             "id": "info",
             "level": "info",
+            "os": false,
             "title": "{title|topic}",
-            "topic": "#"
+            "topic": "#",
+            "topmost": false
+          },
+          {
+            "body": "{body}",
+            "enabled": true,
+            "id": "success",
+            "level": "success",
+            "os": false,
+            "title": "{title|topic}",
+            "topic": "#",
+            "topmost": false
           },
           {
             "body": "{body}",
             "enabled": true,
             "id": "warn",
             "level": "warn",
+            "os": false,
             "title": "{title|topic}",
-            "topic": "#"
+            "topic": "#",
+            "topmost": false
           },
           {
             "body": "{body}",
             "enabled": true,
             "id": "error",
             "level": "error",
+            "os": false,
             "title": "{title|topic}",
-            "topic": "#"
+            "topic": "#",
+            "topmost": false
           }
-        ]
+        ],
+        "topmostEnabled": false
       }
     },
     "publish": {

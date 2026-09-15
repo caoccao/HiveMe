@@ -43,8 +43,6 @@ use serde::{Deserialize, Serialize};
 
 pub use hiveme_core::session::{About, MessageRow, PublishOptions, Status, TopicNode, UpdateCheckResult};
 
-use crate::notification::TauriToaster;
-
 /// The `status` event, and what `get_status` answers with.
 pub const EVENT_STATUS: &str = "status";
 
@@ -54,7 +52,7 @@ pub const EVENT_MESSAGE: &str = "message";
 /// The `topic-added` event: a topic the tree has not shown before.
 pub const EVENT_TOPIC_ADDED: &str = "topic-added";
 
-/// The `notification-fired` event: a rule raised an OS notification.
+/// The `notification-fired` event: at least one notification channel succeeded.
 pub const EVENT_NOTIFICATION_FIRED: &str = "notification-fired";
 
 /// The `topic-added` event.
@@ -77,8 +75,6 @@ pub struct NotificationFiredEvent {
 pub struct AppState {
   /// The shared backend: config, history, broker connection, rules, update check.
   pub session: Arc<Session>,
-  /// Shows the notifications the session decides on, once the application exists.
-  pub toaster: Arc<TauriToaster>,
 }
 
 #[cfg(test)]
@@ -102,3 +98,12 @@ mod tests {
 }
 
 // Stored history tier is authoritative when rendering raw JSON/text.
+
+/// The latest content of the one topmost notification window.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TopmostSnapshot {
+  pub revision: u64,
+  #[serde(flatten)]
+  pub content: hiveme_core::session::TopmostNotification,
+}

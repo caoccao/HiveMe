@@ -119,12 +119,14 @@
     "addSubscription": "添加订阅",
     "removeSubscription": "删除此订阅",
     "notificationsEnabled": "显示系统通知",
-    "notifyOwnMessages": "通知此设备发送的消息",
+    "topmostNotificationsEnabled": "显示置顶窗口通知",
     "rules": "规则",
-    "ruleId": "ID",
+    "ruleId": "名称",
     "ruleTopic": "主题筛选器",
     "ruleLevel": "级别",
     "ruleEnabled": "已启用",
+    "ruleOs": "系统通知",
+    "ruleTopmost": "置顶窗口",
     "ruleTitle": "标题模板",
     "ruleBody": "正文模板",
     "addRule": "添加规则",
@@ -166,7 +168,7 @@
       "Weekly": "每周",
       "Monthly": "每月"
     },
-    "rawNotificationHint": "纯文本和 JSON 使用信息级别。启用信息规则即可接收通知。"
+    "rawNotificationHint": "纯文本和 JSON 使用 Info 级别。请启用 Info 规则并选择其通知方式。"
   },
   "about": {
     "tagline": "一种消息格式、两个应用和一个 HiveMQ Cloud 集群。",

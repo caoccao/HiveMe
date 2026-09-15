@@ -645,7 +645,13 @@ fn a_click_on_a_tool_does_what_its_key_does() {
 
 #[test]
 fn pausing_holds_notifications_back_and_the_footer_and_toolbar_say_so() {
-  let service = Scripted::in_language("en-US");
+  let mut config = Config::default();
+  config.notifications.topmost_enabled = true;
+  for rule in &mut config.notifications.rules {
+    rule.os = true;
+    rule.topmost = true;
+  }
+  let service = Scripted::new(config);
   service.set_state("Connected");
   let (mut app, mut receivers) = open_app(&service);
   let sender = Sender::from_device(&Config::new_for_this_device().device, "hmc");
@@ -654,6 +660,7 @@ fn pausing_holds_notifications_back_and_the_footer_and_toolbar_say_so() {
   service.deliver("hiveme/ci", &error);
   pump(&mut app, &mut receivers);
   assert_eq!(service.toasts.shown.lock().unwrap().len(), 1, "the error rule fired");
+  assert_eq!(service.toasts.topmost_shown(), service.toasts.shown());
   let footer = render(&mut app, 120, 40).pop().unwrap();
   assert!(footer.contains("1 message this session"), "{footer}");
 
@@ -671,11 +678,13 @@ fn pausing_holds_notifications_back_and_the_footer_and_toolbar_say_so() {
     "nothing is shown while paused"
   );
   assert!(render(&mut app, 120, 40)[39].contains("2 messages this session"));
+  assert_eq!(service.toasts.topmost_shown(), service.toasts.shown());
 
   press(&mut app, key(KeyCode::F(3)));
   service.deliver("hiveme/ci", &error);
   pump(&mut app, &mut receivers);
   assert_eq!(service.toasts.shown.lock().unwrap().len(), 2, "resumed");
+  assert_eq!(service.toasts.topmost_shown(), service.toasts.shown());
   let screen = render(&mut app, 120, 40);
   assert!(!screen[39].contains("notifications paused"));
   assert!(screen[1].contains("[F3 Pause]"));

@@ -115,11 +115,12 @@ value the applications use when the key is absent.
   },
   "notifications": {
     "enabled": true,
-    "notifyOwnMessages": false,
+    "topmostEnabled": false,
     "rules": [
-      { "id": "info",  "topic": "#",  "level": "info",  "enabled": true, "title": "{title|topic}", "body": "{body}" },
-      { "id": "warn",  "topic": "#",  "level": "warn",  "enabled": true, "title": "{title|topic}", "body": "{body}" },
-      { "id": "error", "topic": "#", "level": "error", "enabled": true, "title": "{title|topic}", "body": "{body}" }
+      { "id": "info",  "topic": "#",  "level": "info",  "enabled": true, "os": false, "topmost": false, "title": "{title|topic}", "body": "{body}" },
+      { "id": "success",  "topic": "#",  "level": "success",  "enabled": true, "os": false, "topmost": false, "title": "{title|topic}", "body": "{body}" },
+      { "id": "warn",  "topic": "#",  "level": "warn",  "enabled": true, "os": false, "topmost": false, "title": "{title|topic}", "body": "{body}" },
+      { "id": "error", "topic": "#", "level": "error", "enabled": true, "os": false, "topmost": false, "title": "{title|topic}", "body": "{body}" }
     ]
   },
   "gui": {
@@ -179,9 +180,9 @@ value the applications use when the key is absent.
 | `publish.qos` | 0, 1, 2 | no | 1 | |
 | `publish.retain` | boolean | no | false | |
 | `publish.timeoutSecs` | integer | no | 10 | How long `hmc` waits for the acknowledgement. |
-| `notifications.enabled` | boolean | no | true | Master switch. |
-| `notifications.notifyOwnMessages` | boolean | no | false | When false, messages whose `sender.id` equals `device.id` never notify. |
-| `notifications.rules[]` | object[] | no | the three built-ins | Raw JSON and plain text default to info for rule matching. See [gui.md](gui.md#notifications). |
+| `notifications.enabled` | boolean | no | true | Raise OS Notifications. Independent of the topmost window. |
+| `notifications.topmostEnabled` | boolean | no | false | Raise Topmost Window Notifications. One window shared by both apps displays the latest matching message. |
+| `notifications.rules[]` | object[] | no | the four built-ins (info, success, warn, error) | Messages from other MQTT sessions are eligible regardless of sender identity. Raw JSON and plain text default to info for rule matching. See [gui.md](gui.md#notifications). |
 | `gui.displayMode` | `Auto`, `Light`, `Dark` | no | `Auto` | `Auto` follows `prefers-color-scheme` in `hmg` and the terminal's own colors in interactive `hmc`; see [tui.md](tui.md#theme). |
 | `gui.theme` | theme name | no | `Ocean` | One of the twenty palette names listed in [gui.md](gui.md#theme). Honored by both applications. |
 | `gui.language` | BCP 47 tag | no | `en-US` | Supports `de`, `en-US`, `es`, `fr`, `it`, `ja`, `zh-CN`, `zh-HK`, and `zh-TW`. Regional tags resolve to a bundled locale; unsupported tags fall back to English. Read by `hmg` and by `hmc`, and written by `hmc --init` from the setup string. See [GUI languages](gui.md#languages), [CLI languages](cli.md#languages), and [tui.md](tui.md#languages). |

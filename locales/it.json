@@ -127,12 +127,14 @@
     "addSubscription": "Aggiungi una sottoscrizione",
     "removeSubscription": "Rimuovi questa sottoscrizione",
     "notificationsEnabled": "Mostra notifiche del sistema",
-    "notifyOwnMessages": "Notifica i messaggi inviati da questo dispositivo",
+    "topmostNotificationsEnabled": "Mostra notifiche in una finestra sempre in primo piano",
     "rules": "Regole",
-    "ruleId": "ID",
+    "ruleId": "Nome",
     "ruleTopic": "Filtro argomenti",
     "ruleLevel": "Livello",
     "ruleEnabled": "Abilitata",
+    "ruleOs": "Notifica di sistema",
+    "ruleTopmost": "Finestra in primo piano",
     "ruleTitle": "Modello del titolo",
     "ruleBody": "Modello del corpo",
     "addRule": "Aggiungi una regola",
@@ -174,7 +176,7 @@
       "Weekly": "Ogni settimana",
       "Monthly": "Ogni mese"
     },
-    "rawNotificationHint": "Il testo semplice e JSON usano il livello Info. Attiva una regola Info per ricevere le notifiche."
+    "rawNotificationHint": "Il testo semplice e JSON usano il livello Info. Abilita una regola Info e seleziona i suoi canali di notifica."
   },
   "about": {
     "tagline": "Un formato di messaggio, due applicazioni e un cluster HiveMQ Cloud.",

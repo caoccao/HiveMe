@@ -119,12 +119,14 @@
     "addSubscription": "新增訂閱",
     "removeSubscription": "刪除此訂閱",
     "notificationsEnabled": "顯示系統通知",
-    "notifyOwnMessages": "通知此裝置傳送的訊息",
+    "topmostNotificationsEnabled": "顯示置頂視窗通知",
     "rules": "規則",
-    "ruleId": "ID",
+    "ruleId": "名稱",
     "ruleTopic": "主題篩選器",
     "ruleLevel": "等級",
     "ruleEnabled": "已啟用",
+    "ruleOs": "系統通知",
+    "ruleTopmost": "置頂視窗",
     "ruleTitle": "標題範本",
     "ruleBody": "內文範本",
     "addRule": "新增規則",
@@ -166,7 +168,7 @@
       "Weekly": "每週",
       "Monthly": "每月"
     },
-    "rawNotificationHint": "純文字和 JSON 使用資訊等級。啟用資訊規則即可接收通知。"
+    "rawNotificationHint": "純文字和 JSON 使用 Info 級別。請啟用 Info 規則並選擇其通知方式。"
   },
   "about": {
     "tagline": "一種訊息格式、兩個應用程式及一個 HiveMQ Cloud 叢集。",

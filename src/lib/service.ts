@@ -89,3 +89,15 @@ export async function setNotificationsPaused(paused: boolean): Promise<Protocol.
 export async function skipVersion(version: string): Promise<void> {
   return await invoke<void>('skip_version', { version });
 }
+
+export async function closeTopmostNotification(revision: number): Promise<void> {
+  return await invoke<void>('close_topmost_notification', { revision });
+}
+
+export async function getTopmostNotification(): Promise<Protocol.TopmostSnapshot | null> {
+  return await invoke<Protocol.TopmostSnapshot | null>('get_topmost_notification');
+}
+
+export async function readyTopmostNotification(revision: number): Promise<void> {
+  return await invoke<void>('ready_topmost_notification', { revision });
+}

@@ -26,7 +26,7 @@ env_logger = { workspace = true }
 futures-core = { workspace = true }
 # The terminal UI runs on the session `hmg` runs on, which brings the history database,
 # and the bundled SQLite library, with it.
-hiveme-core = { workspace = true, features = ["i18n", "session"] }
+hiveme-core = { workspace = true, features = ["i18n", "session", "desktop"] }
 log = { workspace = true }
 open = { workspace = true }
 ratatui = { workspace = true }
@@ -37,13 +37,6 @@ thiserror = { workspace = true }
 # `signal`: closing the terminal and SIGTERM leave the terminal UI through its quit path.
 tokio = { workspace = true, features = ["signal"] }
 unicode-width = { workspace = true }
-
-[target.'cfg(not(target_os = "windows"))'.dependencies]
-notify-rust = { workspace = true }
-
-# Windows only: the toast API under the HiveMe application identity hmg registers.
-[target.'cfg(target_os = "windows")'.dependencies]
-tauri-winrt-notification = { workspace = true }
 
 [dev-dependencies]
 hiveme-core = { workspace = true, features = ["test-support"] }

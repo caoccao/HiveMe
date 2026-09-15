@@ -15,14 +15,14 @@
 * limitations under the License.
 */
 
-//! Notifications: the two switches and the rules table with Add and Remove.
+//! Notifications: independent delivery channels and four rows per rule.
 
 use std::time::Instant;
 
 use hiveme_core::config::{Config, DEFAULT_RULE_BODY, DEFAULT_RULE_TITLE, Rule};
 use hiveme_core::i18n::t;
 use hiveme_core::message::Level;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use unicode_width::UnicodeWidthStr;
 
 use super::{Field, Form, Item, Row, Size};
@@ -31,9 +31,6 @@ use crate::tui::service::Service;
 
 /// The levels a rule matches, in the order of `LEVELS` in `src/lib/protocol.ts`.
 const LEVELS: [Level; 5] = [Level::Debug, Level::Info, Level::Success, Level::Warn, Level::Error];
-
-/// The widest the Enabled column grows for its header.
-const ENABLED_MAX_WIDTH: u16 = 10;
 
 /// The name a level is shown with: translated when it is known, as written otherwise.
 fn level_name<S: Service>(app: &App<S>, level: &Level) -> String {
@@ -55,8 +52,6 @@ pub fn form<S: Service>(app: &App<S>) -> Form {
   let locale = app.locale;
   let glyphs = app.glyphs;
   let notifications = &app.config.notifications;
-  let header_style = app.theme.muted().add_modifier(Modifier::BOLD);
-  let header = |key: &str, size| Item::label(t(locale, key), header_style, size);
   let level_width = LEVELS
     .iter()
     .map(|level| level_name(app, level).width())
@@ -64,9 +59,11 @@ pub fn form<S: Service>(app: &App<S>) -> Form {
     .unwrap_or(0) as u16
     + glyphs.expanded.width() as u16
     + 3;
-  let enabled_width =
-    (t(locale, "settings.ruleEnabled").width() as u16).clamp(glyphs.checked.width() as u16, ENABLED_MAX_WIDTH);
   let remove_width = glyphs.close.width() as u16 + 2;
+  let side_width = (t(locale, "settings.ruleTopmost").width() as u16 + glyphs.checked.width() as u16 + 1)
+    .max(t(locale, "settings.ruleOs").width() as u16 + glyphs.checked.width() as u16 + 1)
+    .max(t(locale, "settings.ruleEnabled").width() as u16 + glyphs.checked.width() as u16 + 2 + remove_width)
+    .max(level_width + 1);
 
   let mut rows = vec![
     Row::controls(vec![Item::check(
@@ -76,9 +73,9 @@ pub fn form<S: Service>(app: &App<S>) -> Form {
       Size::Fit,
     )]),
     Row::controls(vec![Item::check(
-      Field::NotifyOwnMessages,
-      notifications.notify_own_messages,
-      t(locale, "settings.notifyOwnMessages"),
+      Field::TopmostNotificationsEnabled,
+      notifications.topmost_enabled,
+      t(locale, "settings.topmostNotificationsEnabled"),
       Size::Fit,
     )]),
     Row::Blank,
@@ -92,41 +89,63 @@ pub fn form<S: Service>(app: &App<S>) -> Form {
       )),
     },
     Row::hint(t(locale, "settings.rawNotificationHint")),
-    Row::controls(vec![
-      header("settings.ruleId", Size::Fill(2)),
-      header("settings.ruleTopic", Size::Fill(3)),
-      header("settings.ruleLevel", Size::Cells(level_width)),
-      header("settings.ruleEnabled", Size::Cells(enabled_width)),
-      header("settings.ruleTitle", Size::Fill(3)),
-      header("settings.ruleBody", Size::Fill(3)),
-      Item::label(String::new(), Style::new(), Size::Cells(remove_width)),
-    ]),
   ];
   for (index, rule) in notifications.rules.iter().enumerate() {
-    rows.push(Row::controls(vec![
-      Item::input(Field::RuleId(index), false, Size::Fill(2)),
-      Item::input(Field::RuleTopic(index), false, Size::Fill(3)),
-      Item::select(
-        Field::RuleLevel(index),
-        level_name(app, &rule.level),
-        level_style(app, &rule.level),
-        Size::Cells(level_width),
-      ),
-      Item::check(
-        Field::RuleEnabled(index),
-        rule.enabled,
-        String::new(),
-        Size::Cells(enabled_width),
-      ),
-      Item::input(Field::RuleTitle(index), false, Size::Fill(3)),
-      Item::input(Field::RuleBody(index), false, Size::Fill(3)),
-      Item::button(
-        Field::RemoveRule(index),
-        glyphs.close.to_owned(),
-        true,
-        Size::Cells(remove_width),
-      ),
-    ]));
+    rows.push(Row::Blank);
+    rows.push(Row::line(
+      t(locale, "settings.ruleId"),
+      vec![
+        Item::input(Field::RuleId(index), false, Size::Fill(1)),
+        Item::check(
+          Field::RuleEnabled(index),
+          rule.enabled,
+          t(locale, "settings.ruleEnabled"),
+          Size::Cells(side_width - remove_width - 1),
+        ),
+        Item::button(
+          Field::RemoveRule(index),
+          glyphs.close.to_owned(),
+          true,
+          Size::Cells(remove_width),
+        ),
+      ],
+    ));
+    for (key, field) in [
+      ("settings.ruleTopic", Field::RuleTopic(index)),
+      ("settings.ruleTitle", Field::RuleTitle(index)),
+      ("settings.ruleBody", Field::RuleBody(index)),
+    ] {
+      let mut controls = vec![Item::input(field, false, Size::Fill(1))];
+      if matches!(field, Field::RuleTopic(_)) {
+        controls.push(Item::select(
+          Field::RuleLevel(index),
+          level_name(app, &rule.level),
+          level_style(app, &rule.level),
+          Size::Cells(level_width),
+        ));
+        // Keep the selector compact while aligning the three input widths.
+        controls.push(Item::label(
+          String::new(),
+          Style::new(),
+          Size::Cells(side_width - level_width - 1),
+        ));
+      } else if matches!(field, Field::RuleTitle(_)) {
+        controls.push(Item::check(
+          Field::RuleOs(index),
+          rule.os,
+          t(locale, "settings.ruleOs"),
+          Size::Cells(side_width),
+        ));
+      } else {
+        controls.push(Item::check(
+          Field::RuleTopmost(index),
+          rule.topmost,
+          t(locale, "settings.ruleTopmost"),
+          Size::Cells(side_width),
+        ));
+      }
+      rows.push(Row::line(t(locale, key), controls));
+    }
   }
   Form { rows }
 }
@@ -160,10 +179,20 @@ pub fn toggle(config: &mut Config, field: Field) {
   let notifications = &mut config.notifications;
   match field {
     Field::NotificationsEnabled => notifications.enabled = !notifications.enabled,
-    Field::NotifyOwnMessages => notifications.notify_own_messages = !notifications.notify_own_messages,
+    Field::TopmostNotificationsEnabled => notifications.topmost_enabled = !notifications.topmost_enabled,
     Field::RuleEnabled(index) => {
       if let Some(rule) = notifications.rules.get_mut(index) {
         rule.enabled = !rule.enabled;
+      }
+    }
+    Field::RuleOs(index) => {
+      if let Some(rule) = notifications.rules.get_mut(index) {
+        rule.os = !rule.os;
+      }
+    }
+    Field::RuleTopmost(index) => {
+      if let Some(rule) = notifications.rules.get_mut(index) {
+        rule.topmost = !rule.topmost;
       }
     }
     _ => {}
@@ -212,6 +241,8 @@ pub fn press<S: Service>(app: &mut App<S>, field: Field, now: Instant) {
           absolute: false,
           level: Level::Info,
           enabled: true,
+          os: false,
+          topmost: false,
           title: DEFAULT_RULE_TITLE.to_owned(),
           body: DEFAULT_RULE_BODY.to_owned(),
           matches: None,

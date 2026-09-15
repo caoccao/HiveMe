@@ -344,7 +344,7 @@ primary color while one of its controls has the focus.
 | Appearance | Mode, a radio row of Auto Mode, Light Mode, and Dark Mode; Theme, a select listing each palette in its own primary color; Language, a select of the names of the languages in themselves, `LANGUAGE_LABELS` |
 | Broker | Protocol, a select of the four transports; URL; the line that says the URL that will be saved and its port, or `settings.urlHint` while the box is empty; Username; Password, masked until `Ctrl+H`, and the `Ctrl+H` hint; the TLS note; **Copy CLI setup** and `settings.copyCliSetupHint`, the GUI's tooltip; **Connection** with the client id prefix, keep alive, session expiry, and connect timeout; **Reconnect** with the first and the longest retry |
 | History | `settings.historyHint`, Messages per topic, and Retention (days) |
-| Notifications | Raise OS notifications and Notify about messages this device sent as checkboxes; **Rules** with Add at the right end, a header row, and a row per rule: Id, Topic filter, Level as a select in the level's color, Enabled, Title template, Body template, and `[✕]` |
+| Notifications | Raise OS Notifications (checked) and Raise Topmost Window Notifications (unchecked) as separate checkboxes; **Rules** with Add at the right end, followed by four rows per rule: Name with Enabled and `[✕]`; Topic filter with Level; Title template with OS Notification; Body template with Topmost Window |
 | Topics | **Subscriptions** with Add at the right end, then a row per subscription: the filter, the Absolute checkbox, and `[✕]` to remove it |
 | Update | Check for updates, a select of Daily, Weekly, and Monthly |
 | Advanced | `settings.advancedHint`, then **Encryption** and **Cloud API**, each saying `settings.notImplemented`. Nothing takes the focus |
@@ -359,7 +359,7 @@ chosen before a URL is typed stays chosen. Both ports are tested against the cas
 
 A subscription row is written back trimmed, as a bare string when it is relative and as
 `{ "filter", "absolute": true }` when it is not, and a cleared filter keeps its row. Add
-appends `#`, or the rule the GUI adds (`rule-<n>`, `info`, Info, enabled, and the default
+appends `#`, or the rule the GUI adds (`rule-<n>`, `info`, Info, enabled, Topmost Window unchecked, and the default
 templates), and moves the focus to its first field. Remove deletes its row and leaves the
 focus on the Remove of the row that took its place, or on Add when no row is left.
 
@@ -608,20 +608,23 @@ Spanish (`es`), French (`fr`), Italian (`it`), Japanese (`ja`), Simplified Chine
 
 *Phase 3, and phase 6 for the macOS identity.*
 
-Interactive `hmc` raises OS notifications from the shared rules of
-[gui.md](gui.md#notifications), through the session's notifier of
-[session.md](session.md#notifications): the rule engine, the rate limiter with its
-`and N more messages` summary, the `notifyOwnMessages` rule, and the pause toggle are
-the same code `hmg` runs. `hmc` supplies only the final show call.
+Interactive `hmc` raises both OS notifications and topmost window notifications from
+the shared rules of [gui.md](gui.md#notifications). The independent channel flags,
+OS rate limiter, current-session publish exclusion, and pause toggle use the same
+code as hmg. Each rule has separate OS Notification and Topmost Window checkboxes,
+both unchecked by default and gated by the corresponding global switch. F3 pauses
+both channels and discards queued notifications; resuming only admits new messages.
+Messages from every other MQTT session run through the rules, including
+another hmc process or hmg sharing the same config. Sender metadata does not suppress
+notifications, and there is no device-based checkbox.
 
-| Platform | How `hmc` shows a toast |
-|----------|-------------------------|
-| Linux | `notify-rust` over D-Bus. A desktop without a notification daemon is a reason for the message to be silent, not for it to be lost: the failure is logged and the message is still stored and shown. |
-| macOS | `notify-rust`, under the bundle identifier of `hmg`, `com.caoccao.hiveme`, which `hmc` sets before its first toast so that a toast is labeled HiveMe. `mac-notification-sys` takes the identifier only when LaunchServices knows a bundle carrying it, which a `pnpm tauri build` output under `target/` satisfies as well as an installed `/Applications/HiveMe.app`; where it knows none, the identifier is refused, the refusal is logged, and the toast is labeled Terminal. Left alone, the library would look an application up by name and settle on Finder. A run of `crates/hmc/tests/tui.rs` on a Mac shows that the unbundled binary's toasts are accepted and that the identifier is taken; the label itself has still not been read off the screen, see [todos.md](../todos.md). A unit test keeps the identifier equal to `identifier` in `src-tauri/tauri.conf.json`. |
-| Windows | `tauri-winrt-notification` against the same `HiveMe` `AppUserModelId` `hmg` registers, so the toast is labeled HiveMe rather than the console host. The registry entry is written by whichever application starts first. |
-
-The manual checklist of [gui.md](gui.md#platform-notes) is run with interactive `hmc`
-in place of `hmg` at the end of phase 4.
+Both applications use `hiveme_core::desktop::DesktopToaster`: native D-Bus notifications
+on Linux, the registered HiveMe toast identity on Windows, and the modern macOS
+notification API in a signed helper bundle. Topmost notifications use the single
+`hmg --notification-host` window on every desktop OS. `hmg` must be installed beside
+`hmc` or on PATH; both executables ship together. The host opens no config or database.
+See [GUI platform notes](gui.md#platform-notes) for authorization, failure handling,
+and the per-OS manual checklist, which also applies to interactive hmc.
 
 ## Client identifier
 

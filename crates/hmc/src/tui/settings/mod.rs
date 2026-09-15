@@ -120,12 +120,14 @@ pub enum Field {
   SubscriptionAbsolute(usize),
   RemoveSubscription(usize),
   NotificationsEnabled,
-  NotifyOwnMessages,
+  TopmostNotificationsEnabled,
   AddRule,
   RuleId(usize),
   RuleTopic(usize),
   RuleLevel(usize),
   RuleEnabled(usize),
+  RuleOs(usize),
+  RuleTopmost(usize),
   RuleTitle(usize),
   RuleBody(usize),
   RemoveRule(usize),
@@ -155,12 +157,14 @@ impl Field {
       | Self::SubscriptionAbsolute(_)
       | Self::RemoveSubscription(_) => Category::Topics,
       Self::NotificationsEnabled
-      | Self::NotifyOwnMessages
+      | Self::TopmostNotificationsEnabled
       | Self::AddRule
       | Self::RuleId(_)
       | Self::RuleTopic(_)
       | Self::RuleLevel(_)
       | Self::RuleEnabled(_)
+      | Self::RuleOs(_)
+      | Self::RuleTopmost(_)
       | Self::RuleTitle(_)
       | Self::RuleBody(_)
       | Self::RemoveRule(_) => Category::Notifications,

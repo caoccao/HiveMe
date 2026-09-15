@@ -732,7 +732,7 @@ impl<S: Service> App<S> {
         self.refresh_topics(now);
       }
       SessionEvent::TopicAdded { .. } => self.refresh_topics(now),
-      // The OS notification was already shown by the session's notifier.
+      // The session's notifier already delivered the notification.
       SessionEvent::NotificationFired { .. } => {}
     }
   }

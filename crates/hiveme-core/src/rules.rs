@@ -37,6 +37,8 @@ pub struct CompiledRule {
   pub filter: String,
   pub level: Level,
   pub enabled: bool,
+  pub os: bool,
+  pub topmost: bool,
   pub title: String,
   pub body: String,
 }
@@ -48,6 +50,8 @@ impl CompiledRule {
       filter: rule.resolve(prefix),
       level: rule.level.clone(),
       enabled: rule.enabled,
+      os: rule.os,
+      topmost: rule.topmost,
       title: rule.title.clone(),
       body: rule.body.clone(),
     }
@@ -58,6 +62,8 @@ impl CompiledRule {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Notification {
   pub rule_id: String,
+  pub os: bool,
+  pub topmost: bool,
   pub level: Level,
   pub title: String,
   pub body: String,
@@ -78,8 +84,6 @@ impl Notification {
 #[derive(Debug, Clone)]
 pub struct RuleEngine {
   enabled: bool,
-  notify_own_messages: bool,
-  device_id: String,
   rules: Vec<CompiledRule>,
 }
 
@@ -87,9 +91,7 @@ impl RuleEngine {
   /// Compiles the rules of `config` against its topic prefix.
   pub fn from_config(config: &Config) -> Self {
     Self {
-      enabled: config.notifications.enabled,
-      notify_own_messages: config.notifications.notify_own_messages,
-      device_id: config.device.id.clone(),
+      enabled: config.notifications.enabled || config.notifications.topmost_enabled,
       rules: config
         .notifications
         .rules
@@ -112,12 +114,10 @@ impl RuleEngine {
       .find(|rule| rule.enabled && &rule.level == level && crate::topic::matches(&rule.filter, topic))
   }
 
-  /// The notification a message raises, if any.
+  /// The notification an incoming message raises, regardless of sender metadata.
+  /// The session excludes its own publish echoes before invoking the rules.
   pub fn evaluate(&self, topic: &str, parsed: &Parsed) -> Option<Notification> {
     if !self.enabled {
-      return None;
-    }
-    if !self.notify_own_messages && self.is_own(parsed) {
       return None;
     }
     let level = parsed
@@ -128,22 +128,12 @@ impl RuleEngine {
     let context = Context::new(topic, parsed, &level);
     Some(Notification {
       rule_id: rule.id.clone(),
+      os: rule.os,
+      topmost: rule.topmost,
       level,
       title: render(&rule.title, &context),
       body: render(&rule.body, &context),
     })
-  }
-
-  /// Whether this installation produced the message.
-  fn is_own(&self, parsed: &Parsed) -> bool {
-    if self.device_id.is_empty() {
-      return false;
-    }
-    parsed
-      .envelope()
-      .and_then(|message| message.sender.as_ref())
-      .and_then(|sender| sender.id.as_deref())
-      .is_some_and(|id| id == self.device_id)
   }
 }
 
@@ -320,7 +310,21 @@ mod tests {
   fn the_built_in_rules_match_the_prefixed_topics() {
     let engine = RuleEngine::from_config(&config());
     let filters: Vec<&str> = engine.rules().iter().map(|rule| rule.filter.as_str()).collect();
-    assert_eq!(filters, ["hiveme/#", "hiveme/#", "hiveme/#"]);
+    assert_eq!(filters, ["hiveme/#", "hiveme/#", "hiveme/#", "hiveme/#"]);
+  }
+
+  #[test]
+  fn all_four_built_in_levels_raise_notifications_without_opting_into_topmost() {
+    let engine = RuleEngine::from_config(&config());
+    for level in [Level::Info, Level::Success, Level::Warn, Level::Error] {
+      let parsed = Parsed::Envelope(Box::new(
+        Message::new_text(Sender::default(), "message").with_level(level.clone()),
+      ));
+      let notification = engine.evaluate("hiveme/builds", &parsed).unwrap();
+      assert_eq!(notification.rule_id, level.as_str());
+      assert_eq!(notification.level, level);
+      assert!(!notification.topmost);
+    }
   }
 
   #[test]
@@ -334,6 +338,8 @@ mod tests {
         absolute: false,
         level: Level::Error,
         enabled: true,
+        os: false,
+        topmost: false,
         title: "{topic}".to_owned(),
         body: "{body}".to_owned(),
         matches: None,
@@ -366,7 +372,7 @@ mod tests {
   #[test]
   fn disabling_a_rule_suppresses_only_its_payload_level() {
     let mut config = config();
-    config.notifications.rules[2].enabled = false;
+    config.notifications.rules[3].enabled = false;
     let engine = RuleEngine::from_config(&config);
     let error = Parsed::Envelope(Box::new(
       Message::new_text(Sender::default(), "boom").with_level(Level::Error),
@@ -384,30 +390,15 @@ mod tests {
   }
 
   #[test]
-  fn a_message_from_this_device_is_skipped_by_default() {
+  fn incoming_messages_match_regardless_of_sender_identity() {
     let engine = RuleEngine::from_config(&config());
-    assert!(
-      engine
-        .evaluate("hiveme/info", &envelope("mine", Some("device-1")))
-        .is_none()
-    );
-    assert!(
-      engine
-        .evaluate("hiveme/info", &envelope("theirs", Some("device-2")))
-        .is_some()
-    );
-  }
-
-  #[test]
-  fn own_messages_can_be_notified_on_request() {
-    let mut config = config();
-    config.notifications.notify_own_messages = true;
-    let engine = RuleEngine::from_config(&config);
-    assert!(
-      engine
-        .evaluate("hiveme/info", &envelope("mine", Some("device-1")))
-        .is_some()
-    );
+    for sender_id in [Some("device-1"), Some("device-2"), Some(""), None] {
+      let notification = engine
+        .evaluate("hiveme/info", &envelope("incoming", sender_id))
+        .expect("sender metadata must not suppress an incoming message");
+      assert_eq!(notification.rule_id, "info");
+      assert_eq!(notification.body, "incoming");
+    }
   }
 
   #[test]
@@ -505,6 +496,8 @@ mod tests {
   fn the_suppressed_summary_reads_naturally() {
     let notification = Notification {
       rule_id: "error".to_owned(),
+      os: false,
+      topmost: false,
       level: Level::Error,
       title: "t".to_owned(),
       body: "boom".to_owned(),

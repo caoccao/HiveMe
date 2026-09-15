@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+* Rules now have separate OS Notification and Topmost Window checkboxes beside
+  Title Template and Body Template. Both default to unchecked; Enabled stays checked.
+* Pause stops both notification channels and discards queued deliveries. Resuming
+  cannot replay a backlog, and messages received while paused still appear in history.
+
+* Notification rules now process messages from every other MQTT session, including
+  hmg and hmc sharing a config. Only the current session's own publishes and duplicate
+  deliveries stay silent. Retained messages received in a fresh session remain
+  eligible even when already in history. The device-based notification checkbox and
+  config option have been removed from both apps.
+* Raw JSON echoes use an MQTT publish ID, so identical payloads sent by another
+  session no longer get mistaken for the current session's own message.
+
+* Notifications now offer independent OS and topmost window checkboxes in both apps.
+  OS notifications default to on; topmost notifications default to off. One shared
+  topmost window follows BatchMkvMerge's design, is centered using native screen
+  dimensions, and displays the latest matching message without waiting for OS delivery.
+* Native OS delivery now reports errors, and macOS uses actual authorization and the
+  current notification API through a signed helper, including for unbundled builds.
+* Notification rules use four rows: Name with Enabled and Remove; Topic filter with
+  Level; Title template with OS Notification; Body template with Topmost Window.
+  The four built-in rules—info, success, warn, and error—are enabled by default.
+  Both per-rule notification channels default to unchecked for built-in and newly added rules.
+
 * The GUI's new Editor settings offer separate checkboxes for autocomplete,
   autocorrection, automatic capitalization, spellchecking, and writing suggestions.
   All default to unchecked and apply immediately to every text field.

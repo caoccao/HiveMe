@@ -34,6 +34,8 @@
 //! | `crypto`    | 6   | `docs/specs/message.md`      |
 
 pub mod config;
+#[cfg(feature = "desktop")]
+pub mod desktop;
 pub mod error;
 #[cfg(feature = "i18n")]
 pub mod i18n;

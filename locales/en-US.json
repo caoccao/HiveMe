@@ -122,13 +122,15 @@
     "absolute": "Absolute",
     "addSubscription": "Add a subscription",
     "removeSubscription": "Remove this subscription",
-    "notificationsEnabled": "Raise OS notifications",
-    "notifyOwnMessages": "Notify about messages this device sent",
+    "notificationsEnabled": "Raise OS Notifications",
+    "topmostNotificationsEnabled": "Raise Topmost Window Notifications",
     "rules": "Rules",
-    "ruleId": "Id",
+    "ruleId": "Name",
     "ruleTopic": "Topic filter",
     "ruleLevel": "Level",
     "ruleEnabled": "Enabled",
+    "ruleOs": "OS Notification",
+    "ruleTopmost": "Topmost Window",
     "ruleTitle": "Title template",
     "ruleBody": "Body template",
     "addRule": "Add a rule",
@@ -170,7 +172,7 @@
       "Weekly": "Weekly",
       "Monthly": "Monthly"
     },
-    "rawNotificationHint": "Raw text and JSON use the Info level. Enable an Info rule to notify for them."
+    "rawNotificationHint": "Raw text and JSON use the Info level. Enable an Info rule and select its notification channels."
   },
   "about": {
     "tagline": "One message format, two applications, and a HiveMQ Cloud cluster.",

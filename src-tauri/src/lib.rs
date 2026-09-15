@@ -29,6 +29,7 @@ mod constants;
 mod controller;
 mod events;
 mod notification;
+mod notification_host;
 mod protocol;
 mod window;
 
@@ -38,6 +39,11 @@ use protocol::{AppState, MessageRow, PublishOptions, Status, TopicNode, UpdateCh
 async fn clear_topic(topic: String, state: tauri::State<'_, AppState>) -> Result<u64, String> {
   log::debug!("clear_topic({topic})");
   controller::clear_topic(&state.session, &topic).map_err(convert_error)
+}
+
+#[tauri::command]
+async fn close_topmost_notification(window: tauri::WebviewWindow, revision: u64) -> Result<(), String> {
+  notification_host::close(&window, revision).await
 }
 
 #[tauri::command]
@@ -93,6 +99,14 @@ async fn get_status(state: tauri::State<'_, AppState>) -> Result<Status, String>
 }
 
 #[tauri::command]
+async fn get_topmost_notification(
+  window: tauri::WebviewWindow,
+  state: tauri::State<'_, notification_host::State>,
+) -> Result<Option<protocol::TopmostSnapshot>, String> {
+  notification_host::current(&window, &state)
+}
+
+#[tauri::command]
 async fn get_update_result(state: tauri::State<'_, AppState>) -> Result<Option<UpdateCheckResult>, String> {
   log::debug!("get_update_result");
   Ok(controller::get_update_result(&state.session))
@@ -123,10 +137,20 @@ async fn publish(
     .map_err(convert_error)
 }
 
+#[tauri::command]
+async fn ready_topmost_notification(window: tauri::WebviewWindow, revision: u64) -> Result<(), String> {
+  notification_host::ready(&window, revision).await
+}
+
 /// Starts the GUI. Called by `main.rs`, which adds the Windows subsystem attribute.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   env_logger::init();
+  let mut context = tauri::generate_context!();
+  if notification_host::is_host_launch() {
+    notification_host::run(context);
+    return;
+  }
 
   let runtime = tokio::runtime::Builder::new_multi_thread()
     .worker_threads(4)
@@ -139,7 +163,6 @@ pub fn run() {
   // status bar says so, and nothing is written until the user saves the Settings tab.
   // Corrupt or incompatible history is recreated by the store. Storage failures
   // that remain, such as a directory that is not writable, need a visible error.
-  let mut context = tauri::generate_context!();
   let toaster = Arc::new(notification::TauriToaster::new());
   let session = match Session::open(None, SessionApp::Gui, toaster.clone()) {
     Ok(session) => session,
@@ -161,10 +184,9 @@ pub fn run() {
   window::place(&mut context, &session);
 
   tauri::Builder::default()
-    .manage(AppState { session, toaster })
+    .manage(AppState { session })
     .plugin(tauri_plugin_clipboard_manager::init())
     .plugin(tauri_plugin_dialog::init())
-    .plugin(tauri_plugin_notification::init())
     .plugin(tauri_plugin_opener::init())
     .setup(window::setup)
     .on_window_event(window::on_window_event)

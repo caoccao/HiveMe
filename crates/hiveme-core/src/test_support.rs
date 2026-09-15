@@ -162,6 +162,9 @@ impl Broker {
     config.broker.reconnect.initial_delay_ms = 200;
     config.broker.reconnect.max_delay_ms = 2_000;
     config.publish.timeout_secs = 20;
+    for rule in &mut config.notifications.rules {
+      rule.os = true;
+    }
     config
   }
 
@@ -203,6 +206,7 @@ impl Broker {
 #[derive(Default)]
 pub struct Recorder {
   pub shown: std::sync::Mutex<Vec<(String, String)>>,
+  pub topmost: std::sync::Mutex<Vec<crate::session::TopmostNotification>>,
   pub fail: std::sync::atomic::AtomicBool,
 }
 impl crate::session::Toaster for Recorder {
@@ -215,6 +219,11 @@ impl crate::session::Toaster for Recorder {
       .lock()
       .unwrap_or_else(|poisoned| poisoned.into_inner())
       .push((title.to_owned(), body.to_owned()));
+    Ok(())
+  }
+
+  fn show_topmost(&self, content: &crate::session::TopmostNotification) -> Result<(), String> {
+    self.topmost.lock().unwrap().push(content.clone());
     Ok(())
   }
 }
@@ -258,6 +267,16 @@ pub async fn session_present(host: &str, port: u16, client_id: &str) -> bool {
 }
 
 impl Recorder {
+  pub fn topmost_shown(&self) -> Vec<(String, String)> {
+    self
+      .topmost
+      .lock()
+      .unwrap()
+      .iter()
+      .map(|content| (content.title.clone(), content.body.clone()))
+      .collect()
+  }
+
   pub fn shown(&self) -> Vec<(String, String)> {
     self
       .shown

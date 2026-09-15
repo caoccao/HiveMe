@@ -271,7 +271,6 @@ Full example with defaults:
   },
   "notifications": {
     "enabled": true,
-    "notifyOwnMessages": false,
     "rules": [
       { "id": "info",  "topic": "#",  "level": "info",  "enabled": true, "title": "{title|topic}", "body": "{body}" },
       { "id": "warn",  "topic": "#",  "level": "warn",  "enabled": true, "title": "{title|topic}", "body": "{body}" },
@@ -327,7 +326,6 @@ Field reference:
 | `publish.retain` | boolean | no | false | |
 | `publish.timeoutSecs` | integer | no | 10 | Time to wait for the acknowledgement in `hmc`. |
 | `notifications.enabled` | boolean | no | true | |
-| `notifications.notifyOwnMessages` | boolean | no | false | Suppress notifications for messages whose `sender.id` equals `device.id`. |
 | `notifications.rules[]` | object[] | no | built-ins | See section 7. |
 | `gui.displayMode` | `Auto`, `Light`, `Dark` | no | `Auto` | Same semantics as BetterMediaInfo. |
 | `gui.theme` | one of the 20 BetterMediaInfo theme names | no | `Ocean` | Palette table copied from BetterMediaInfo `App.tsx`. |
@@ -546,7 +544,7 @@ Rule object:
 
 Templates support `{title}`, `{body}`, `{topic}`, `{level}`, `{sender}`, `{app}`, and the fallback form `{a|b}` which uses the first non-empty value. Unknown placeholders render as empty strings. No expressions.
 
-Evaluation: rules are checked in config order; the first enabled rule matching both the MQTT topic filter and payload level fires. Messages whose `sender.id` equals `device.id` are skipped unless `notifyOwnMessages` is true. Notifications are rate-limited to one per rule per second with an "and N more" suffix. The toolbar "pause notifications" toggle suppresses all rules for the session.
+Evaluation: rules are checked in config order; the first enabled rule matching both the MQTT topic filter and payload level fires. The current MQTT session excludes its own publish echoes and duplicate deliveries before evaluating rules. Messages from every other session are eligible, including sessions sharing the same config and sender metadata. Notifications are rate-limited to one per rule per second with an "and N more" suffix. The toolbar "pause notifications" toggle suppresses all rules for the session.
 
 Defaults: if `notifications.rules` is absent, the three built-in rules apply. If present (even empty), only the listed rules apply. Users override a built-in by reusing its `id`.
 
@@ -570,7 +568,7 @@ Spec file: `docs/specs/gui.md`. Layout and component structure follow BetterMedi
 - `MessageView.tsx` (right): chat view for the selected topic and all recursive descendants, filtered by the stored topic field in SQL and paged together. Messages from this device (`sender.id == device.id`) align right, others align left with available sender details. Incoming messages show the sender name or ID above the bubble, without the application name; outgoing and senderless messages omit the header. Every message shows its topic path relative to the selected tree topic below the bubble, immediately before the level badge, in muted gray; empty paths are omitted. Rounded bubbles show `title` (bold), `body`, and a collapsed `data` JSON tree. A reserved row below reveals the relative path, level, QoS, time, and a split copy button only while the pointer is over the message, aligned to the bubble's right edge. The dropdown offers Copy and Copy Raw JSON through the clipboard plugin. Retained status and newer-version markers appear in the same row when applicable. Raw JSON and raw text tiers use a monospace bubble. Encrypted messages show a lock placeholder. Virtualized list (`@tanstack/react-virtual`, already used by BetterMediaInfo), newest at the bottom, auto-scroll unless the user scrolled up.
 - `Composer.tsx` (bottom of the message view): full-width multi-line `TextField` with a three-row minimum and 4 px margins to the panel edges, then a right-aligned level dropdown followed by More Options and Send. The level choices are Info (default), Error, Success, and Warn; its value is remembered with the entire composer state per topic in memory. In raw JSON mode the dropdown is disabled and its saved value is excluded from publishing. More Options expands three rows for Topic, Title, and QoS (Config/0/1/2) with Retain Message / As Raw JSON on the QoS row. Topic and title default to empty, QoS to Config, and both checkboxes to unchecked. Topic is relative to the selected tree topic; leading slashes are stripped. Options stay active when collapsed; drafts and options are remembered per selected topic in memory only. Enter sends from any focused composer control without also activating it; inside the open level menu, Enter selects an option without sending. Shift+Enter inserts a newline in the message box; Enter used for text composition does not send. Disabled when disconnected or when no topic is selected.
 
-`Config.tsx` (Settings tab): `SectionHeader` sections as in BetterMediaInfo: Broker (URL, username, password with visibility toggle, TLS options with a CA file picker via the dialog plugin, advanced timings), Topics (subscriptions list editor), Notifications (enabled, notify own messages, rules table with add/edit/delete), Appearance (display mode toggle, theme select, language select), Update (check interval). Changes apply immediately and automatically call `set_config`; the backend reconnects when broker or subscription fields changed. Encryption and Cloud API sections are read-only placeholders that state "not implemented yet" until their phases.
+`Config.tsx` (Settings tab): `SectionHeader` sections as in BetterMediaInfo: Broker (URL, username, password with visibility toggle, TLS options with a CA file picker via the dialog plugin, advanced timings), Topics (subscriptions list editor), Notifications (OS and topmost channel switches, rules editor with add/edit/delete), Appearance (display mode toggle, theme select, language select), Update (check interval). Changes apply immediately and automatically call `set_config`; the backend reconnects when broker or subscription fields changed. Encryption and Cloud API sections are read-only placeholders that state "not implemented yet" until their phases.
 
 `About.tsx`: app icon, name, version, links to GitHub and author, license, copyright. Update notice appears here and as a dialog in `MainContent` like BetterMediaInfo.
 

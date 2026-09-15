@@ -135,7 +135,7 @@ the terminal UI applies each one to its state.
 | `Status` | `Status` | every connection state change, every reconnect countdown, every pause toggle, and the end of a `connect` or `disconnect` |
 | `Message` | `MessageRow` | once per stored row, whether it arrived or was published here. The echo of a message this installation published raises no second event, because it collapses into the row that is already there |
 | `TopicAdded` | topic | the first message ever stored on a topic |
-| `NotificationFired` | rule id, message id, topic | a rule raised an OS notification |
+| `NotificationFired` | rule id, message id, topic | a rule raised a desktop notification |
 
 A receiver that falls behind loses the oldest events, which is the broadcast
 channel's rule; the applications refresh the tree and the status from the operations
@@ -207,8 +207,9 @@ so that a message from any of them is indistinguishable.
    `device` with the application's `app`, the body, the trimmed title when there is
    one, and the level, `info` by default.
 4. QoS is the option or `publish.qos`; retain is the option or `publish.retain`.
-5. Claim the message before sending it, by its topic and id, and for a raw publish by
-   its bytes as well. The broker can echo a message back onto this session's own
+5. Claim the message before sending it, by its topic and id. For a raw publish, attach
+   that generated ID as the MQTT user property `hiveme-publish-id` and remember it in
+   the current session's raw publish set. The broker can echo a message back onto its own
    subscription before it acknowledges it, and an echo that arrives at a session which
    has never heard of the message is stored and drawn a second time, as somebody else's.
    A publish that fails gives the claim back, so that a message arriving under that id
@@ -224,22 +225,24 @@ so that a message from any of them is indistinguishable.
 Every message the broker delivers is counted, parsed with the lenient reader of
 [message.md](message.md#parse-tiers), and stored. A message this session has not seen
 before raises `Message` and is offered to the notifier. One it has raises nothing: it is
-the echo of its own publish, whose bubble the composer already has on screen and whose
-rules had their say when it was sent, or a second delivery of something it stored. A
-retained copy of a message that was already stored is old news too. What is left was
-stored a moment ago by another process on the same database, and is raised and offered
-to the notifier as new, see
+the echo of its own publish, whose bubble the composer already has on screen, or a
+second delivery of something it stored. Publishing never invokes the notifier for
+the sending session. An existing history row does not suppress the first delivery
+in a session: this includes a retained message from a previous session and a row
+stored by another process on the same database. See
 [Two processes, one installation](#two-processes-one-installation). `TopicAdded` is
 raised for a topic the store has not seen. Inserts run on the runtime in arrival order,
 which is the order the chat views show.
 
 A message is recognized by its topic and its envelope id. A payload HiveMe did not shape
 has no id, so one is generated for the row, and the echo of a raw publish would be given
-a second one and stored beside the message it is a copy of. The session remembers the
-bytes of what it published raw instead, and an echo of exactly those bytes on exactly
-that topic takes the id of the row it belongs to. Each remembered publish is spent on
-the first echo that matches it, so a second identical payload, from here or from
-anywhere else, is still a second message, which is what
+a second one and stored beside the message it is a copy of. Its optional MQTT user
+property `hiveme-publish-id` is recognized only when the current session remembers
+publishing that ID on that topic. The echo takes the ID of its outgoing row. IDs are
+remembered in a separate bounded set of 10,000 raw publishes, so repeated echoes are
+also recognized. An absent or unfamiliar ID is an incoming message, even when its
+bytes equal a pending own publish. Every new raw publish gets a new ID, so identical
+payloads from here or anywhere else remain separate messages, which is what
 [storage](gui.md#storage) means by two rows.
 
 ## Notifications
@@ -247,27 +250,39 @@ anywhere else, is still a second message, which is what
 *Phase 1 for the notifier, phase 3 for the `hmc` toaster.*
 
 The evaluation of [gui.md](gui.md#notifications) is the session's: the compiled rules,
-first match in config order on topic filter and payload level, the `notifyOwnMessages`
-rule, the one per rule per second limiter with its `and N more messages` summary, and
+first match in config order on topic filter and payload level, the one per rule per
+second limiter with its `and N more messages` summary, and
 the pause toggle that lasts for the process and is never written to the config.
 Reloading the rules after a save resets the limiter; resuming after a pause does too.
+Each queued notification carries the active pause generation captured before its
+message event. Pausing invalidates that generation for both workers, so queued work
+cannot reappear after resuming. A message received while paused gets no delivery
+permit. Workers recheck the permit before either native delivery and while admitting
+OS work to the limiter. A delivery already handed to the OS or window is not retracted.
 
-What the session cannot do is show the toast, because that is a platform call each
-application makes differently. It asks the `Toaster` given to `Session::open`:
+The independent channel flags are `notifications.enabled` (OS, default true) and
+`notifications.topmostEnabled` (topmost window, default false). OS delivery additionally
+requires the matched rule's `os` flag; topmost delivery requires its `topmost` flag.
+Both per-rule flags default to false, including for the four enabled built-ins. Topmost content is
+updated for every matching message and does not use the OS rate limiter. Both channels
+honor the pause toggle, current-session publish exclusion, and rule order. A failure in either
+channel does not prevent an attempt on the other.
 
-```rust
-pub trait Toaster: Send + Sync {
-  fn show(&self, title: &str, body: &str) -> Result<(), String>;
-}
-```
+Notification eligibility is based on the receiving MQTT session, never the physical
+device, `sender.id`, `sender.app`, or the database row's outgoing flag. The session
+recognizes its own publish echoes before queuing notification work. Messages from
+every other session are eligible, including hmg, another interactive hmc, and one-shot
+hmc sharing the same config. There is no device-based notification option.
 
-| Application | Toaster |
-|-------------|---------|
-| `hmg` | `TauriToaster` in `src-tauri/src/notification.rs`: the Tauri notification plugin on Linux and macOS, `tauri-winrt-notification` with the registered `HiveMe` identity on Windows. The session exists before the Tauri application, so the plugin's handle is attached in the window setup, before the first connection starts. |
-| `hmc` | `notify-rust` on Linux and macOS; `tauri-winrt-notification` with the same identity on Windows. See [tui.md](tui.md#notifications). |
+The session asks its `Toaster` to show content through `show(title, body)` for OS
+notifications and `show_topmost(TopmostNotification)` for the topmost window.
+`TopmostNotification` carries `title`, `body`, `level`, and the translated `closeLabel`.
+Both applications use the same `hiveme_core::desktop::DesktopToaster`; platform details
+and the single host are described in [gui.md](gui.md#notifications).
 
-A show that fails is logged and dropped: the message is stored and shown either way,
-and `NotificationFired` is raised only for a toast that was shown.
+Delivery errors are logged and the message remains stored and visible. `NotificationFired`
+is raised when at least one enabled channel accepts delivery. OS acceptance cannot
+promise a visible banner if the user has silenced notifications in system settings.
 
 ## History
 
@@ -332,16 +347,18 @@ One-shot `hmc` does not use the session; it keeps `Role::Cli`. The full table is
   The database cannot say who put a row there, so each session remembers the last 10,000
   messages it stored or sent itself: a row it did not put there was stored a moment ago
   by the other process and is raised as new, while the echo of its own publish, a second
-  delivery, and a retained copy of a stored message raise nothing. So an envelope from
-  another device is one row, counted unread once, one `Message` event in each process,
+  delivery raise nothing. A retained message already in history still runs the rules
+  on its first delivery in a fresh session. So an envelope from another session is one
+  row, counted unread once, one `Message` event in each receiving process,
   and one notification in each.
 - A payload with no id of its own (raw JSON, text, bytes) has an id generated on insert,
   so one received by both becomes two rows, each counted unread, and each process raises
   its own. This is documented, not prevented; only an envelope can claim to be the same
   message. The one exception is a session's own raw publish, whose echo it recognizes by
-  the bytes it sent, under [Receiving](#receiving); that is the session knowing what it
+  the MQTT publish ID it assigned, under [Receiving](#receiving); that is the session knowing what it
   sent, not the database claiming two payloads are one.
-- A message one of them sends is the other's incoming message. See
+- A message one of them sends runs the other's notification rules, even though both
+  share sender metadata. It is the other's incoming message. See
   [Which side a message is on](#which-side-a-message-is-on).
 - Both processes prune; the second pass finds nothing.
 - Both hold the config in memory and write it atomically. The last writer wins, and a
@@ -417,15 +434,26 @@ calls. The unit tests of the moved code moved with it, and `tests/storage.rs` pr
 that two handles on one database store an envelope once and count it unread once, and
 that two threads storing the same two hundred envelopes through two handles at once
 store each one once, new to exactly one of them. Built in phase 6: two sessions, `Gui`
-and `Tui`, on one config and database each raise a message from another device once and
-show its notification once, and a message one of them sends is raised once by each, by
-the other as this device's message.
+and `Tui`, on one config and database each raise a message from another session once
+and show its notification once. Both OS and topmost recorders verify that a message
+one session sends notifies the others while the publishing session stays silent.
+The same test covers two TUI sessions and one-shot hmc with identical sender metadata.
+Envelope and raw JSON echo tests verify silence for the publishing session. A retained
+publish received after restarting the session runs the rules without duplicating history.
+An identical raw payload from another MQTT session remains eligible while an own
+raw publish is still awaiting an echo; its bytes alone cannot claim ownership.
 
 The initial connection raises Connecting immediately, and every
 connection error updates status. Saved settings return success even when reconnecting
 fails. Config writes serialize under a separate writer mutex and replace the in-memory
 snapshot only after disk persistence, so readers do not wait on fsync. History insertion
-and pruning run on blocking workers; a separate ordered worker shows notifications.
+and pruning run on blocking workers; each notification channel has a separate ordered
+worker. An OS permission prompt or slow daemon cannot delay the latest topmost
+message. A successful delivery emits one event per message even when both channels
+succeed.
+Regression tests block both delivery workers, queue messages, pause and resume,
+and verify that only fresh messages reach either channel while all messages remain
+stored. The terminal UI's F3 test and a real-broker session test also verify both channels.
 Messages processed while notifications are paused stay silent after resuming, even
 when the notification worker was busy with an earlier toast.
 The incoming pump parses each payload once. The release request, including reading its

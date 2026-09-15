@@ -279,18 +279,21 @@ export interface WindowSize {
   width?: number;
 }
 /**
- * The rule based OS notification system.
+ * The rule based desktop notification system.
  */
 export interface Notifications {
+  /**
+   * Raise OS notifications.
+   */
   enabled?: boolean;
   /**
-   * When false, a message this installation sent never raises a notification.
-   */
-  notifyOwnMessages?: boolean;
-  /**
-   * Absent means the three built-in rules. Present, even empty, replaces them.
+   * Absent means the four built-in rules. Present, even empty, replaces them.
    */
   rules?: Rule[];
+  /**
+   * Raise a single topmost window, replacing its content with the latest match.
+   */
+  topmostEnabled?: boolean;
 }
 /**
  * One notification rule.
@@ -313,11 +316,19 @@ export interface Rule {
   match?: {
     [k: string]: unknown;
   } | null;
+  /**
+   * Include this rule in OS notifications when the global channel is enabled.
+   */
+  os?: boolean;
   title?: string;
   /**
    * An MQTT topic filter, relative to `hiveme` unless `absolute` is true.
    */
   topic: string;
+  /**
+   * Include this rule in topmost window notifications when the global channel is enabled.
+   */
+  topmost?: boolean;
 }
 /**
  * Publishing defaults.

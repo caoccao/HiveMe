@@ -44,7 +44,7 @@ export const EVENT_MESSAGE = 'message';
 /** The `topic-added` event: a topic the tree has not shown before. */
 export const EVENT_TOPIC_ADDED = 'topic-added';
 
-/** The `notification-fired` event: a rule raised an OS notification. */
+/** The `notification-fired` event: at least one notification channel succeeded. */
 export const EVENT_NOTIFICATION_FIRED = 'notification-fired';
 
 /** What the About tab shows. */
@@ -256,3 +256,12 @@ export enum DialogNotificationType {
 }
 
 // Stored history tier is authoritative when rendering raw JSON/text.
+
+/** The most recent content in the shared topmost notification window. */
+export interface TopmostSnapshot {
+  revision: number;
+  title: string;
+  body: string;
+  level: string;
+  closeLabel: string;
+}

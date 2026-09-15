@@ -94,6 +94,8 @@ struct Fixture {
   /// The config of another device on the same broker, which one-shot `hmc` publishes
   /// with, so that its messages are incoming and raise notifications.
   other_path: PathBuf,
+  #[cfg(target_os = "macos")]
+  _notification_host: TestNotificationHost,
 }
 
 impl Fixture {
@@ -105,6 +107,8 @@ impl Fixture {
     write_config(&config_path, &device_config(&host, port, "test-runner"))?;
     let other_path = directory.path().join("other").join("HiveMe.json");
     write_config(&other_path, &device_config(&host, port, "build-server"))?;
+    #[cfg(target_os = "macos")]
+    let notification_host = TestNotificationHost::new(&directory.path().join("notifications"))?;
 
     Ok(Self {
       container,
@@ -113,6 +117,8 @@ impl Fixture {
       port,
       config_path,
       other_path,
+      #[cfg(target_os = "macos")]
+      _notification_host: notification_host,
     })
   }
 
@@ -175,6 +181,56 @@ impl Fixture {
   }
 }
 
+/// Exercise the real hmc IPC client without opening desktop windows or depending
+/// on this machine's notification permission. Native delivery has an opt-in test.
+#[cfg(target_os = "macos")]
+struct TestNotificationHost {
+  stop: Arc<AtomicBool>,
+  worker: Option<JoinHandle<()>>,
+}
+
+#[cfg(target_os = "macos")]
+impl TestNotificationHost {
+  fn new(directory: &Path) -> Result<Self, String> {
+    use hiveme_core::desktop::host::Server;
+    let server = Server::bind(directory)?.expect("the test owns a private notification cache");
+    server.listener.set_nonblocking(true).map_err(|e| e.to_string())?;
+    let stop = Arc::new(AtomicBool::new(false));
+    let stopped = stop.clone();
+    let worker = std::thread::spawn(move || {
+      while !stopped.load(Ordering::Relaxed) {
+        match server.listener.accept() {
+          Ok((mut stream, _)) => {
+            let result = server.receive(&mut stream).map(|_| ());
+            Server::reply(&mut stream, result);
+          }
+          Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+            std::thread::sleep(Duration::from_millis(10));
+          }
+          Err(error) => panic!("the test notification host failed: {error}"),
+        }
+      }
+    });
+    Ok(Self {
+      stop,
+      worker: Some(worker),
+    })
+  }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for TestNotificationHost {
+  fn drop(&mut self) {
+    self.stop.store(true, Ordering::Relaxed);
+    self
+      .worker
+      .take()
+      .unwrap()
+      .join()
+      .expect("the test notification host stops");
+  }
+}
+
 /// A config for one device on the test broker.
 fn device_config(host: &str, port: u16, name: &str) -> Config {
   let mut config = Config::new_for_this_device();
@@ -186,6 +242,9 @@ fn device_config(host: &str, port: u16, name: &str) -> Config {
   config.broker.password = "test".to_owned();
   config.broker.connect_timeout_secs = 20;
   config.publish.timeout_secs = 20;
+  for rule in &mut config.notifications.rules {
+    rule.os = true;
+  }
   // Checked just now, so the terminal UI has no reason to ask GitHub for a release.
   config.update.last_checked = std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH)
@@ -256,6 +315,10 @@ impl Terminal {
     let mut command = CommandBuilder::new(env!("CARGO_BIN_EXE_hmc"));
     command.args(["--tui", "--verbose", "--config"]);
     command.arg(config_path);
+    command.env(
+      "HIVEME_NOTIFICATION_DIR",
+      config_path.parent().unwrap().join("notifications"),
+    );
     for variable in ["HIVEME_CONFIG", "HIVEME_PASSWORD", "RUST_LOG"] {
       command.env_remove(variable);
     }

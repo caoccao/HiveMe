@@ -52,11 +52,12 @@ the footer, a topic tree on the left, and a message view on the right. The messa
 view is a chat: bubbles for the selected topic and its recursive children, with an input box and a send button at
 the bottom.
 
-The rule based notification system ships with three built-in rules:
+The rule based notification system ships with four enabled built-in rules:
 
 | Payload level | Notification |
 |-------|--------------|
 | `info` | info message |
+| `success` | success message |
 | `warn` | warning message |
 | `error` | error message |
 
@@ -99,7 +100,7 @@ revises them.
 | 5 | Profiles | One `broker` object. The config is versioned so a `profiles` map can be added later. |
 | 6 | Topic layout | Fixed root `hiveme`, with no prefix setting. Publish inputs are relative, with leading slashes stripped. hmc uses the root; hmg uses the selected topic. |
 | 7 | Message history | Persisted in SQLite next to the config, bounded per topic and by retention days. |
-| 8 | Notification rules | Configurable, with the three built-in rules as defaults. |
+| 8 | Notification rules | Configurable, with four enabled built-in rules and separate OS and topmost channel switches. |
 | 9 | Schema source of truth | Rust types with `serde` and `schemars` generate the JSON schemas. Tests fail when the committed schemas are stale. TypeScript types are generated from those schemas. |
 | 10 | Spec files | Split by concern, as listed above. |
 | 11 | Frontend stack | Vite, React 19, TypeScript, MUI with `@mui/x-tree-view`, Zustand, react-i18next, pnpm. |
@@ -125,7 +126,7 @@ set of habits.
 | `config.rs` with `#[serde(default)]`, camelCase keys, `OnceLock<RwLock<Config>>`, and `<App>.json` in the per-OS config directory | a thin wrapper over `hiveme_core::config` | The file is `HiveMe/HiveMe.json`. `hmc` uses the same resolution code. |
 | `window.rs` with `setup` and `on_window_event` | the same | Window state lives in `gui.window`. |
 | `constants.rs` with `APP_NAME` | the same, `APP_NAME = "HiveMe"` | |
-| Plugins: dialog, clipboard-manager, opener | the same plus notification | The notification plugin drives OS notifications. |
+| Plugins: dialog, clipboard-manager, opener | the same | Shared native delivery replaces the notification plugin; the topmost host follows BatchMkvMerge. |
 | `App.tsx` with `ThemeProvider`, display modes, twenty palettes, compact defaults | the same | |
 | `Layout.tsx` grid `auto 1fr auto` with Toolbar, MainContent, Footer | the same | The footer is the status bar; the copyright moves to the About tab. |
 | `MainContent.tsx` tabs with `ControlStatus` and keyboard shortcuts | the same | Tab 0 is the fixed Messages tab. |
@@ -228,7 +229,7 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Shared config initialization with unchanged, updated, and created outcomes | [config.md](config.md#the-setup-string), [cli.md](cli.md#setting-up) | `hiveme-core::config::ConfigFile::initialize`, `crates/hmc` | 3.1 | done |
 | Message envelope and parser | [message.md](message.md) | `hiveme-core::message` | 1.2 | done |
 | Fixed root `hiveme`; shared relative publishing with leading-slash normalization | [config.md](config.md#topic-resolution) | `hiveme-core::topic` | 1.3 | done |
-| Notification rule engine | [gui.md](gui.md#notifications) | `hiveme-core::rules` | 1.3 | done |
+| Notification rule engine: per-rule OS and topmost switches, session-based eligibility, and pause that discards both delivery queues | [gui.md](gui.md#notifications) | `hiveme-core::rules`, `hiveme-core::session` | 1.3 | done |
 | Schema and spec tooling | [app.md](#spec-sync) | `xtask`, `scripts` | 1.4 | done |
 | MQTT client | [hivemq-cloud.md](hivemq-cloud.md#how-hiveme-connects) | `hiveme-core::mqtt` | 2.1 | done |
 | CLI | [cli.md](cli.md) | `crates/hmc` | 3.1 | done |
@@ -261,6 +262,7 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Review 01 fixes: connection identity/retries, indexed history, responsive UIs, shared helpers and regression coverage | [config.md](config.md), [session.md](session.md), [gui.md](gui.md), [tui.md](tui.md) | workspace | Review 01 | done |
 | Startup recreates corrupt or incompatible development history while preserving config | [gui.md](gui.md#storage), [session.md](session.md) | `hiveme-core::storage` | Review 01 | done |
 | Editor settings in `hmg` control five input assistance options, all off by default; settings categories reordered in both apps | [gui.md](gui.md#settings), [config.md](config.md), [tui.md](tui.md#settings) | `src/App.tsx`, `src/components/Config.tsx`, `hiveme-core::config`, `crates/hmc/src/tui/settings` | Input behavior | done |
+| Independent OS and topmost notification channels, one shared latest-message window, native delivery errors, per-rule OS and topmost selection, four enabled built-ins, and four-row rule editors | [gui.md](gui.md#notifications), [tui.md](tui.md#notifications), [session.md](session.md#notifications) | `hiveme-core::desktop`, `src-tauri/src/notification_host.rs`, settings in both apps | Notifications | done |
 
 The rows below are the phases of [the terminal UI plan](../plans/plan-terminal-ui.md).
 Their phase numbers are that plan's, not the initialization plan's.
@@ -602,8 +604,8 @@ The entries below are against [the terminal UI plan](../plans/plan-terminal-ui.m
     for the echo of its own publish, so only one of the two applications showed the
     message live and raised its notification, and that two processes storing one message
     at the same moment could both find it missing, the second insert then failing on the
-    unique key. The session now remembers the last 10,000 messages it stored or sent, a
-    retained copy of a stored message raises nothing, and `Store::insert` runs in one
+    unique key. The session now remembers the last 10,000 messages it stored or sent,
+    duplicate deliveries within that session raise nothing, and `Store::insert` runs in one
     immediate transaction; [session.md](session.md#two-processes-one-installation)
     describes both. The notifier logs `rule <id> showed a notification for <topic>` at
     debug, which is how the test counts the toasts of the terminal UI.
@@ -682,10 +684,11 @@ The entries below are against [the terminal UI plan](../plans/plan-terminal-ui.m
     coming back: a raw publish has no envelope, so the echo was given a second generated
     id and stored beside the row it was a copy of, and a message was spoken for only
     after it had been stored, so an echo that beat the acknowledgement back arrived at a
-    session that had never heard of it. A raw publish is now remembered by its bytes and
+    session that had never heard of it. A raw publish now carries a unique MQTT publish ID and
     every publish is claimed before it is sent, under
     [session.md](session.md#publishing). The duplicate also raised a desktop notification
-    for the user's own message.
+    for the user's own message. Matching raw payload bytes was subsequently replaced
+    by the publish ID so another session's identical bytes remain eligible for rules.
 57. Phase 6, found afterward: three ways a save could lose settings, all in the writer.
     Every writer used one temporary file name, so `hmc` and `hmg` saving at the same
     moment truncated and interleaved into a document neither meant to write, which the

@@ -24,7 +24,7 @@
 //! notification rules.
 
 use std::collections::{HashSet, VecDeque};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::{Mutex as AsyncMutex, broadcast, mpsc, watch};
@@ -32,7 +32,7 @@ use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
 use crate::message::MessageProperties;
-use crate::mqtt::{IncomingMessage, MqttClient, Qos, Role, State};
+use crate::mqtt::{IncomingMessage, IncomingProperties, MqttClient, Qos, Role, State};
 use crate::storage::{NewMessage, Store};
 
 use super::SessionApp;
@@ -43,12 +43,8 @@ use super::types::{MessageRow, SessionEvent, Status};
 /// How many messages a session remembers having stored or sent.
 const REMEMBERED_MESSAGES: usize = 10_000;
 
-/// How many raw publishes a session can be waiting for the echo of.
-///
-/// One entry per publish that has not come back yet, which is a handful at the very
-/// most: a composer sends one message at a time and the echo follows within a round
-/// trip.
-const REMEMBERED_RAW_PUBLISHES: usize = 64;
+/// Identifies a raw publish without changing its payload or comparing its bytes.
+pub(super) const RAW_PUBLISH_ID: &str = "hiveme-publish-id";
 
 /// The messages this session stored or sent, oldest first and bounded.
 ///
@@ -63,6 +59,10 @@ pub(super) struct Remembered {
 }
 
 impl Remembered {
+  fn contains(&self, topic: &str, msg_id: &str) -> bool {
+    self.keys.contains(&(topic.to_owned(), msg_id.to_owned()))
+  }
+
   /// Remembers a message by topic and id, and says whether it was new to this session.
   pub(super) fn insert(&mut self, topic: &str, msg_id: &str) -> bool {
     let key = (topic.to_owned(), msg_id.to_owned());
@@ -86,57 +86,6 @@ impl Remembered {
       self.order.retain(|held| held != &key);
     }
   }
-}
-
-/// The raw payloads this session has published and not seen come back yet.
-///
-/// A payload HiveMe did not shape carries no message id, so [`NewMessage::from_payload`]
-/// generates one for the row, and the copy the broker echoes back onto this session's
-/// own subscription would generate a different one and be stored beside it as a second
-/// message. Nothing in the bytes tells the two apart, so what is remembered instead is
-/// the sending: this session published exactly these bytes on exactly this topic a
-/// moment ago, and the echo is that message and takes its id.
-///
-/// An entry is spent on the first echo it matches, so a second identical payload, from
-/// here or from anywhere else, is still a second message.
-#[derive(Debug, Default)]
-pub(super) struct RawPublishes {
-  sent: VecDeque<(String, u64, String)>,
-}
-
-impl RawPublishes {
-  fn insert(&mut self, topic: &str, payload: &[u8], msg_id: &str) {
-    if self.sent.len() == REMEMBERED_RAW_PUBLISHES {
-      self.sent.pop_front();
-    }
-    self
-      .sent
-      .push_back((topic.to_owned(), digest(payload), msg_id.to_owned()));
-  }
-
-  /// The id this session gave these bytes, if this session is what sent them.
-  fn take(&mut self, topic: &str, payload: &[u8]) -> Option<String> {
-    let digest = digest(payload);
-    let index = self
-      .sent
-      .iter()
-      .position(|(sent_topic, sent_digest, _)| sent_topic == topic && *sent_digest == digest)?;
-    self.sent.remove(index).map(|(_, _, msg_id)| msg_id)
-  }
-
-  fn forget(&mut self, topic: &str, msg_id: &str) {
-    self
-      .sent
-      .retain(|(sent_topic, _, sent_id)| sent_topic != topic || sent_id != msg_id);
-  }
-}
-
-/// A payload in as many bytes as it takes to recognize it coming back.
-fn digest(payload: &[u8]) -> u64 {
-  use std::hash::{Hash, Hasher};
-  let mut hasher = std::collections::hash_map::DefaultHasher::new();
-  payload.hash(&mut hasher);
-  hasher.finish()
 }
 
 /// One live connection and the tasks that serve it.
@@ -172,7 +121,8 @@ pub(super) struct Shared {
   config: Arc<ConfigStore>,
   events: broadcast::Sender<SessionEvent>,
   remembered: Mutex<Remembered>,
-  raw_publishes: Mutex<RawPublishes>,
+  /// Only this session's raw publish IDs, retained to recognize repeated echoes too.
+  raw_publishes: Mutex<Remembered>,
 }
 
 impl Shared {
@@ -213,14 +163,20 @@ impl Shared {
     self.remembered.lock().unwrap().insert(topic, msg_id)
   }
 
-  /// Remembers the bytes of a raw publish, so that its echo is known as its echo.
-  pub(super) fn remember_raw(&self, topic: &str, payload: &[u8], msg_id: &str) {
-    self.raw_publishes.lock().unwrap().insert(topic, payload, msg_id);
+  /// Remembers the ID attached to this session's raw publish as an MQTT property.
+  pub(super) fn remember_raw(&self, topic: &str, msg_id: &str) {
+    self.raw_publishes.lock().unwrap().insert(topic, msg_id);
   }
 
-  /// The id this session gave a raw payload it published, if these bytes are that one.
-  pub(super) fn raw_publish_id(&self, topic: &str, payload: &[u8]) -> Option<String> {
-    self.raw_publishes.lock().unwrap().take(topic, payload)
+  /// Recognizes an own-session raw echo, never another publish with identical bytes.
+  pub(super) fn raw_publish_id(&self, topic: &str, properties: &IncomingProperties) -> Option<String> {
+    let id = properties.user_property(RAW_PUBLISH_ID)?;
+    self
+      .raw_publishes
+      .lock()
+      .unwrap()
+      .contains(topic, id)
+      .then(|| id.to_owned())
   }
 
   /// Takes back what was remembered for a publish the broker never took.
@@ -267,7 +223,7 @@ impl Mqtt {
         config,
         events,
         remembered: Mutex::new(Remembered::default()),
-        raw_publishes: Mutex::new(RawPublishes::default()),
+        raw_publishes: Mutex::new(Remembered::default()),
       }),
     }
   }
@@ -432,21 +388,37 @@ impl std::fmt::Debug for Mqtt {
 /// Stores everything the broker delivers, and turns it into events and notifications.
 ///
 /// One blocking worker preserves arrival order without blocking Tokio. A separate
-/// ordered worker handles OS notifications so a slow daemon cannot stall storage.
+/// ordered worker for each notification channel keeps a slow OS daemon or permission
+/// dialog from stalling storage or replacement of the topmost message.
 async fn pump(shared: Arc<Shared>, mut incoming: mpsc::UnboundedReceiver<IncomingMessage>) {
-  let (toast_tx, mut toast_rx) = mpsc::unbounded_channel::<(String, crate::message::Parsed, String)>();
-  let notify_shared = shared.clone();
-  let toast_worker = tokio::task::spawn_blocking(move || {
-    while let Some((topic, parsed, message_id)) = toast_rx.blocking_recv() {
-      if let Some(rule_id) = notify_shared.notifier.notify(&topic, &parsed) {
-        notify_shared.emit(SessionEvent::NotificationFired {
-          rule_id,
-          message_id,
-          topic,
-        });
+  use super::notify::{Channel, NotificationPermit};
+  type NotificationJob = (
+    String,
+    crate::message::Parsed,
+    String,
+    Arc<AtomicBool>,
+    NotificationPermit,
+  );
+  let mut queues = Vec::new();
+  let mut workers = Vec::new();
+  for channel in [Channel::Os, Channel::Topmost] {
+    let (send, mut receive) = mpsc::unbounded_channel::<NotificationJob>();
+    queues.push(send);
+    let notify_shared = shared.clone();
+    workers.push(tokio::task::spawn_blocking(move || {
+      while let Some((topic, parsed, message_id, fired, permit)) = receive.blocking_recv() {
+        if let Some(rule_id) = notify_shared.notifier.notify_channel(&topic, &parsed, channel, permit)
+          && !fired.swap(true, Ordering::Relaxed)
+        {
+          notify_shared.emit(SessionEvent::NotificationFired {
+            rule_id,
+            message_id,
+            topic,
+          });
+        }
       }
-    }
-  });
+    }));
+  }
   let _ = tokio::task::spawn_blocking(move || {
     let mut warned = false;
     while let Some(message) = incoming.blocking_recv() {
@@ -457,12 +429,12 @@ async fn pump(shared: Arc<Shared>, mut incoming: mpsc::UnboundedReceiver<Incomin
       warned = backed_up;
       // Snapshot before publishing any events: an observer may resume notifications
       // as soon as it sees this message, while the toast worker is still busy.
-      let notifications_paused = shared.notifier.is_paused();
+      let notification_permit = shared.notifier.permit();
       let parsed = message.parse();
       let raw_id = if matches!(parsed, crate::message::Parsed::Envelope(_)) {
         None
       } else {
-        shared.raw_publish_id(&message.topic, &message.payload)
+        shared.raw_publish_id(&message.topic, &message.properties)
       };
       let mut row = NewMessage::from_parsed(
         message.topic.clone(),
@@ -474,7 +446,7 @@ async fn pump(shared: Arc<Shared>, mut incoming: mpsc::UnboundedReceiver<Incomin
       );
       // A payload without an envelope was given a generated id a moment ago, which the
       // echo of this session's own raw publish would not share with the row it belongs
-      // to. See [`RawPublishes`].
+      // to. Its MQTT publish ID identifies the echo independently of payload bytes.
       if !matches!(parsed, crate::message::Parsed::Envelope(_))
         && let Some(msg_id) = raw_id
       {
@@ -496,27 +468,36 @@ async fn pump(shared: Arc<Shared>, mut incoming: mpsc::UnboundedReceiver<Incomin
         });
       }
       let new_here = shared.remember(&row.topic, &row.msg_id);
-      if !new_here || (!insertion.is_new && message.retain) {
+      if !new_here {
         // Known to this session already: the echo of its own publish, whose bubble the
-        // composer has on screen and whose rules had their say when it was sent, or the
-        // broker delivering a message a second time. A retained copy of a message that
-        // was already stored is old news too. What is left was stored a moment ago by
-        // another process on the same database, `hmg` or another terminal UI, and is new
-        // to this one.
+        // composer has on screen, or the broker delivering a message a second time.
+        // A database row can belong to another session, including a previous one. It
+        // must not prevent a first delivery here from running the notification rules.
         continue;
       }
       shared.emit(SessionEvent::Message(MessageRow::seen_by(
         insertion.message,
         shared.app,
       )));
-      if !notifications_paused {
-        let _ = toast_tx.send((message.topic, parsed, row.msg_id));
+      if let Some(permit) = notification_permit {
+        let fired = Arc::new(AtomicBool::new(false));
+        for queue in &queues {
+          let _ = queue.send((
+            message.topic.clone(),
+            parsed.clone(),
+            row.msg_id.clone(),
+            fired.clone(),
+            permit,
+          ));
+        }
       }
     }
     log::debug!("the incoming message stream ended");
   })
   .await;
-  let _ = toast_worker.await;
+  for worker in workers {
+    let _ = worker.await;
+  }
 }
 
 /// Forwards every connection state change to the status bar.
@@ -591,6 +572,37 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn raw_echo_identity_requires_this_sessions_publish_id_and_topic() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = Arc::new(ConfigStore::open(&directory.path().join("HiveMe.json")).unwrap());
+    let mqtt = Mqtt::new(
+      SessionApp::Tui,
+      Arc::new(Store::in_memory().unwrap()),
+      Arc::new(Notifier::new(&config.get(), Arc::new(Silent))),
+      config,
+      broadcast::channel(8).0,
+    );
+    let shared = mqtt.shared();
+    shared.remember_raw("hiveme", "our-publish");
+    let properties = |id: &str| IncomingProperties {
+      user_properties: vec![(RAW_PUBLISH_ID.to_owned(), id.to_owned())],
+      ..Default::default()
+    };
+    assert_eq!(shared.raw_publish_id("hiveme", &IncomingProperties::default()), None);
+    assert_eq!(shared.raw_publish_id("hiveme", &properties("another-publish")), None);
+    assert_eq!(shared.raw_publish_id("hiveme/other", &properties("our-publish")), None);
+    for _ in 0..2 {
+      assert_eq!(
+        shared.raw_publish_id("hiveme", &properties("our-publish")),
+        Some("our-publish".to_owned()),
+        "repeated own echoes keep their identity"
+      );
+    }
+    shared.forget("hiveme", "our-publish");
+    assert_eq!(shared.raw_publish_id("hiveme", &properties("our-publish")), None);
+  }
+
+  #[tokio::test]
   async fn publishing_without_a_connection_says_so() {
     let directory = tempfile::tempdir().unwrap();
     let config = Arc::new(ConfigStore::open(&directory.path().join("HiveMe.json")).unwrap());
@@ -645,6 +657,222 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn topmost_replacement_does_not_wait_for_os_delivery_and_each_message_fires_once() {
+    struct SlowOs {
+      started: tokio::sync::mpsc::UnboundedSender<()>,
+      release: Mutex<std::sync::mpsc::Receiver<()>>,
+      topmost: tokio::sync::mpsc::UnboundedSender<String>,
+    }
+    impl super::super::notify::Toaster for SlowOs {
+      fn show(&self, _: &str, _: &str) -> std::result::Result<(), String> {
+        let _ = self.started.send(());
+        let _ = self.release.lock().unwrap().recv_timeout(Duration::from_secs(3));
+        Ok(())
+      }
+      fn show_topmost(&self, content: &super::super::TopmostNotification) -> std::result::Result<(), String> {
+        self.topmost.send(content.body.clone()).map_err(|e| e.to_string())
+      }
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let config = Arc::new(ConfigStore::open(&directory.path().join("HiveMe.json")).unwrap());
+    let mut settings = config.get();
+    settings.notifications.topmost_enabled = true;
+    for rule in &mut settings.notifications.rules {
+      rule.os = true;
+      rule.topmost = true;
+    }
+    let (started, mut os_started) = mpsc::unbounded_channel();
+    let (topmost, mut shown) = mpsc::unbounded_channel();
+    let (release, wait) = std::sync::mpsc::channel();
+    let toaster = Arc::new(SlowOs {
+      started,
+      release: Mutex::new(wait),
+      topmost,
+    });
+    let (events, mut received) = broadcast::channel(16);
+    let mqtt = Mqtt::new(
+      SessionApp::Gui,
+      Arc::new(Store::in_memory().unwrap()),
+      Arc::new(Notifier::new(&settings, toaster)),
+      config,
+      events,
+    );
+    let (send, incoming) = mpsc::unbounded_channel();
+    let task = tokio::spawn(pump(mqtt.shared.clone(), incoming));
+    let message = |body: &str, level| IncomingMessage {
+      topic: "hiveme".into(),
+      payload: crate::message::Message::new_text(crate::message::Sender::default(), body)
+        .with_level(level)
+        .to_bytes()
+        .unwrap(),
+      qos: Qos::AtLeastOnce,
+      retain: false,
+      properties: Default::default(),
+    };
+    send.send(message("first", crate::Level::Error)).unwrap();
+    tokio::time::timeout(Duration::from_secs(1), os_started.recv())
+      .await
+      .unwrap()
+      .unwrap();
+    assert_eq!(
+      tokio::time::timeout(Duration::from_secs(1), shown.recv())
+        .await
+        .unwrap()
+        .unwrap(),
+      "first"
+    );
+    send.send(message("latest", crate::Level::Warn)).unwrap();
+    assert_eq!(
+      tokio::time::timeout(Duration::from_secs(1), shown.recv())
+        .await
+        .expect("the latest topmost notification must replace the first while OS delivery waits")
+        .unwrap(),
+      "latest"
+    );
+    assert_eq!(mqtt.shared.store.messages("hiveme", None, 10).unwrap().len(), 2);
+    drop(release);
+    drop(send);
+    tokio::time::timeout(Duration::from_secs(1), task)
+      .await
+      .unwrap()
+      .unwrap();
+    let mut fired = Vec::new();
+    while let Ok(event) = received.try_recv() {
+      if let SessionEvent::NotificationFired { message_id, .. } = event {
+        fired.push(message_id);
+      }
+    }
+    assert_eq!(fired.len(), 2);
+    assert_ne!(
+      fired[0], fired[1],
+      "both successful channels emit only one event per message"
+    );
+  }
+
+  #[tokio::test]
+  async fn pause_discards_both_worker_backlogs_and_messages_received_while_paused() {
+    struct BlockedChannels {
+      started: mpsc::UnboundedSender<&'static str>,
+      release_os: Mutex<std::sync::mpsc::Receiver<()>>,
+      release_topmost: Mutex<std::sync::mpsc::Receiver<()>>,
+      os: Mutex<Vec<String>>,
+      topmost: Mutex<Vec<String>>,
+    }
+    impl super::super::notify::Toaster for BlockedChannels {
+      fn show(&self, _: &str, body: &str) -> std::result::Result<(), String> {
+        self.os.lock().unwrap().push(body.to_owned());
+        if body == "before" {
+          self.started.send("os").unwrap();
+          self
+            .release_os
+            .lock()
+            .unwrap()
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        }
+        Ok(())
+      }
+      fn show_topmost(&self, content: &super::super::TopmostNotification) -> std::result::Result<(), String> {
+        self.topmost.lock().unwrap().push(content.body.clone());
+        if content.body == "before" {
+          self.started.send("topmost").unwrap();
+          self
+            .release_topmost
+            .lock()
+            .unwrap()
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        }
+        Ok(())
+      }
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let config = Arc::new(ConfigStore::open(&directory.path().join("HiveMe.json")).unwrap());
+    let mut settings = config.get();
+    settings.notifications.topmost_enabled = true;
+    for rule in &mut settings.notifications.rules {
+      rule.os = true;
+      rule.topmost = true;
+    }
+    let (started, mut waiting) = mpsc::unbounded_channel();
+    let (release_os, wait_os) = std::sync::mpsc::channel();
+    let (release_topmost, wait_topmost) = std::sync::mpsc::channel();
+    let toaster = Arc::new(BlockedChannels {
+      started,
+      release_os: Mutex::new(wait_os),
+      release_topmost: Mutex::new(wait_topmost),
+      os: Mutex::default(),
+      topmost: Mutex::default(),
+    });
+    let notifier = Arc::new(Notifier::new(&settings, toaster.clone()));
+    let store = Arc::new(Store::in_memory().unwrap());
+    let (events, mut received) = broadcast::channel(32);
+    let mqtt = Mqtt::new(SessionApp::Gui, store.clone(), notifier.clone(), config, events);
+    let (send, incoming) = mpsc::unbounded_channel();
+    let worker = tokio::spawn(pump(mqtt.shared.clone(), incoming));
+    let message = |body: &str| IncomingMessage {
+      topic: "hiveme".to_owned(),
+      payload: crate::Message::new_text(crate::message::Sender::default(), body)
+        .to_bytes()
+        .unwrap(),
+      qos: Qos::AtLeastOnce,
+      retain: false,
+      properties: Default::default(),
+    };
+    send.send(message("before")).unwrap();
+    for _ in 0..2 {
+      tokio::time::timeout(Duration::from_secs(1), waiting.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    }
+    for body in ["queued", "paused", "fresh"] {
+      if body == "paused" {
+        notifier.set_paused(true);
+      }
+      if body == "fresh" {
+        notifier.set_paused(false);
+      }
+      send.send(message(body)).unwrap();
+      tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+          if let SessionEvent::Message(row) = received.recv().await.unwrap()
+            && row.body == body
+          {
+            break;
+          }
+        }
+      })
+      .await
+      .unwrap();
+    }
+    release_os.send(()).unwrap();
+    release_topmost.send(()).unwrap();
+    drop(send);
+    tokio::time::timeout(Duration::from_secs(2), worker)
+      .await
+      .unwrap()
+      .unwrap();
+    assert_eq!(*toaster.os.lock().unwrap(), ["before", "fresh"]);
+    assert_eq!(*toaster.topmost.lock().unwrap(), ["before", "fresh"]);
+    assert_eq!(
+      store.messages("hiveme", None, 10).unwrap().len(),
+      4,
+      "pause only affects notifications"
+    );
+    let mut fired = 0;
+    while let Ok(event) = received.try_recv() {
+      if matches!(event, SessionEvent::NotificationFired { .. }) {
+        fired += 1;
+      }
+    }
+    assert_eq!(
+      fired, 2,
+      "discarded notifications raise no fired event on either channel"
+    );
+  }
+
+  #[tokio::test]
   async fn a_slow_toaster_blocks_neither_storage_nor_the_async_runtime() {
     struct Slow {
       entered: tokio::sync::mpsc::UnboundedSender<()>,
@@ -669,11 +897,15 @@ mod tests {
       release: Mutex::new(wait),
       shown: Mutex::new(Vec::new()),
     });
+    let mut settings = config.get();
+    for rule in &mut settings.notifications.rules {
+      rule.os = true;
+    }
     let (events, mut event_rx) = broadcast::channel(16);
     let mqtt = Mqtt::new(
       SessionApp::Gui,
       store.clone(),
-      Arc::new(Notifier::new(&config.get(), toaster.clone())),
+      Arc::new(Notifier::new(&settings, toaster.clone())),
       config,
       events,
     );

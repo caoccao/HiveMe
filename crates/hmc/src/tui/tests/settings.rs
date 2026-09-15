@@ -519,21 +519,40 @@ fn the_switches_the_rules_and_their_levels_change_the_notifications_block() {
   let (_service, mut app, _receivers) = settings_on(configured("en-US"), Category::Notifications);
   let screen = render(&mut app, 120, 40).join("\n");
   for text in [
-    "[✓] Raise OS notifications",
-    "[ ] Notify about messages this device sent",
+    "[✓] Raise OS Notifications",
+    "[ ] Raise Topmost Window Notifications",
     "─ Rules ─",
     "Raw text and JSON use the Info level.",
     "[Add a rule]",
     "Topic filter",
     "Title template",
     "[Info ▾]",
+    "[Success ▾]",
     "[Warn ▾]",
+    "[✓] Enabled",
+    "[ ] OS Notification",
+    "[ ] Topmost Window",
     "[Error ▾]",
   ] {
     assert!(screen.contains(text), "{text}:\n{screen}");
   }
 
+  assert!(!screen.contains("Notify about messages this device sent"));
+  assert!(
+    screen
+      .lines()
+      .any(|line| line.contains("Title template") && line.contains("[ ] OS Notification"))
+  );
+  assert!(
+    screen
+      .lines()
+      .any(|line| line.contains("Body template") && line.contains("[ ] Topmost Window"))
+  );
   click_on(&mut app, Action::SettingsField(Field::NotificationsEnabled));
+  assert!(!app.config.notifications.enabled);
+  render(&mut app, 120, 40);
+  click_on(&mut app, Action::SettingsField(Field::TopmostNotificationsEnabled));
+  assert!(app.config.notifications.topmost_enabled);
   assert!(!app.config.notifications.enabled);
 
   render(&mut app, 120, 40);
@@ -545,28 +564,38 @@ fn the_switches_the_rules_and_their_levels_change_the_notifications_block() {
   assert_eq!(app.config.notifications.rules[0].level, Level::Success);
 
   render(&mut app, 120, 40);
+  click_on(&mut app, Action::SettingsField(Field::RuleTopmost(0)));
+  assert!(app.config.notifications.rules[0].topmost);
+  assert!(!app.config.notifications.rules[1].topmost);
+  render(&mut app, 120, 40);
+  click_on(&mut app, Action::SettingsField(Field::RuleOs(0)));
+  assert!(app.config.notifications.rules[0].os);
+  assert!(!app.config.notifications.rules[1].os);
+  render(&mut app, 120, 40);
   click_on(&mut app, Action::SettingsField(Field::RuleEnabled(1)));
   assert!(!app.config.notifications.rules[1].enabled);
 
   render(&mut app, 120, 40);
   click_on(&mut app, Action::SettingsField(Field::AddRule));
   let rules = &app.config.notifications.rules;
-  assert_eq!(rules.len(), 4);
+  assert_eq!(rules.len(), 5);
   assert_eq!(
     (
-      rules[3].id.as_str(),
-      rules[3].topic.as_str(),
-      &rules[3].level,
-      rules[3].enabled
+      rules[4].id.as_str(),
+      rules[4].topic.as_str(),
+      &rules[4].level,
+      rules[4].enabled
     ),
-    ("rule-4", "info", &Level::Info, true)
+    ("rule-5", "info", &Level::Info, true)
   );
-  assert_eq!(rules[3].title, DEFAULT_RULE_TITLE);
-  assert_eq!(app.settings.focus, Focus::Field(Field::RuleId(3)));
+  assert_eq!(rules[4].title, DEFAULT_RULE_TITLE);
+  assert!(!rules[4].topmost);
+  assert!(!rules[4].os);
+  assert_eq!(app.settings.focus, Focus::Field(Field::RuleId(4)));
   render(&mut app, 120, 40);
   press(&mut app, key(KeyCode::End));
   type_text(&mut app, "x");
-  assert_eq!(app.config.notifications.rules[3].id, "rule-4x");
+  assert_eq!(app.config.notifications.rules[4].id, "rule-5x");
 
   render(&mut app, 120, 40);
   click_on(&mut app, Action::SettingsField(Field::RemoveRule(0)));
@@ -577,7 +606,7 @@ fn the_switches_the_rules_and_their_levels_change_the_notifications_block() {
     .iter()
     .map(|rule| rule.id.as_str())
     .collect();
-  assert_eq!(ids, ["warn", "error", "rule-4x"]);
+  assert_eq!(ids, ["success", "warn", "error", "rule-5x"]);
 }
 
 #[test]

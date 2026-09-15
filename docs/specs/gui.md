@@ -2,7 +2,7 @@
 
 `hmg` is a Tauri 2 desktop application with a React and Material UI frontend. It
 subscribes to the broker, keeps a local history, shows topics as a tree and messages
-as a chat, and raises OS notifications from rules.
+as a chat, and raises OS and topmost window notifications from rules.
 
 Its layout and architecture deliberately mirror the sibling project
 `../BetterMediaInfo`. See [app.md](app.md#reference-architecture) for the mapping.
@@ -301,7 +301,10 @@ written and no component has to say so itself. Components use theme values throu
 
 ## Notifications
 
-A rule matches an MQTT topic filter and a payload log level to an OS notification.
+A rule matches an MQTT topic filter and a payload log level to a notification.
+**Raise OS Notifications** (`notifications.enabled`) defaults to checked;
+**Raise Topmost Window Notifications** (`notifications.topmostEnabled`) defaults to
+unchecked. Each is a separate checkbox in both apps and either or both may be enabled.
 The rules below are the shared rules: their evaluation, the rate limiter, and the
 pause toggle live in the session of [session.md](session.md#notifications), and each
 application supplies only the final call that shows the toast. Interactive `hmc` raises
@@ -309,11 +312,13 @@ the same notifications, see [tui.md](tui.md#notifications).
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
-| `id` | string | required | Unique within the config. The built-ins are `info`, `warn`, `error`. |
+| `id` | string | required | Unique within the config. The built-ins are `info`, `success`, `warn`, `error`. |
 | `topic` | string | required | MQTT topic filter, relative to `hiveme` unless `absolute` is true. `+` and `#` are allowed. |
 | `absolute` | boolean | false | |
 | `level` | string | `info` | The `payload.level` to match: `debug`, `info`, `success`, `warn`, or `error`. The topic never determines a message's level; publishing defaults to `info`. |
-| `enabled` | boolean | true | |
+| `enabled` | boolean | true | Checked for built-in and newly added rules. |
+| `os` | boolean | false | OS Notification checkbox beside Title Template. This rule raises an OS notification only when this and the global OS channel are enabled. |
+| `topmost` | boolean | false | Topmost Window checkbox beside Body Template. This rule raises a topmost notification only when this and the global topmost channel are enabled. |
 | `title` | string | `{title|topic}` | Template. |
 | `body` | string | `{body}` | Template. |
 | `match` | object or null | null | Reserved for additional payload conditions. Not implemented. |
@@ -326,66 +331,110 @@ empty string. There are no expressions.
 
 ### Evaluation
 
-1. Skip everything when `notifications.enabled` is false or the toolbar toggle is
-   paused.
-2. Skip messages whose `sender.id` equals `device.id`, unless
-   `notifications.notifyOwnMessages` is true.
+1. Skip everything when both notification channels are disabled or the toolbar
+   toggle is paused.
+2. Skip echoes of publishes made by the current MQTT session and duplicate deliveries
+   already handled by that session. Every message from another session is eligible,
+   even when it has the same `sender.id` and `sender.app` or already exists in history.
+   There is no device-based notification filter or setting.
 3. Read the payload level, defaulting to `info` for missing or unknown levels and raw
    payloads. Check rules in config order and fire the first enabled rule matching both
    the MQTT topic filter and payload level.
-4. Rate limit to one notification per rule per second. The next notification that rule
-   raises carries the count that was held back, as "and N more messages".
+4. Update the topmost window on every match when both the global channel and the matched rule’s `topmost` checkbox are enabled. The latest title, body,
+   and severity replace the preceding message in the same window.
+5. Deliver OS notifications only when both the global OS channel and the matched
+   rule's `os` checkbox are enabled. Rate limit to one per rule per second. The next OS notification
+   that rule raises carries the count held back, as "and N more messages".
+   A failed or suppressed OS notification does not suppress the topmost window,
+   and a topmost delivery failure does not prevent an OS notification.
 
-A notification carries the rendered title and body and nothing else. The Tauri
-notification plugin surfaces no click on the desktop platforms, so focusing the window
-and selecting the topic is reserved rather than implemented; the frontend already
-hears `notification-fired` and will use it when the plugin can say which notification
-was clicked.
+Pausing blocks new delivery on both channels and discards queued notifications.
+Messages received while paused remain in history but never replay as notifications
+after resuming. Already-delivered OS banners and topmost content stay until dismissed.
+
+Both channels use the rule's rendered title and body. OS notification clicks do not
+select a topic. Topmost notifications follow the sibling BatchMkvMerge design: a
+440 × 240 logical-pixel frameless, nonresizable window, always on top and omitted
+from the taskbar, with a severity icon, title, scrollable body, and Close button.
+Escape also dismisses it. It follows the OS light/dark mode and appears at the
+mathematical center of its screen. Rust reads the monitor's physical size and
+desktop origin and the window's physical outer size, then sets its physical
+position explicitly. This accounts for display scaling and monitors at negative
+coordinates without macOS's vertically biased native centering. It is shown after
+its content renders, so startup does not flash a
+blank window. Dismissal hides and reuses the window; a stale click cannot dismiss a
+newer message, and a late initial read cannot replace a newer event.
+
+`hmg --notification-host` owns the one window for the desktop user, shared by hmg
+and hmc even when both receive messages. It opens no broker session, config, or
+database. The shared client starts the sibling `hmg` executable (or finds it on PATH)
+when needed. A per-user cache holds an exclusive OS lock, a loopback endpoint, and a
+random authentication token; requests are bounded to 1 MiB and payloads are never
+written there. The idle host exits after a minute with no visible notification or
+pending delivery. Stale endpoint files can be reused after a crash. For isolated
+verification, `HIVEME_NOTIFICATION_DIR` selects a temporary cache.
 
 ### Defaults
 
-When `notifications.rules` is absent, the three built-in rules apply:
+When `notifications.rules` is absent, the four built-in rules apply, all enabled with Topmost Window unchecked:
 
 | id | topic | level |
 |----|-------|-------|
 | `info` | `#` | `info` |
+| `success` | `#` | `success` |
 | `warn` | `#` | `warn` |
 | `error` | `#` | `error` |
 
 The default filters resolve to `hiveme/#`, which includes `hiveme` itself and its
-custom subtopics. `info`, `warn`, and `error` are rule IDs and payload levels.
+custom subtopics. `info`, `success`, `warn`, and `error` are rule IDs and payload levels.
 
 When the key is present, even as an empty array, only the listed rules apply. A user
 overrides a built-in by reusing its `id`.
 
 ### Platform notes
 
-Windows labels a toast with the identity of the process that raised it, and a Tauri
-application raising one through the Windows Runtime has none of its own, so the label
-would read PowerShell. `hmg` registers an `AppUserModelId` of its own under
-`HKCU\SOFTWARE\Classes\AppUserModelId\HiveMe` at startup, with the display name and,
-in a development build, the path of the application icon, and raises its toasts against
-that identity rather than through the notification plugin. An installed build takes its
-icon from the Start menu shortcut the bundle creates. Every other platform goes through
-the plugin, which already labels a notification with the bundle it came from.
+Both apps use `hiveme_core::desktop::DesktopToaster`, which returns native delivery
+errors instead of dropping them inside the desktop notification plugin.
 
-Linux needs a running notification daemon. A desktop without one is a reason for a
-message to be silent, not for it to be lost: the failure is logged and the message is
-still stored and shown.
+- **Windows:** register `HKCU\SOFTWARE\Classes\AppUserModelId\HiveMe` and send
+  through `tauri-winrt-notification` under that identity. Registration failures are
+  reported instead of silently using the console host's identity.
+- **Linux:** send through `notify-rust` over D-Bus, escaping body markup so plain MQTT
+  text remains text. A running notification daemon is required; a delivery failure is
+  logged while the message remains in history.
+- **macOS:** the shared host uses `UNUserNotificationCenter` through
+  `mac-usernotifications`, requests actual authorization, and supplies foreground
+  presentation support. This replaces the legacy API and the plugin's unconditional
+  permission result. Denied permission is reported with the System Settings location.
+  macOS requires a signed application bundle, so unbundled hmg and hmc use a cached,
+  ad-hoc-signed accessory bundle (`com.caoccao.hiveme.notifications`, displayed as
+  HiveMe) containing the already-built hmg executable. The bundle is refreshed when
+  that executable changes. Config and history are never opened by this host.
+
+The macOS API requirements follow [Apple's authorization documentation](https://developer.apple.com/documentation/usernotifications/asking-permission-to-use-notifications)
+and the [native wrapper's bundle requirements](https://docs.rs/mac-usernotifications/0.3.1/mac_usernotifications/).
+OS settings such as denied permission or Do Not Disturb still govern OS banners.
 
 The manual checklist per OS:
 
-1. Publish to `hiveme` with `hmc --level info`, `hmc --level warn`, and
+1. Enable OS Notification on the four built-in rules. Publish to `hiveme` with `hmc --level info`, `hmc --level warn`, and
    `hmc --level error` from another terminal, and see three notifications and three
    message-box colors on the same topic. Confirm a fresh database opens with
    `hiveme` selected and the composer ready when connected.
 2. Publish ten messages with the same level in a second, and see one notification that ends
    with "and N more messages".
-3. Turn the toolbar toggle on, publish again, and see nothing.
-4. Turn `notifications.enabled` off in Settings, wait for the automatic save, publish
-   again, and see nothing.
-5. Publish from the composer of the same installation and see nothing, unless
-   `notifyOwnMessages` is on.
+3. Enable both per-rule channels and global switches. Pause with the toolbar toggle,
+   publish again, and verify neither channel delivers. Resume and confirm only new
+   messages notify; paused and queued messages remain silent.
+4. Toggle each channel independently in Settings and publish again. Enable only
+   topmost notifications, send a burst, and verify there is one window with the last
+   message. Repeat with both hmg and hmc receiving. Close it and confirm the next
+   matching message reopens the same window. Disable both and see neither channel.
+5. Publish from a composer's current MQTT session and see no notification in that
+   session. With hmg and hmc running on the same config, verify that the other
+   session runs the rules and raises both enabled channels. Repeat with two hmc
+   sessions and with one-shot hmc using that config. A retained message from a
+   previous session is eligible when received in a fresh session.
 
 ## Storage
 
@@ -520,6 +569,13 @@ toolbar toggle and lasts for the process.
 
 `get_broker_init` carries the password in plain text, so it is never logged.
 
+The notification host exposes only `get_topmost_notification` (returns
+`TopmostSnapshot | null`), `ready_topmost_notification({ revision })` (shows rendered
+content), and `close_topmost_notification({ revision })` (dismisses that revision).
+Only its `notification` window may call them. It receives `topmost-notification`
+events with `{ revision, title, body, level, closeLabel }`; revisions increase for the
+host lifetime. It has an event-only capability and no main-session commands.
+
 ### Types
 
 ```
@@ -597,10 +653,17 @@ Light Mode, and Dark Mode buttons with icons; Theme and Language use dropdown li
 | Broker | `broker` | `url` as a protocol list and the rest of the URL, then `username` and `password` on one row, with a visibility toggle and **Copy CLI setup**; **Connection** with `clientIdPrefix`, `keepAliveSecs`, `sessionExpirySecs`, `connectTimeoutSecs`; **Reconnect** with `reconnect.initialDelayMs`, `reconnect.maxDelayMs` |
 | Editor | `gui.editor` | Autocomplete, Autocorrect, Automatic capitalization, Spellcheck, Writing suggestions; one checkbox per row, all unchecked by default |
 | History | `gui.history` | `maxMessagesPerTopic`, `retentionDays` |
-| Notifications | `notifications` | `enabled`, `notifyOwnMessages`; **Rules**, a table of `id`, `topic`, `level`, `enabled`, `title`, `body` with add and delete |
+| Notifications | `notifications` | `enabled` and `topmostEnabled` as separate checkboxes; **Rules**, four rows per rule, separated by dividers: Name with Enabled and Remove; Topic filter with Level; Title template with OS Notification; Body template with Topmost Window, with Add above |
 | Topics | `topics` | **Subscriptions**, where each row is a filter and an "absolute" box |
 | Update | `update` | `checkInterval` |
 | Advanced | `encryption`, `cloudApi` | Read only placeholders until phase 6 |
+
+Each notification rule follows four rows: **Name** (the existing unique `id`) with
+**Enabled** and a circled remove icon; **Topic filter** with the level selector;
+**Title template** with **Topmost Window**; and a full-width **Body template** input.
+The first three inputs share a width, and horizontal dividers separate the rules.
+Enabled defaults to checked; Topmost Window defaults to unchecked. Side controls
+wrap below their input on narrow windows. All fields retain the Editor preferences.
 
 Categories appear in the table's order. Editor is available only in `hmg`; `hmc`
 uses the same order with Editor omitted. Each Editor checkbox is saved automatically

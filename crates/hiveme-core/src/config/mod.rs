@@ -535,14 +535,15 @@ impl Default for Publish {
   }
 }
 
-/// The rule based OS notification system.
+/// The rule based desktop notification system.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Notifications {
+  /// Raise OS notifications.
   pub enabled: bool,
-  /// When false, a message this installation sent never raises a notification.
-  pub notify_own_messages: bool,
-  /// Absent means the three built-in rules. Present, even empty, replaces them.
+  /// Raise a single topmost window, replacing its content with the latest match.
+  pub topmost_enabled: bool,
+  /// Absent means the four built-in rules. Present, even empty, replaces them.
   pub rules: Vec<Rule>,
 }
 
@@ -550,7 +551,7 @@ impl Default for Notifications {
   fn default() -> Self {
     Self {
       enabled: true,
-      notify_own_messages: false,
+      topmost_enabled: false,
       rules: Rule::built_in(),
     }
   }
@@ -593,6 +594,12 @@ pub struct Rule {
   pub level: Level,
   #[serde(default = "default_true")]
   pub enabled: bool,
+  /// Include this rule in OS notifications when the global channel is enabled.
+  #[serde(default)]
+  pub os: bool,
+  /// Include this rule in topmost window notifications when the global channel is enabled.
+  #[serde(default)]
+  pub topmost: bool,
   #[serde(default = "default_rule_title")]
   pub title: String,
   #[serde(default = "default_rule_body")]
@@ -605,9 +612,9 @@ pub struct Rule {
 }
 
 impl Rule {
-  /// The three rules that apply when the config does not list any.
+  /// The four rules that apply when the config does not list any.
   pub fn built_in() -> Vec<Self> {
-    [Level::Info, Level::Warn, Level::Error]
+    [Level::Info, Level::Success, Level::Warn, Level::Error]
       .into_iter()
       .map(|level| Self {
         id: level.as_str().to_owned(),
@@ -615,6 +622,8 @@ impl Rule {
         absolute: false,
         level: level.clone(),
         enabled: true,
+        os: false,
+        topmost: false,
         title: default_rule_title(),
         body: default_rule_body(),
         matches: None,

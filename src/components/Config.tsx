@@ -15,7 +15,7 @@
 * limitations under the License.
 */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Alert,
   Box,
@@ -30,13 +30,7 @@ import {
   MenuItem,
   Select,
   Stack,
-  Switch,
   Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   Tabs,
   TextField,
   ToggleButton,
@@ -51,6 +45,7 @@ import CloudIcon from '@mui/icons-material/Cloud';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import DeleteIcon from '@mui/icons-material/Delete';
+import HighlightOffIcon from '@mui/icons-material/HighlightOff';
 import HistoryIcon from '@mui/icons-material/History';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import LightModeIcon from '@mui/icons-material/LightMode';
@@ -192,6 +187,36 @@ export function cliSetupCommand(setup: string): string {
     (quote) => `\\u${quote.charCodeAt(0).toString(16).padStart(4, '0')}`
   );
   return `hmc --init '${escaped}'`;
+}
+
+function RuleTextField({
+  id,
+  label,
+  value,
+  onChange,
+  action,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  action?: ReactNode;
+}) {
+  return (
+    <>
+      <Typography component="label" htmlFor={id} sx={{ textAlign: 'right', gridColumn: 1 }}>
+        {label}
+      </Typography>
+      <TextField
+        id={id}
+        value={value}
+        fullWidth
+        sx={{ gridColumn: action ? 2 : '2 / -1' }}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {action && <Box sx={{ gridColumn: { xs: 2, sm: 3 } }}>{action}</Box>}
+    </>
+  );
 }
 
 export default function Config() {
@@ -443,7 +468,7 @@ export default function Config() {
       <Stack spacing={1}>
         <FormControlLabel
           control={
-            <Switch
+            <Checkbox
               checked={notifications.enabled ?? true}
               onChange={(event) => update((next) => ((next.notifications ??= {}).enabled = event.target.checked))}
             />
@@ -452,14 +477,14 @@ export default function Config() {
         />
         <FormControlLabel
           control={
-            <Switch
-              checked={notifications.notifyOwnMessages ?? false}
+            <Checkbox
+              checked={notifications.topmostEnabled ?? false}
               onChange={(event) =>
-                update((next) => ((next.notifications ??= {}).notifyOwnMessages = event.target.checked))
+                update((next) => ((next.notifications ??= {}).topmostEnabled = event.target.checked))
               }
             />
           }
-          label={t('settings.notifyOwnMessages')}
+          label={t('settings.topmostNotificationsEnabled')}
         />
       </Stack>
 
@@ -480,6 +505,8 @@ export default function Config() {
                     topic: 'info',
                     level: Protocol.Level.Info,
                     enabled: true,
+                    os: false,
+                    topmost: false,
                     title: '{title|topic}',
                     body: '{body}',
                   });
@@ -493,103 +520,126 @@ export default function Config() {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
           {t('settings.rawNotificationHint')}
         </Typography>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>{t('settings.ruleId')}</TableCell>
-              <TableCell>{t('settings.ruleTopic')}</TableCell>
-              <TableCell>{t('settings.ruleLevel')}</TableCell>
-              <TableCell>{t('settings.ruleEnabled')}</TableCell>
-              <TableCell>{t('settings.ruleTitle')}</TableCell>
-              <TableCell>{t('settings.ruleBody')}</TableCell>
-              <TableCell />
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {rules.map((rule, index) => (
-              <TableRow key={index}>
-                <TableCell>
-                  <TextField
-                    value={rule.id ?? ''}
-                    onChange={(event) =>
-                      update((next) => (((next.notifications ??= {}).rules ??= [])[index].id = event.target.value))
-                    }
-                    slotProps={{ htmlInput: { 'aria-label': t('settings.ruleId') } }}
-                  />
-                </TableCell>
-                <TableCell>
-                  <TextField
-                    value={rule.topic ?? ''}
-                    onChange={(event) =>
-                      update((next) => (((next.notifications ??= {}).rules ??= [])[index].topic = event.target.value))
-                    }
-                    slotProps={{ htmlInput: { 'aria-label': t('settings.ruleTopic') } }}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Select
-                    value={rule.level ?? Protocol.Level.Info}
-                    inputProps={{ 'aria-label': t('settings.ruleLevel') }}
-                    onChange={(event) =>
-                      update(
-                        (next) =>
-                          (((next.notifications ??= {}).rules ??= [])[index].level = event.target.value as string)
+        <Stack>
+          {rules.map((rule, index) => (
+            <Box
+              key={index}
+              role="group"
+              aria-label={`${t('settings.ruleId')} ${rule.id ?? ''}`}
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: 'max-content minmax(0, 1fr)',
+                  sm: 'max-content minmax(0, 3fr) minmax(0, 2fr)',
+                },
+                columnGap: 2,
+                rowGap: 1,
+                py: 1.5,
+                borderTop: 1,
+                borderColor: 'divider',
+                '&:last-child': { borderBottom: 1 },
+                alignItems: 'center',
+              }}
+            >
+              <Typography component="label" htmlFor={`rule-${index}-id`} sx={{ textAlign: 'right' }}>
+                {t('settings.ruleId')}
+              </Typography>
+              <TextField
+                id={`rule-${index}-id`}
+                value={rule.id ?? ''}
+                fullWidth
+                onChange={(event) =>
+                  update((next) => (((next.notifications ??= {}).rules ??= [])[index].id = event.target.value))
+                }
+              />
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{ gridColumn: { xs: 2, sm: 3 }, alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <FormControlLabel
+                  sx={{ m: 0 }}
+                  label={t('settings.ruleEnabled')}
+                  control={
+                    <Checkbox
+                      checked={rule.enabled ?? true}
+                      onChange={(event) =>
+                        update(
+                          (next) => (((next.notifications ??= {}).rules ??= [])[index].enabled = event.target.checked)
+                        )
+                      }
+                    />
+                  }
+                />
+                <IconButton
+                  aria-label={t('settings.removeRule')}
+                  onClick={() =>
+                    update((next) => {
+                      ((next.notifications ??= {}).rules ??= []).splice(index, 1);
+                    })
+                  }
+                >
+                  <HighlightOffIcon fontSize="small" />
+                </IconButton>
+              </Stack>
+              {(['topic', 'title', 'body'] as const).map((field) => {
+                const label = t(
+                  { topic: 'settings.ruleTopic', title: 'settings.ruleTitle', body: 'settings.ruleBody' }[field]
+                );
+                return (
+                  <RuleTextField
+                    key={field}
+                    id={`rule-${index}-${field}`}
+                    label={label}
+                    value={rule[field] ?? ''}
+                    action={
+                      field === 'topic' ? (
+                        <Select
+                          value={rule.level ?? Protocol.Level.Info}
+                          inputProps={{ 'aria-label': t('settings.ruleLevel') }}
+                          sx={{ minWidth: 100 }}
+                          onChange={(event) =>
+                            update(
+                              (next) =>
+                                (((next.notifications ??= {}).rules ??= [])[index].level = event.target.value as string)
+                            )
+                          }
+                        >
+                          {Protocol.LEVELS.map((level) => (
+                            <MenuItem key={level} value={level}>
+                              {t(`levels.${level}`)}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      ) : (
+                        <FormControlLabel
+                          sx={{ m: 0 }}
+                          label={t(field === 'title' ? 'settings.ruleOs' : 'settings.ruleTopmost')}
+                          control={
+                            <Checkbox
+                              checked={(field === 'title' ? rule.os : rule.topmost) ?? false}
+                              onChange={(event) =>
+                                update(
+                                  (next) =>
+                                    (((next.notifications ??= {}).rules ??= [])[index][
+                                      field === 'title' ? 'os' : 'topmost'
+                                    ] = event.target.checked)
+                                )
+                              }
+                            />
+                          }
+                        />
                       )
                     }
-                  >
-                    {Protocol.LEVELS.map((level) => (
-                      <MenuItem key={level} value={level}>
-                        {t(`levels.${level}`)}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </TableCell>
-                <TableCell>
-                  <Checkbox
-                    checked={rule.enabled ?? true}
-                    onChange={(event) =>
-                      update(
-                        (next) => (((next.notifications ??= {}).rules ??= [])[index].enabled = event.target.checked)
-                      )
+                    onChange={(value) =>
+                      update((next) => (((next.notifications ??= {}).rules ??= [])[index][field] = value))
                     }
-                    slotProps={{ input: { 'aria-label': t('settings.ruleEnabled') } }}
                   />
-                </TableCell>
-                <TableCell>
-                  <TextField
-                    value={rule.title ?? ''}
-                    onChange={(event) =>
-                      update((next) => (((next.notifications ??= {}).rules ??= [])[index].title = event.target.value))
-                    }
-                    slotProps={{ htmlInput: { 'aria-label': t('settings.ruleTitle') } }}
-                  />
-                </TableCell>
-                <TableCell>
-                  <TextField
-                    value={rule.body ?? ''}
-                    onChange={(event) =>
-                      update((next) => (((next.notifications ??= {}).rules ??= [])[index].body = event.target.value))
-                    }
-                    slotProps={{ htmlInput: { 'aria-label': t('settings.ruleBody') } }}
-                  />
-                </TableCell>
-                <TableCell>
-                  <IconButton
-                    aria-label={t('settings.removeRule')}
-                    onClick={() =>
-                      update((next) => {
-                        const list = ((next.notifications ??= {}).rules ??= []);
-                        list.splice(index, 1);
-                      })
-                    }
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                );
+              })}
+            </Box>
+          ))}
+        </Stack>
       </Section>
     </Box>
   );

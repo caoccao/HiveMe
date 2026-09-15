@@ -186,7 +186,6 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
   let state = app.state::<AppState>();
   let session = state.session.clone();
-  state.toaster.attach(app.handle().clone());
 
   // The window was built with its title and its remembered geometry already on it, by
   // `place`. It is configured hidden so that nothing reaches the screen until here.

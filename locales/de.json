@@ -123,12 +123,14 @@
     "addSubscription": "Abonnement hinzufügen",
     "removeSubscription": "Dieses Abonnement entfernen",
     "notificationsEnabled": "Betriebssystem-Benachrichtigungen anzeigen",
-    "notifyOwnMessages": "Über Nachrichten dieses Geräts benachrichtigen",
+    "topmostNotificationsEnabled": "Benachrichtigungen in einem stets sichtbaren Fenster anzeigen",
     "rules": "Regeln",
-    "ruleId": "ID",
+    "ruleId": "Name",
     "ruleTopic": "Topic-Filter",
     "ruleLevel": "Stufe",
     "ruleEnabled": "Aktiviert",
+    "ruleOs": "Betriebssystembenachrichtigung",
+    "ruleTopmost": "Fenster im Vordergrund",
     "ruleTitle": "Titelvorlage",
     "ruleBody": "Textvorlage",
     "addRule": "Regel hinzufügen",
@@ -170,7 +172,7 @@
       "Weekly": "Wöchentlich",
       "Monthly": "Monatlich"
     },
-    "rawNotificationHint": "Rohtext und JSON verwenden die Stufe Info. Aktivieren Sie dafür eine Info-Regel."
+    "rawNotificationHint": "Rohtext und JSON verwenden die Stufe Info. Aktivieren Sie eine Info-Regel und wählen Sie ihre Benachrichtigungskanäle."
   },
   "about": {
     "tagline": "Ein Nachrichtenformat, zwei Anwendungen und ein HiveMQ Cloud-Cluster.",

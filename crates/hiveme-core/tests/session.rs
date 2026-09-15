@@ -72,6 +72,20 @@ async fn session_present(broker: &Broker, client_id: &str) -> bool {
   hiveme_core::test_support::session_present(&broker.host, broker.port, client_id).await
 }
 
+async fn enable_both_channels(session: &Session) {
+  let mut config = session.config();
+  config.notifications.enabled = true;
+  config.notifications.topmost_enabled = true;
+  for rule in &mut config.notifications.rules {
+    rule.os = true;
+    rule.topmost = true;
+  }
+  session
+    .set_config(config)
+    .await
+    .expect("both notification channels are enabled");
+}
+
 #[test]
 fn connecting_subscribes_and_raises_the_status() {
   with_broker("connecting_subscribes_and_raises_the_status", |broker| async move {
@@ -104,7 +118,9 @@ fn a_published_envelope_is_stored_raised_once_and_its_echo_is_recognized() {
   with_broker(
     "a_published_envelope_is_stored_raised_once_and_its_echo_is_recognized",
     |broker| async move {
-      let session = broker.session(SessionApp::Gui, "composer", Arc::default());
+      let recorder = Arc::new(Recorder::default());
+      let session = broker.session(SessionApp::Gui, "composer", recorder.clone());
+      enable_both_channels(&session).await;
       session.connect().await.expect("the session connects");
       let mut events = session.subscribe();
 
@@ -158,6 +174,8 @@ fn a_published_envelope_is_stored_raised_once_and_its_echo_is_recognized() {
       assert!(session.status().messages_received >= 1, "the echo was received");
 
       session.shutdown().await.expect("the session ends");
+      assert!(recorder.shown().is_empty(), "this session's own publish never notifies");
+      assert!(recorder.topmost_shown().is_empty());
     },
   );
 }
@@ -172,7 +190,9 @@ fn a_raw_json_publish_claims_no_envelope() {
       .await
       .expect("the broker accepts the subscription");
 
-    let session = broker.session(SessionApp::Tui, "raw-writer", Arc::default());
+    let recorder = Arc::new(Recorder::default());
+    let session = broker.session(SessionApp::Tui, "raw-writer", recorder.clone());
+    enable_both_channels(&session).await;
     session.connect().await.expect("the session connects");
     let mut events = session.subscribe();
     let body = r#"{"build":482,"ok":true}"#;
@@ -195,10 +215,16 @@ fn a_raw_json_publish_claims_no_envelope() {
     assert_eq!(received.payload, body.as_bytes());
     assert_eq!(received.properties.content_type.as_deref(), Some("application/json"));
     assert_eq!(received.properties.hiveme_version(), None);
+    assert!(
+      received
+        .properties
+        .user_properties
+        .contains(&("hiveme-publish-id".to_owned(), row.id.clone()))
+    );
 
     // The session is subscribed to what it just published, so the echo arrives here
     // too. A payload HiveMe did not shape carries no id, so the echo is recognized by
-    // its bytes; without that it is given an id of its own and drawn a second time, as
+    // its MQTT publish property; without that it is given an id of its own and drawn a second time, as
     // somebody else's message.
     tokio::time::timeout(RECEIVE_TIMEOUT, async {
       while session.status().messages_received == 0 {
@@ -224,6 +250,11 @@ fn a_raw_json_publish_claims_no_envelope() {
     assert_eq!(tree[0].unread, 0, "what this installation sent is never unread");
 
     session.shutdown().await.expect("the session ends");
+    assert!(
+      recorder.shown().is_empty(),
+      "this session's own raw publish never notifies"
+    );
+    assert!(recorder.topmost_shown().is_empty());
     subscriber.disconnect().await.expect("the subscriber says goodbye");
   });
 }
@@ -263,6 +294,7 @@ fn the_pause_toggle_keeps_the_toaster_quiet_and_the_message_arriving() {
     |broker| async move {
       let recorder = Arc::new(Recorder::default());
       let session = broker.session(SessionApp::Gui, "watcher", recorder.clone());
+      enable_both_channels(&session).await;
       session.connect().await.expect("the session connects");
       let mut events = session.subscribe();
       let publisher = broker.client("elsewhere", Role::Cli).await;
@@ -286,6 +318,10 @@ fn the_pause_toggle_keeps_the_toaster_quiet_and_the_message_arriving() {
       assert_eq!(paused.body, "Disk full", "a paused session still stores and shows");
       assert!(!paused.outgoing);
       assert!(recorder.shown().is_empty(), "a paused session raises no toast");
+      assert!(
+        recorder.topmost_shown().is_empty(),
+        "a paused session raises no topmost window"
+      );
 
       session.set_notifications_paused(false);
       let message = error("Disk still full");
@@ -311,6 +347,14 @@ fn the_pause_toggle_keeps_the_toaster_quiet_and_the_message_arriving() {
         vec![("Disk".to_owned(), "Disk still full".to_owned())]
       );
 
+      tokio::time::timeout(RECEIVE_TIMEOUT, async {
+        while recorder.shown().is_empty() || recorder.topmost_shown().is_empty() {
+          tokio::task::yield_now().await;
+        }
+      })
+      .await
+      .unwrap();
+      assert_eq!(recorder.topmost_shown(), recorder.shown());
       publisher.disconnect().await.expect("the publisher says goodbye");
       session.shutdown().await.expect("the session ends");
     },
@@ -353,6 +397,7 @@ fn two_sessions_on_one_database_each_raise_what_arrives_once() {
       // hmg and the terminal UI of hmc on one config and one HiveMe.db.
       let gui_toasts = Arc::new(Recorder::default());
       let gui = broker.session(SessionApp::Gui, "shared", gui_toasts.clone());
+      enable_both_channels(&gui).await;
       let tui_toasts = Arc::new(Recorder::default());
       let path = broker.directory.path().join("shared").join("HiveMe.json");
       let tui = Session::open(Some(&path), SessionApp::Tui, tui_toasts.clone()).expect("the second session opens");
@@ -370,7 +415,7 @@ fn two_sessions_on_one_database_each_raise_what_arrives_once() {
           .collect()
       };
 
-      // From another device: one row, unread once, and in each session one event and
+      // From another session: one row, unread once, and in each session one event and
       // one notification, whichever of the two stored it first.
       let publisher = broker.client("elsewhere", Role::Cli).await;
       let config = broker.config("elsewhere");
@@ -397,6 +442,8 @@ fn two_sessions_on_one_database_each_raise_what_arrives_once() {
       let shown = vec![("Disk".to_owned(), "Disk full".to_owned())];
       assert_eq!(gui_toasts.shown(), shown);
       assert_eq!(tui_toasts.shown(), shown);
+      assert_eq!(gui_toasts.topmost_shown(), shown);
+      assert_eq!(tui_toasts.topmost_shown(), shown);
 
       // Sent from one of them: that one raises its own row only, and its echo is
       // recognized; the other shows it as it arrives, and on the incoming side. The
@@ -414,7 +461,11 @@ fn two_sessions_on_one_database_each_raise_what_arrives_once() {
       assert_eq!(rows(gui_seen), ["Deployed"]);
       assert_eq!(summaries(tui_seen), [(sent_by_gui.row_id, false)]);
       assert_eq!(gui.messages("hiveme", None, 0).unwrap().len(), 2);
-      assert_eq!(tui_toasts.shown().len(), 1, "this device's own message raises nothing");
+      let deployed = ("hiveme".to_owned(), "Deployed".to_owned());
+      assert_eq!(gui_toasts.shown(), shown, "the publishing session stays silent");
+      assert_eq!(gui_toasts.topmost_shown(), shown);
+      assert_eq!(tui_toasts.shown(), [shown[0].clone(), deployed.clone()]);
+      assert_eq!(tui_toasts.topmost_shown(), tui_toasts.shown());
 
       // And the same question asked the other way around, which is the one the shared
       // `outgoing` column used to get wrong: hmc's message is hmc's own, and hmg reads
@@ -434,6 +485,11 @@ fn two_sessions_on_one_database_each_raise_what_arrives_once() {
         [(sent_by_tui.row_id, true)],
         "hmc raises its own row once, and recognizes the echo"
       );
+      let restarted = ("hiveme".to_owned(), "Restarted".to_owned());
+      assert_eq!(gui_toasts.shown(), [shown[0].clone(), restarted]);
+      assert_eq!(gui_toasts.topmost_shown(), gui_toasts.shown());
+      assert_eq!(tui_toasts.shown(), [shown[0].clone(), deployed]);
+      assert_eq!(tui_toasts.topmost_shown(), tui_toasts.shown());
 
       // Read back from the database rather than taken from the live event, because
       // that is what a restart does and the answer has to be the same one.
@@ -464,9 +520,185 @@ fn two_sessions_on_one_database_each_raise_what_arrives_once() {
         "hmc owns only what hmc sent"
       );
 
+      // Two hmc sessions also share sender.id AND sender.app. Only the actual
+      // publishing session stays silent; neither metadata field determines ownership.
+      let other_toasts = Arc::new(Recorder::default());
+      let other = Session::open(Some(&path), SessionApp::Tui, other_toasts.clone()).unwrap();
+      let other_status = other.connect().await.unwrap();
+      assert_ne!(other_status.client_id, tui.status().client_id);
+      let mut other_events = other.subscribe();
+      tui
+        .publish(
+          "hiveme",
+          "I made it.",
+          PublishOptions {
+            level: Some("success".to_owned()),
+            ..Default::default()
+          },
+        )
+        .await
+        .unwrap();
+      let (gui_seen, tui_seen, other_seen) = tokio::join!(
+        events_within(&mut gui_events, Duration::from_secs(3)),
+        events_within(&mut tui_events, Duration::from_secs(3)),
+        events_within(&mut other_events, Duration::from_secs(3))
+      );
+      assert_eq!(rows(gui_seen), ["I made it."]);
+      assert_eq!(rows(tui_seen), ["I made it."]);
+      assert_eq!(rows(other_seen), ["I made it."]);
+      let success = ("hiveme".to_owned(), "I made it.".to_owned());
+      assert_eq!(gui_toasts.shown().last(), Some(&success));
+      assert_eq!(gui_toasts.topmost_shown(), gui_toasts.shown());
+      assert_eq!(other_toasts.shown(), [success]);
+      assert_eq!(other_toasts.topmost_shown(), other_toasts.shown());
+      assert_eq!(tui_toasts.shown().len(), 2, "the publishing hmc session stays silent");
+      assert_eq!(tui_toasts.topmost_shown(), tui_toasts.shown());
+
+      // One-shot hmc is another MQTT session even when it uses the same config.
+      let cli = broker.client("shared", Role::Cli).await;
+      let message =
+        Message::new_text(Sender::from_device(&tui.config().device, "hmc"), "From the CLI").with_level(Level::Warn);
+      cli
+        .publish_message("hiveme", &message, Qos::AtLeastOnce, false)
+        .await
+        .unwrap();
+      let (gui_seen, tui_seen, other_seen) = tokio::join!(
+        events_within(&mut gui_events, Duration::from_secs(3)),
+        events_within(&mut tui_events, Duration::from_secs(3)),
+        events_within(&mut other_events, Duration::from_secs(3))
+      );
+      assert_eq!(rows(gui_seen), ["From the CLI"]);
+      assert_eq!(rows(tui_seen), ["From the CLI"]);
+      assert_eq!(rows(other_seen), ["From the CLI"]);
+      for recorder in [&gui_toasts, &tui_toasts, &other_toasts] {
+        assert_eq!(
+          recorder.shown().last(),
+          Some(&("hiveme".to_owned(), "From the CLI".to_owned()))
+        );
+        assert_eq!(recorder.topmost_shown(), recorder.shown());
+      }
+      cli.disconnect().await.unwrap();
+      other.shutdown().await.unwrap();
       publisher.disconnect().await.expect("the publisher says goodbye");
       gui.shutdown().await.expect("the first session ends");
       tui.shutdown().await.expect("the second session ends");
+    },
+  );
+}
+
+#[test]
+fn identical_raw_json_from_another_session_is_not_an_own_echo() {
+  with_broker(
+    "identical_raw_json_from_another_session_is_not_an_own_echo",
+    |broker| async move {
+      let recorder = Arc::new(Recorder::default());
+      let session = broker.session(SessionApp::Tui, "raw-sessions", recorder.clone());
+      enable_both_channels(&session).await;
+      let mut config = session.config();
+      config.topics.subscriptions = vec![hiveme_core::config::Subscription::Relative("elsewhere/#".to_owned())];
+      session.set_config(config).await.unwrap();
+      session.connect().await.unwrap();
+
+      // There is no subscription to this topic yet, so no own echo consumes the claim.
+      let body = r#"{"status":"ok"}"#;
+      let sent = session
+        .publish(
+          "hiveme/ci",
+          body,
+          PublishOptions {
+            json: true,
+            ..Default::default()
+          },
+        )
+        .await
+        .unwrap();
+      assert!(recorder.shown().is_empty());
+      assert!(recorder.topmost_shown().is_empty());
+      let mut config = session.config();
+      config.topics.subscriptions = vec![hiveme_core::config::Subscription::Relative("#".to_owned())];
+      session.set_config(config).await.unwrap();
+      let mut events = session.subscribe();
+
+      // Identical bytes from another MQTT session must never satisfy that own claim.
+      let publisher = broker.client("raw-sessions", Role::Cli).await;
+      publisher
+        .publish("hiveme/ci", body.as_bytes().to_vec(), Qos::AtLeastOnce, false, None)
+        .await
+        .unwrap();
+      next_event(&mut events, |event| match event {
+        SessionEvent::NotificationFired { message_id, .. } if message_id != sent.id => Some(()),
+        _ => None,
+      })
+      .await;
+      tokio::time::timeout(RECEIVE_TIMEOUT, async {
+        while recorder.shown().is_empty() || recorder.topmost_shown().is_empty() {
+          tokio::task::yield_now().await;
+        }
+      })
+      .await
+      .unwrap();
+      assert_eq!(recorder.shown(), [("hiveme/ci".to_owned(), body.to_owned())]);
+      assert_eq!(recorder.topmost_shown(), recorder.shown());
+      let rows = session.messages("hiveme/ci", None, 0).unwrap();
+      assert_eq!(rows.len(), 2);
+      assert_eq!(rows.iter().filter(|row| row.outgoing).count(), 1);
+      publisher.disconnect().await.unwrap();
+      session.shutdown().await.unwrap();
+    },
+  );
+}
+
+#[test]
+fn a_retained_publish_from_a_previous_session_runs_the_rules() {
+  with_broker(
+    "a_retained_publish_from_a_previous_session_runs_the_rules",
+    |broker| async move {
+      let original_toasts = Arc::new(Recorder::default());
+      let original = broker.session(SessionApp::Tui, "retained", original_toasts.clone());
+      enable_both_channels(&original).await;
+      original.connect().await.unwrap();
+      let sent = original
+        .publish(
+          "hiveme",
+          "Saved by the previous session",
+          PublishOptions {
+            level: Some("success".to_owned()),
+            retain: Some(true),
+            ..Default::default()
+          },
+        )
+        .await
+        .unwrap();
+      original.shutdown().await.unwrap();
+      assert!(original_toasts.shown().is_empty());
+      assert!(original_toasts.topmost_shown().is_empty());
+
+      let path = broker.directory.path().join("retained").join("HiveMe.json");
+      let toasts = Arc::new(Recorder::default());
+      let current = Session::open(Some(&path), SessionApp::Tui, toasts.clone()).unwrap();
+      let mut events = current.subscribe();
+      current.connect().await.unwrap();
+      next_event(&mut events, |event| match event {
+        SessionEvent::NotificationFired { message_id, .. } if message_id == sent.id => Some(()),
+        _ => None,
+      })
+      .await;
+      // Let both ordered notification workers finish; no native UI is opened by this test.
+      tokio::time::timeout(RECEIVE_TIMEOUT, async {
+        while toasts.shown().is_empty() || toasts.topmost_shown().is_empty() {
+          tokio::task::yield_now().await;
+        }
+      })
+      .await
+      .unwrap();
+      assert_eq!(toasts.shown(), [("hiveme".to_owned(), sent.body)]);
+      assert_eq!(toasts.topmost_shown(), toasts.shown());
+      assert_eq!(
+        current.messages("hiveme", None, 0).unwrap().len(),
+        1,
+        "history still deduplicates"
+      );
+      current.shutdown().await.unwrap();
     },
   );
 }

@@ -114,6 +114,14 @@ Publishers set these, and a reader may use them before parsing the body:
 An MQTT 3.1.1 reader ignores all of these. Everything they convey is also inside the
 JSON.
 
+Raw JSON published by an interactive session additionally carries the MQTT 5 user
+property `hiveme-publish-id`, the UUID generated for its local history row. The raw
+payload stays unchanged and carries no `hiveme-v`. Only the publishing session keeps
+this ID as an own-echo marker; other sessions treat the payload normally. Matching
+payload bytes or sender metadata never identifies an own raw publish. This property
+is optional for other publishers, including one-shot hmc, and unfamiliar readers can
+ignore it. See [session.md](session.md#receiving).
+
 ## Compatibility rules
 
 Both readers, `hiveme-core::message` in Rust and `src/lib/message.ts` in TypeScript,

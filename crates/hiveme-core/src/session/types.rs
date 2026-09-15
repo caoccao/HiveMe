@@ -267,7 +267,7 @@ pub enum SessionEvent {
   Message(MessageRow),
   /// The first message ever stored on a topic.
   TopicAdded { topic: String },
-  /// A rule raised an OS notification.
+  /// At least one notification channel succeeded for this message.
   NotificationFired {
     rule_id: String,
     message_id: String,

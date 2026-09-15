@@ -119,12 +119,14 @@
     "addSubscription": "サブスクリプションを追加",
     "removeSubscription": "このサブスクリプションを削除",
     "notificationsEnabled": "OS の通知を表示",
-    "notifyOwnMessages": "このデバイスが送信したメッセージも通知",
+    "topmostNotificationsEnabled": "最前面ウィンドウに通知を表示",
     "rules": "ルール",
-    "ruleId": "ID",
+    "ruleId": "名前",
     "ruleTopic": "トピックフィルター",
     "ruleLevel": "レベル",
     "ruleEnabled": "有効",
+    "ruleOs": "OS通知",
+    "ruleTopmost": "最前面ウィンドウ",
     "ruleTitle": "タイトルのテンプレート",
     "ruleBody": "本文のテンプレート",
     "addRule": "ルールを追加",
@@ -166,7 +168,7 @@
       "Weekly": "毎週",
       "Monthly": "毎月"
     },
-    "rawNotificationHint": "プレーンテキストと JSON は情報レベルです。通知するには情報のルールを有効にしてください。"
+    "rawNotificationHint": "プレーンテキストとJSONにはInfoレベルを使用します。Infoルールを有効にし、通知方法を選択してください。"
   },
   "about": {
     "tagline": "ひとつのメッセージ形式、ふたつのアプリ、そして HiveMQ Cloud クラスター。",

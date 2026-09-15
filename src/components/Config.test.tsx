@@ -16,7 +16,7 @@
 */
 
 import i18n from '../i18n';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
@@ -50,7 +50,6 @@ const CONFIG: ConfigType = {
   publish: { qos: 1, retain: false, timeoutSecs: 10 },
   notifications: {
     enabled: true,
-    notifyOwnMessages: false,
     rules: [{ id: 'info', topic: 'info', level: 'info', enabled: true, title: '{title|topic}', body: '{body}' }],
   },
   gui: { displayMode: 'Auto', theme: 'Ocean', language: 'en-US' },
@@ -139,6 +138,80 @@ describe('the settings tab', () => {
     expect(new Set(rows).size).toBe(5);
     expect(rows[0]?.parentElement?.children).toHaveLength(5);
     expect(Service.setConfig).not.toHaveBeenCalled();
+  });
+
+  it('saves independent notification checkboxes and edits the four-row rules', async () => {
+    render(<Config />);
+    await userEvent.click(screen.getByRole('tab', { name: 'Notifications' }));
+    const os = screen.getByRole('checkbox', { name: 'Raise OS Notifications' });
+    const topmost = screen.getByRole('checkbox', { name: 'Raise Topmost Window Notifications' });
+    expect(screen.queryByRole('checkbox', { name: 'Notify about messages this device sent' })).not.toBeInTheDocument();
+    expect(os).toBeChecked();
+    expect(topmost).not.toBeChecked();
+    await userEvent.click(topmost);
+    await userEvent.click(os);
+    expect(useAppStore.getState().config?.notifications).toMatchObject({ enabled: false, topmostEnabled: true });
+    const rule = within(screen.getByRole('group', { name: 'Name info' }));
+    expect(rule.getAllByRole('textbox').map((input) => input.getAttribute('id'))).toEqual([
+      'rule-0-id',
+      'rule-0-topic',
+      'rule-0-title',
+      'rule-0-body',
+    ]);
+    expect(rule.getByRole('combobox', { name: 'Level' })).toBeInTheDocument();
+    expect(rule.getByRole('checkbox', { name: 'Enabled' })).toBeChecked();
+    const ruleOs = rule.getByRole('checkbox', { name: 'OS Notification' });
+    expect(ruleOs).not.toBeChecked();
+    await userEvent.click(ruleOs);
+    const ruleTopmost = rule.getByRole('checkbox', { name: 'Topmost Window' });
+    expect(ruleTopmost).not.toBeChecked();
+    await userEvent.click(ruleTopmost);
+    for (const [label, text] of [
+      ['Name', 'my-rule'],
+      ['Topic filter', 'build/#'],
+      ['Title template', 'Build'],
+      ['Body template', 'Ready'],
+    ]) {
+      await userEvent.clear(rule.getByLabelText(label));
+      await userEvent.type(rule.getByLabelText(label), text);
+    }
+    await act(async () => {
+      await useAppStore.getState().flushConfig();
+    });
+    expect(vi.mocked(Service.setConfig).mock.lastCall?.[0].notifications).toMatchObject({
+      enabled: false,
+      topmostEnabled: true,
+      rules: [
+        { id: 'my-rule', topic: 'build/#', title: 'Build', body: 'Ready', enabled: true, os: true, topmost: true },
+      ],
+    });
+    await userEvent.click(rule.getByRole('button', { name: i18n.t('settings.removeRule') }));
+    expect(useAppStore.getState().config?.notifications?.rules).toEqual([]);
+  });
+
+  it('adds enabled rules with both channels unchecked and treats omitted enabled as checked', async () => {
+    useAppStore.setState({ config: { ...CONFIG, notifications: { rules: [{ id: 'minimal', topic: '#' }] } } });
+    render(<Config />);
+    await userEvent.click(screen.getByRole('tab', { name: 'Notifications' }));
+    const minimal = within(screen.getByRole('group', { name: 'Name minimal' }));
+    expect(minimal.getByRole('checkbox', { name: 'Enabled' })).toBeChecked();
+    expect(minimal.getByRole('checkbox', { name: 'OS Notification' })).not.toBeChecked();
+    expect(minimal.getByRole('checkbox', { name: 'Topmost Window' })).not.toBeChecked();
+    await userEvent.click(screen.getByRole('button', { name: 'Add a rule' }));
+    const added = within(screen.getByRole('group', { name: 'Name rule-2' }));
+    expect(added.getByRole('checkbox', { name: 'Enabled' })).toBeChecked();
+    expect(added.getByRole('checkbox', { name: 'OS Notification' })).not.toBeChecked();
+    expect(added.getByRole('checkbox', { name: 'Topmost Window' })).not.toBeChecked();
+    await userEvent.click(added.getByRole('checkbox', { name: 'Enabled' }));
+    await act(async () => {
+      await useAppStore.getState().flushConfig();
+    });
+    expect(vi.mocked(Service.setConfig).mock.lastCall?.[0].notifications?.rules?.[1]).toMatchObject({
+      id: 'rule-2',
+      enabled: false,
+      os: false,
+      topmost: false,
+    });
   });
 
   it('fills the broker fields from the config', async () => {
@@ -354,7 +427,7 @@ describe('the settings tab', () => {
     await userEvent.type(screen.getByLabelText('Messages per topic'), '250');
     expect(useAppStore.getState().config?.gui?.history?.maxMessagesPerTopic).toBe(250);
     await userEvent.click(screen.getByRole('tab', { name: 'Notifications' }));
-    await userEvent.click(screen.getByLabelText('Raise OS notifications'));
+    await userEvent.click(screen.getByLabelText('Raise OS Notifications'));
     expect(useAppStore.getState().config?.notifications?.enabled).toBe(false);
     await userEvent.click(screen.getByRole('combobox', { name: 'Level' }));
     await userEvent.click(screen.getByRole('option', { name: 'Success' }));

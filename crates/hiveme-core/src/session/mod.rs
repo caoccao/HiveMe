@@ -52,7 +52,7 @@ pub use config::{ConfigStore, needs_reconnect};
 pub use history::build_tree;
 #[cfg(target_os = "windows")]
 pub use notify::register_toast_identity;
-pub use notify::{Notifier, Toaster};
+pub use notify::{Notifier, Toaster, TopmostNotification};
 pub use types::{About, MessageRow, PublishOptions, SessionEvent, Status, TopicNode, UpdateCheckResult};
 pub use update::{GITHUB_URL, RELEASES_API_URL, is_newer};
 
@@ -303,7 +303,7 @@ impl Session {
       .unwrap_or_else(|| Qos::from_config(&config));
     let retain = options.retain.unwrap_or(config.publish.retain);
 
-    let (payload, properties) = if options.json {
+    let (payload, mut properties) = if options.json {
       (
         raw_json_payload(body).map_err(|source| Error::NotJson(source.to_string()))?,
         raw_json_properties(),
@@ -326,9 +326,12 @@ impl Session {
     let shared = self.mqtt.shared();
     shared.remember(&row.topic, &row.msg_id);
     if options.json {
-      // The generated id is not in the payload, so the echo of these bytes has to be
-      // recognized by the bytes themselves.
-      shared.remember_raw(&row.topic, &payload, &row.msg_id);
+      // Keep raw JSON unchanged. An MQTT property identifies this publish so another
+      // session sending the same bytes cannot be mistaken for our echo.
+      properties
+        .user_properties
+        .push((mqtt::RAW_PUBLISH_ID.to_owned(), row.msg_id.clone()));
+      shared.remember_raw(&row.topic, &row.msg_id);
     }
     if let Err(error) = self
       .mqtt

@@ -161,7 +161,12 @@ fn the_documented_defaults_are_the_real_defaults() {
   assert!(!config.publish.retain);
   assert_eq!(config.publish.timeout_secs, 10);
   assert!(config.notifications.enabled);
-  assert!(!config.notifications.notify_own_messages);
+  assert!(
+    serde_json::to_value(&config.notifications)
+      .unwrap()
+      .get("notifyOwnMessages")
+      .is_none()
+  );
   assert_eq!(config.gui.theme, Theme::Ocean);
   assert_eq!(config.gui.language, "en-US");
   assert_eq!(config.gui.history.max_messages_per_topic, 1_000);
@@ -174,11 +179,34 @@ fn the_documented_defaults_are_the_real_defaults() {
 }
 
 #[test]
-fn the_three_built_in_rules_apply_when_none_are_listed() {
+fn the_four_enabled_built_in_rules_apply_when_none_are_listed() {
   let config = load("minimal.json").into_config();
   let ids: Vec<&str> = config.notifications.rules.iter().map(|rule| rule.id.as_str()).collect();
-  assert_eq!(ids, ["info", "warn", "error"]);
-  assert_eq!(config.notifications.rules[2].level, Level::Error);
+  assert_eq!(ids, ["info", "success", "warn", "error"]);
+  for rule in &config.notifications.rules {
+    assert_eq!(rule.level.as_str(), rule.id);
+    assert_eq!(rule.topic, "#");
+    assert!(rule.enabled);
+    assert!(!rule.os);
+    assert!(!rule.topmost);
+  }
+}
+
+#[test]
+fn rule_checkboxes_default_independently_and_preserve_explicit_choices() {
+  let rule: hiveme_core::config::Rule = serde_json::from_str(r##"{"id":"custom","topic":"#"}"##).unwrap();
+  assert!(rule.enabled);
+  assert!(!rule.os);
+  assert!(!rule.topmost);
+  let rule: hiveme_core::config::Rule =
+    serde_json::from_str(r##"{"id":"custom","topic":"#","enabled":false,"os":true,"topmost":true}"##).unwrap();
+  assert!(!rule.enabled);
+  assert!(rule.os);
+  assert!(rule.topmost);
+  let saved = serde_json::to_value(&rule).unwrap();
+  assert_eq!(saved["enabled"], false);
+  assert_eq!(saved["os"], true);
+  assert_eq!(saved["topmost"], true);
 }
 
 #[test]
@@ -860,4 +888,23 @@ fn bracketed_ipv6_urls_round_trip_with_default_and_explicit_ports() {
   for text in ["mqtt://::1", "mqtt://[bad]", "mqtt://[::1]x", "mqtt://[::1"] {
     assert!(hiveme_core::config::BrokerUrl::parse(text).is_err(), "{text}");
   }
+}
+
+#[test]
+fn notification_channels_have_independent_defaults_and_persist() {
+  let directory = tempfile::tempdir().unwrap();
+  let path = directory.path().join("HiveMe.json");
+  let mut file = ConfigFile::from_text(&path, r#"{"notifications":{"enabled":false,"futureFlag":true}}"#).unwrap();
+  assert!(Config::default().notifications.enabled);
+  assert!(!Config::default().notifications.topmost_enabled);
+  assert!(!file.config().notifications.enabled);
+  assert!(!file.config().notifications.topmost_enabled);
+  let mut config = file.config().clone();
+  config.notifications.topmost_enabled = true;
+  file.save_config(config).unwrap();
+  let loaded = ConfigFile::load(&path).unwrap();
+  assert!(!loaded.config().notifications.enabled);
+  assert!(loaded.config().notifications.topmost_enabled);
+  let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+  assert_eq!(saved["notifications"]["futureFlag"], true);
 }
