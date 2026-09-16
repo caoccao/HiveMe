@@ -997,21 +997,117 @@ fn nearest_remaining_topic(topics: &[TopicNode], topic: &str) -> String {
   candidate.to_owned()
 }
 
-/// Merges pages and live rows by row id, in the order they were stored.
+/// Merges two lists sorted by row id, keeping `more` when an id occurs in both.
+/// Each input contains at most one copy of a row, as history pages and live updates do.
 fn merge(mut rows: Vec<MessageRow>, more: Vec<MessageRow>) -> Vec<MessageRow> {
-  for row in more {
-    match rows.iter().position(|existing| existing.row_id == row.row_id) {
-      Some(index) => rows[index] = row,
-      None => rows.push(row),
+  if more.is_empty() {
+    return rows;
+  }
+  // Older pages followed by cached history, and new arrivals after the last row,
+  // are already ordered. Move them directly instead of searching for every row.
+  if rows.last().is_none_or(|last| last.row_id < more[0].row_id) {
+    rows.extend(more);
+    return rows;
+  }
+
+  let mut merged = Vec::with_capacity(rows.len() + more.len());
+  let mut rows = rows.into_iter().peekable();
+  let mut more = more.into_iter().peekable();
+  while let (Some(left), Some(right)) = (rows.peek(), more.peek()) {
+    match left.row_id.cmp(&right.row_id) {
+      std::cmp::Ordering::Less => merged.push(rows.next().unwrap()),
+      std::cmp::Ordering::Equal => {
+        rows.next();
+        merged.push(more.next().unwrap());
+      }
+      std::cmp::Ordering::Greater => merged.push(more.next().unwrap()),
     }
   }
-  rows.sort_by_key(|row| row.row_id);
-  rows
+  merged.extend(rows);
+  merged.extend(more);
+  merged
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+  use hiveme_core::session::SessionApp;
+  use hiveme_core::storage::{NewMessage, Store};
+
+  fn message_row() -> MessageRow {
+    let store = Store::in_memory().unwrap();
+    let stored = store
+      .insert(&NewMessage::from_payload(
+        "hiveme",
+        b"original".to_vec(),
+        0,
+        false,
+        false,
+      ))
+      .unwrap()
+      .message;
+    MessageRow::seen_by(stored, SessionApp::Tui)
+  }
+
+  #[test]
+  fn merging_an_older_page_keeps_every_cached_row_in_order() {
+    let template = message_row();
+    let history: Vec<_> = (1..=10_000)
+      .map(|row_id| MessageRow {
+        row_id,
+        id: row_id.to_string(),
+        ..template.clone()
+      })
+      .collect();
+    let merged = merge(history[..200].to_vec(), history[200..].to_vec());
+    assert_eq!(merged, history);
+    assert_eq!(merge(merged.clone(), vec![]), history);
+    assert_eq!(merge(vec![], merged), history);
+    assert!(merge(vec![], vec![]).is_empty());
+  }
+
+  #[test]
+  fn merging_overlapping_history_and_live_rows_keeps_the_latest_values() {
+    let template = message_row();
+    let rows = |ids: &[i64], body: &str| -> Vec<MessageRow> {
+      ids
+        .iter()
+        .map(|&row_id| MessageRow {
+          row_id,
+          id: row_id.to_string(),
+          body: body.to_owned(),
+          ..template.clone()
+        })
+        .collect()
+    };
+    let merged = merge(rows(&[2, 4, 6, 8], "stored"), rows(&[1, 2, 3, 6, 9], "updated"));
+    assert_eq!(
+      merged
+        .iter()
+        .map(|row| (row.row_id, row.body.as_str()))
+        .collect::<Vec<_>>(),
+      [
+        (1, "updated"),
+        (2, "updated"),
+        (3, "updated"),
+        (4, "stored"),
+        (6, "updated"),
+        (8, "stored"),
+        (9, "updated"),
+      ]
+    );
+
+    // Arrivals may append, fill a gap, precede the page, or update an existing row.
+    for row_id in [9, 3, 1, 4] {
+      let mut update = rows(&[row_id], "echo").pop().unwrap();
+      update.qos = 1;
+      update.outgoing = true;
+      let merged = merge(rows(&[2, 4, 6, 8], "stored"), vec![update.clone()]);
+      assert!(merged.windows(2).all(|pair| pair[0].row_id < pair[1].row_id));
+      assert_eq!(merged.iter().find(|row| row.row_id == row_id), Some(&update));
+      assert_eq!(merged.len(), if row_id == 4 { 4 } else { 5 });
+    }
+  }
 
   #[test]
   fn a_topic_contains_its_descendants_and_nothing_that_only_shares_a_prefix() {

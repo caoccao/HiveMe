@@ -220,6 +220,10 @@ on its `✕` closes it. Closing a tab selects the one that took its place.
   previous page of 200 rows, the `before` cursor being the oldest row loaded, until a
   page comes back short, as `get_messages` pages. Only the rows in view are laid out,
   and heights are cached per row, width, and expansion.
+- History pages and live rows stay sorted by row id. Merging takes linear work in
+  the number of rows, joining disjoint pages directly and retaining the latest row
+  when a live update overlaps stored history. Paging must not scan the growing cache
+  once for every row it already contains.
 - A bubble is a rounded block, at most 80 percent of the list wide and at least 18
   cells, aligned left for incoming rows and right for outgoing rows, one cell from the
   pane's border. Outgoing means the terminal UI sent it, so what `hmg` sent from the
