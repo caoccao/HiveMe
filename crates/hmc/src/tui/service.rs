@@ -47,7 +47,7 @@ pub trait Service: Send + Sync + 'static {
   fn disconnect(&self) -> Pending<'_, ()>;
   fn topic_tree(&self) -> Result<Vec<TopicNode>>;
   fn messages(&self, topic: &str, before: Option<i64>, limit: u32) -> Result<Vec<MessageRow>>;
-  fn mark_read(&self, topic: &str) -> Result<()>;
+  fn mark_read_through(&self, topic: &str, row_id: i64, msg_id: &str) -> Result<()>;
   fn clear_topic(&self, topic: &str) -> Result<u64>;
   fn publish<'a>(&'a self, topic: &'a str, body: &'a str, options: PublishOptions) -> Pending<'a, MessageRow>;
   fn set_notifications_paused(&self, paused: bool) -> Status;
@@ -98,8 +98,8 @@ impl Service for Session {
     Session::messages(self, topic, before, limit)
   }
 
-  fn mark_read(&self, topic: &str) -> Result<()> {
-    Session::mark_read(self, topic)
+  fn mark_read_through(&self, topic: &str, row_id: i64, msg_id: &str) -> Result<()> {
+    Session::mark_read_through(self, topic, row_id, msg_id)
   }
 
   fn clear_topic(&self, topic: &str) -> Result<u64> {

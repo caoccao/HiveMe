@@ -301,13 +301,28 @@ fn app_rendered(app: &mut App<Scripted>) -> &App<Scripted> {
 
 #[test]
 fn a_live_message_appears_and_raises_the_badge_until_its_topic_is_selected() {
-  let (service, mut app, mut receivers) = connected();
+  assert_live_message_stays_unread(false);
+  assert_live_message_stays_unread(true);
+}
+
+fn assert_live_message_stays_unread(with_history: bool) {
+  let service = Scripted::in_language("en-US");
+  service.set_state("Connected");
+  // Force startup's asynchronous mark-read write to finish after the arrival.
+  // This must also work when the selected subtree already contains history.
+  if with_history {
+    service.keep("hiveme/ci", b"Earlier message", false);
+  }
+  let blocked_write = service.write_gate.lock().unwrap();
+  let (mut app, mut receivers) = open_app(&service);
   let sender = Sender::from_device(&Config::new_for_this_device().device, "hmc");
   service.deliver(
     "hiveme/ci",
     &Message::new_text(sender, "Disk full").with_level(Level::Error),
   );
   pump(&mut app, &mut receivers);
+  drop(blocked_write);
+  wait_for_history_write(&mut app);
 
   let screen = render(&mut app, 120, 40).join("\n");
   assert!(
@@ -319,7 +334,16 @@ fn a_live_message_appears_and_raises_the_badge_until_its_topic_is_selected() {
   press(&mut app, key(KeyCode::Down));
   press(&mut app, key(KeyCode::Enter));
   assert_eq!(app.selected_topic.as_deref(), Some("hiveme/ci"));
+  wait_for_history_write(&mut app);
   assert!(!render(&mut app, 120, 40).join("\n").contains("(1)"));
+}
+
+fn wait_for_history_write(app: &mut App<Scripted>) {
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while !app.on_tick(Instant::now()) {
+    assert!(Instant::now() < deadline, "the history write did not complete");
+    std::thread::yield_now();
+  }
 }
 
 #[tokio::test]

@@ -602,11 +602,21 @@ impl<S: Service> App<S> {
     }
     self.refresh_topics(now);
     mark_tree_read(&mut self.topics, topic);
+    // Capture the boundary before deferring the write: arrivals after selection
+    // must stay unread, including when startup selected an empty subtree.
+    let through = self
+      .messages
+      .get(topic)
+      .and_then(|rows| rows.last())
+      .map(|row| (row.row_id, row.id.clone()));
     let topic = topic.to_owned();
     let service = self.service.clone();
     let outcomes = self.write_outcomes.clone();
     std::thread::spawn(move || {
-      let outcome = match service.mark_read(&topic) {
+      let result = through.map_or(Ok(()), |(row_id, msg_id)| {
+        service.mark_read_through(&topic, row_id, &msg_id)
+      });
+      let outcome = match result {
         Ok(()) => Outcome::MarkedRead,
         Err(error) => Outcome::Failed(error.to_string()),
       };

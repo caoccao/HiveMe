@@ -196,6 +196,10 @@ on its `✕` closes it. Closing a tab selects the one that took its place.
   asks the session for the tree again, and is independent of expansion, as clicking a
   label in the GUI is. A mouse click on the marker toggles, on the label selects, and
   the wheel over the tree moves the cursor three rows.
+- Marking read runs in the background and stops at the newest message displayed at
+  selection time. Later arrivals remain unread even if the write is delayed; selecting
+  an empty subtree never marks future messages read. A cleared history cannot let a
+  pending write clear new messages that reuse the old row ids.
 - The unread badge is ` (N)` after the label in the primary color, rolled up from the
   descendants, grouped as the selected language groups digits, and capped at `999+`.
   The selected label is bold in the primary color.

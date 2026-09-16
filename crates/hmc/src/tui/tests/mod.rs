@@ -253,9 +253,9 @@ impl Service for Scripted {
     )
   }
 
-  fn mark_read(&self, topic: &str) -> Result<()> {
+  fn mark_read_through(&self, topic: &str, row_id: i64, msg_id: &str) -> Result<()> {
     let _gate = self.write_gate.lock().unwrap();
-    self.store.mark_read(topic)
+    self.store.mark_read_through(topic, row_id, msg_id)
   }
 
   fn clear_topic(&self, topic: &str) -> Result<u64> {
@@ -1161,6 +1161,7 @@ fn very_wide_terminals_do_not_overflow_the_split_or_bubble_width() {
 #[test]
 fn slow_history_writes_leave_input_and_drawing_responsive() {
   let service = Scripted::in_language("en-US");
+  service.keep("hiveme", b"Unread history", false);
   let (mut app, _receivers) = open_app(&service);
   let blocked_write = service.write_gate.lock().unwrap();
   let start = Instant::now();

@@ -663,6 +663,22 @@ impl Store {
     Ok(())
   }
 
+  /// Marks a subtree read only through the last message the caller displayed.
+  /// The message id guards against row-id reuse after history is cleared or pruned.
+  pub fn mark_read_through(&self, topic: &str, row_id: i64, msg_id: &str) -> Result<()> {
+    let (descendants, after_descendants) = descendant_topic_bounds(topic);
+    let connection = self.lock();
+    connection
+      .execute(
+        "UPDATE messages SET unread = 0 WHERE unread != 0 AND id <= ?4
+         AND EXISTS (SELECT 1 FROM messages boundary WHERE boundary.id = ?4 AND boundary.msg_id = ?5)
+         AND topic_id IN (SELECT id FROM topics WHERE topic = ?1 OR (topic >= ?2 AND topic < ?3))",
+        params![topic, descendants, after_descendants, row_id, msg_id],
+      )
+      .map_err(|source| failed("mark displayed messages read", source))?;
+    Ok(())
+  }
+
   /// Deletes a topic and all its descendants, with every message stored on them, and
   /// returns how many messages went.
   ///

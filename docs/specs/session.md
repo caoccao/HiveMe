@@ -94,8 +94,9 @@ SHUTDOWN_TIMEOUT = 10 s
 
 *Phase 1.*
 
-The operations are the commands of [gui.md](gui.md#commands) with the same names,
-inputs, and answers, minus the Tauri wrapping.
+The operations include the commands of [gui.md](gui.md#commands) with the same names,
+inputs, and answers, minus the Tauri wrapping, plus `mark_read_through` for the
+terminal UI's deferred history writes.
 
 | Operation | Input | Answer |
 |-----------|-------|--------|
@@ -110,6 +111,7 @@ inputs, and answers, minus the Tauri wrapping.
 | `topic_tree` | none | `TopicNode[]`, built by splitting every stored topic on `/`, with unread and message counts rolled up |
 | `messages` | topic, `before`, `limit` | `MessageRow[]` for the topic and all descendants, oldest first; no cursor means the newest page, no limit means 200 |
 | `mark_read` | topic | none; clears unread counts throughout the subtree |
+| `mark_read_through` | topic, row id, message id | none; clears unread counts in the subtree only up to the displayed row, preserving later arrivals. If the boundary row was deleted or its id reused for another message, does nothing |
 | `clear_topic` | topic | how many messages were deleted. Deletes the topic and all its descendants from both the `topics` and the `messages` tables, in one transaction |
 | `publish` | topic, body, `PublishOptions` | the stored `MessageRow`; see [Publishing](#publishing) |
 | `set_notifications_paused` | bool | `Status` |

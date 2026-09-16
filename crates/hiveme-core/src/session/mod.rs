@@ -260,6 +260,11 @@ impl Session {
     self.store.mark_read(topic)
   }
 
+  /// Marks a subtree read through a displayed message, preserving later arrivals.
+  pub fn mark_read_through(&self, topic: &str, row_id: i64, msg_id: &str) -> Result<()> {
+    self.store.mark_read_through(topic, row_id, msg_id)
+  }
+
   /// Deletes the stored history of one topic.
   pub fn clear_topic(&self, topic: &str) -> Result<u64> {
     self.store.clear_topic(topic)

@@ -243,6 +243,52 @@ fn unread_counts_only_what_arrived_and_only_once() {
 }
 
 #[test]
+fn a_deferred_mark_read_preserves_arrivals_after_the_displayed_message() {
+  let store = Store::in_memory().unwrap();
+  for topic in ["hiveme", "hiveme/build/ci", "hiveme2"] {
+    store.insert(&incoming(topic, &envelope("sender", "earlier"))).unwrap();
+  }
+  let displayed = store
+    .insert(&incoming("hiveme/build", &envelope("sender", "displayed")))
+    .unwrap()
+    .message;
+  for topic in ["hiveme", "hiveme/build", "hiveme/build/ci"] {
+    store.insert(&incoming(topic, &envelope("sender", "later"))).unwrap();
+  }
+
+  // Retrying the same write cannot clear any more messages.
+  for _ in 0..2 {
+    store
+      .mark_read_through("hiveme", displayed.row_id, &displayed.msg_id)
+      .unwrap();
+    for topic in store.topics().unwrap() {
+      assert_eq!(topic.unread, 1, "{}", topic.topic);
+    }
+  }
+}
+
+#[test]
+fn a_deferred_mark_read_cannot_clear_new_history_that_reuses_a_row_id() {
+  let store = Store::in_memory().unwrap();
+  let displayed = store
+    .insert(&incoming("hiveme/build", &envelope("sender", "displayed")))
+    .unwrap()
+    .message;
+  store.clear_topic("hiveme").unwrap();
+  let later = store
+    .insert(&incoming("hiveme/build", &envelope("sender", "later")))
+    .unwrap()
+    .message;
+  assert_eq!(later.row_id, displayed.row_id);
+  assert_ne!(later.msg_id, displayed.msg_id);
+
+  store
+    .mark_read_through("hiveme", displayed.row_id, &displayed.msg_id)
+    .unwrap();
+  assert_eq!(store.topics().unwrap()[0].unread, 1);
+}
+
+#[test]
 fn history_is_paged_from_the_newest_end_and_handed_back_in_reading_order() {
   let store = Store::in_memory().unwrap();
   for index in 0..10 {

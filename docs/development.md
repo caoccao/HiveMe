@@ -139,6 +139,14 @@ Each bundler is told where to put it:
 | macOS app | `bundle.macOS.files` | `HiveMe.app/Contents/MacOS/hmc` |
 | msi, nsis | `bundle.resources` of `src-tauri/tauri.windows.conf.json` | beside `hmg.exe` in the install folder |
 
+On macOS, `src-tauri/tauri.macos.conf.json` uses `beforeBundleCommand` to ad-hoc sign
+`target/release/hmc` immediately before bundling. Tauri copies custom files without
+adding them to its signing list, and an unsigned nested executable prevents the app
+from being signed. Intel builds need this explicitly; the Apple silicon linker already
+provides an ad-hoc signature. The hook runs for both `tauri build` and `tauri bundle`.
+`xtask/tests/macos_bundle.rs` verifies it with an unsigned helper in a temporary bundle
+on either architecture, without launching or registering an app.
+
 Windows is the odd one out, because its bundlers have no file map of their own.
 `bundle.resources` does the same job there, and it sits in the Windows only config file
 rather than in `tauri.conf.json` because it is not a per-platform setting: in the shared
