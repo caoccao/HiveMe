@@ -66,6 +66,12 @@ changes. Two writers on one temporary name do not take turns: they truncate and
 interleave into a document neither of them meant to write, and the rename then publishes
 that as the config.
 
+On Windows, reads and the final atomic rename retry access-denied, sharing-violation,
+and lock-violation errors that can occur while another process replaces or holds the
+file. There are at most eight retries with 255 ms of total backoff. Persistent errors
+remain errors; missing files, invalid JSON, and other I/O failures are not retried.
+Other platforms retain their normal file-operation behavior.
+
 A config is held in memory only once it is on disk. A write the file system refuses
 leaves the value in memory as it was, so that the screen cannot show settings the next
 start will not find. The one config that is kept without being written is one from a

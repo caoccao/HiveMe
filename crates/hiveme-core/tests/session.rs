@@ -324,6 +324,9 @@ fn the_pause_toggle_keeps_the_toaster_quiet_and_the_message_arriving() {
       );
 
       session.set_notifications_paused(false);
+      // Make the topmost worker finish first: its event cannot promise that the
+      // independent OS worker has delivered anything yet.
+      let os_delivery = recorder.hold_os_delivery();
       let message = error("Disk still full");
       publisher
         .publish_message("hiveme/disk", &message, Qos::AtLeastOnce, false)
@@ -342,18 +345,24 @@ fn the_pause_toggle_keeps_the_toaster_quiet_and_the_message_arriving() {
         fired,
         ("error".to_owned(), message.id.clone(), "hiveme/disk".to_owned())
       );
+      assert!(recorder.shown().is_empty(), "OS delivery is still held");
       assert_eq!(
-        recorder.shown(),
+        recorder.topmost_shown(),
         vec![("Disk".to_owned(), "Disk still full".to_owned())]
       );
 
+      drop(os_delivery);
       tokio::time::timeout(RECEIVE_TIMEOUT, async {
         while recorder.shown().is_empty() || recorder.topmost_shown().is_empty() {
           tokio::task::yield_now().await;
         }
       })
       .await
-      .unwrap();
+      .expect("both notification channels finish after resuming");
+      assert_eq!(
+        recorder.shown(),
+        vec![("Disk".to_owned(), "Disk still full".to_owned())]
+      );
       assert_eq!(recorder.topmost_shown(), recorder.shown());
       publisher.disconnect().await.expect("the publisher says goodbye");
       session.shutdown().await.expect("the session ends");

@@ -208,11 +208,21 @@ pub struct Recorder {
   pub shown: std::sync::Mutex<Vec<(String, String)>>,
   pub topmost: std::sync::Mutex<Vec<crate::session::TopmostNotification>>,
   pub fail: std::sync::atomic::AtomicBool,
+  os_gate: std::sync::Mutex<Option<std::sync::mpsc::Receiver<()>>>,
 }
 impl crate::session::Toaster for Recorder {
   fn show(&self, title: &str, body: &str) -> Result<(), String> {
     if self.fail.load(std::sync::atomic::Ordering::Relaxed) {
       return Err("no notification daemon".to_owned());
+    }
+    let gate = self.os_gate.lock().unwrap().take();
+    if let Some(gate) = gate
+      && matches!(
+        gate.recv_timeout(RECEIVE_TIMEOUT),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+      )
+    {
+      return Err("the test did not release OS delivery".to_owned());
     }
     self
       .shown
@@ -267,6 +277,14 @@ pub async fn session_present(host: &str, port: u16, client_id: &str) -> bool {
 }
 
 impl Recorder {
+  /// Holds the next OS delivery until the returned sender is dropped. The topmost
+  /// worker remains free to finish first, independent of the test machine's scheduler.
+  pub fn hold_os_delivery(&self) -> std::sync::mpsc::Sender<()> {
+    let (release, wait) = std::sync::mpsc::channel();
+    *self.os_gate.lock().unwrap() = Some(wait);
+    release
+  }
+
   pub fn topmost_shown(&self) -> Vec<(String, String)> {
     self
       .topmost

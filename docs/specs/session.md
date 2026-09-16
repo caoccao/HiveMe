@@ -137,7 +137,7 @@ the terminal UI applies each one to its state.
 | `Status` | `Status` | every connection state change, every reconnect countdown, every pause toggle, and the end of a `connect` or `disconnect` |
 | `Message` | `MessageRow` | once per stored row, whether it arrived or was published here. The echo of a message this installation published raises no second event, because it collapses into the row that is already there |
 | `TopicAdded` | topic | the first message stored on a topic the store does not have, including one that was cleared |
-| `NotificationFired` | rule id, message id, topic | a rule raised a desktop notification |
+| `NotificationFired` | rule id, message id, topic | the first successful notification channel for a rule; emitted once per message, without waiting for the other independent channel |
 
 A receiver that falls behind loses the oldest events, which is the broadcast
 channel's rule; the applications refresh the tree and the status from the operations

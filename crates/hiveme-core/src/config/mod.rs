@@ -26,6 +26,7 @@
 //! * a write merges into the document that was read, so a key this build does not
 //!   know survives a round trip.
 
+mod file_io;
 mod init;
 mod migrate;
 mod paths;
@@ -960,7 +961,7 @@ impl ConfigFile {
 
   /// Reads the config at `path`.
   pub fn load(path: &Path) -> Result<Self> {
-    let text = match std::fs::read_to_string(path) {
+    let text = match file_io::retry(|| std::fs::read_to_string(path)) {
       Ok(text) => text,
       Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
         return Err(Error::ConfigNotFound(path.to_path_buf()));
@@ -1185,7 +1186,7 @@ fn write_atomically(path: &Path, text: &str) -> Result<()> {
     path: temporary.clone(),
     source,
   })?;
-  std::fs::rename(&temporary, path).map_err(|source| {
+  file_io::retry(|| std::fs::rename(&temporary, path)).map_err(|source| {
     // The rename is what makes the write visible, so a failed one leaves a file nobody
     // will ever read again.
     let _ = std::fs::remove_file(&temporary);

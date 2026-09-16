@@ -773,9 +773,10 @@ fn two_processes_saving_at_once_never_publish_a_half_written_config() {
       })
     })
     .collect();
-  for writer in writers {
-    writer.join().expect("no writer panicked");
-  }
+  // Join every writer before reporting a panic so the temporary directory cannot
+  // disappear under the remaining writers and obscure the original failure.
+  let results: Vec<_> = writers.into_iter().map(|writer| writer.join()).collect();
+  assert!(results.iter().all(Result::is_ok), "no writer panicked");
 
   let file = ConfigFile::load(&path).expect("the config survives the crowd");
   assert!(file.config().device.name.starts_with("writer-"));
