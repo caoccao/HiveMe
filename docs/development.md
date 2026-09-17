@@ -55,6 +55,15 @@ pnpm tauri build                                # the release bundle for this OS
 
 `pnpm test` runs the frontend tests with vitest, configured in `vitest.config.ts`.
 
+Autosave tests control the debounce clock after initialization. They verify immediate
+UI changes, no save before 500 ms of inactivity, and one combined save after a later
+edit restarts the delay. Assertions about unsaved values must not rely on UI
+interactions completing before a real-time timer fires on a busy CI runner.
+
+Run `cargo clippy --workspace --all-targets -- -D warnings` on Linux as well as macOS:
+macOS does not compile the Linux tray tests. Compile-time tray contracts use `const`
+assertions; icon conversion remains covered by runtime tests.
+
 On Windows, `cargo build -r -p hmc` comes before anything that compiles `hmg`, because
 the bundle carries `hmc`. See [Packaging `hmc`](#packaging-hmc).
 

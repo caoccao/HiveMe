@@ -144,6 +144,7 @@ mod tests {
     for (rgba, argb) in source.rgba().chunks_exact(4).zip(converted.data.chunks_exact(4)) {
       assert_eq!(argb, [rgba[3], rgba[0], rgba[1], rgba[2]]);
     }
-    assert!(!<Tray as ksni::Tray>::MENU_ON_ACTIVATE);
+    // The activation policy is a compile-time contract; pixel data above is runtime.
+    const { assert!(!<Tray as ksni::Tray>::MENU_ON_ACTIVATE) };
   }
 }

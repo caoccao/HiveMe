@@ -274,6 +274,7 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Terminal history pages merge in linear time, preserving row order and live updates without relaxing the large-history frame budget | [tui.md](tui.md#message-view) | `crates/hmc/src/tui/app.rs`, TUI regression and performance tests | CI reliability | done |
 | Windows config reads and atomic replacements retry bounded access/sharing conflicts; notification integration tests force topmost delivery before OS delivery and await both | [config.md](config.md#location-and-precedence), [session.md](session.md#events) | `hiveme-core::config::file_io`, config and session regression tests | CI reliability | done |
 | macOS bundling signs the custom `hmc` executable before signing the app, including unsigned Intel output | [development.md](../development.md#packaging-hmc) | `src-tauri/tauri.macos.conf.json`, `xtask/tests/macos_bundle.rs` | CI reliability | done |
+| Frontend autosave checks use a controlled clock and verify debounce restart; Linux tray contracts use compile-time assertions under strict Clippy | [development.md](../development.md) | `src/App.test.tsx`, `src-tauri/src/tray/linux.rs` | CI reliability | done |
 
 The rows below are the phases of [the terminal UI plan](../plans/plan-terminal-ui.md).
 Their phase numbers are that plan's, not the initialization plan's.

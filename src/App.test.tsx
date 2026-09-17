@@ -112,8 +112,12 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  cleanup();
-  await useAppStore.getState().flushConfig();
+  try {
+    cleanup();
+    await useAppStore.getState().flushConfig();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 describe('the application window', () => {
@@ -326,11 +330,17 @@ describe('the application window', () => {
   it('applies language and theme immediately, then saves their wire values automatically', async () => {
     render(<App />);
     await waitFor(() => expect(useAppStore.getState().config).not.toBeNull());
-    await userEvent.click(screen.getByLabelText('Settings (F10)'));
-    await userEvent.click(screen.getByRole('tab', { name: 'Appearance' }));
-    await userEvent.click(screen.getByRole('combobox', { name: 'Language' }));
+    // UI work on a busy runner can exceed the autosave delay. Control the clock
+    // before editing so "immediate" and "after a pause" do not depend on CPU speed.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const saves = () => vi.mocked(invoke).mock.calls.filter(([command]) => command === 'set_config');
+    fireEvent.click(screen.getByLabelText('Settings (F10)'));
+    fireEvent.click(screen.getByRole('tab', { name: 'Appearance' }));
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Language' }));
     expect(screen.getAllByRole('option')).toHaveLength(9);
-    await userEvent.click(screen.getByRole('option', { name: 'Deutsch' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('option', { name: 'Deutsch' }));
+    });
     expect(i18n.resolvedLanguage).toBe('de');
     expect(backendConfig.gui?.language).toBe('en-US');
     expect(screen.getByRole('tab', { name: 'Nachrichten' })).toBeInTheDocument();
@@ -338,10 +348,28 @@ describe('the application window', () => {
     expect(screen.getAllByLabelText('Schließen').length).toBeGreaterThan(0);
     expect(document.documentElement.lang).toBe('de');
 
-    await userEvent.click(screen.getByRole('combobox', { name: 'Farbschema' }));
-    await userEvent.click(screen.getByRole('option', { name: 'Wald' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(499);
+    });
+    expect(saves()).toHaveLength(0);
+    expect(backendConfig.gui?.language).toBe('en-US');
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Farbschema' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('option', { name: 'Wald' }));
+    });
     expect(useAppStore.getState().config?.gui?.theme).toBe('Forest');
-    await waitFor(() => expect(backendConfig.gui?.theme).toBe('Forest'));
+    // The second edit restarts the debounce and both wire values save together.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(499);
+    });
+    expect(saves()).toHaveLength(0);
+    expect(backendConfig.gui?.language).toBe('en-US');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(backendConfig.gui?.theme).toBe('Forest');
+    expect(saves()).toHaveLength(1);
     expect(invoke).toHaveBeenCalledWith(
       'set_config',
       expect.objectContaining({
