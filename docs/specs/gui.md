@@ -13,7 +13,7 @@ Its layout and architecture deliberately mirror the sibling project
 |------|------------|
 | `src/App.tsx` | The MUI theme, the display mode, and the listeners for the backend events |
 | `src/components/Layout.tsx` | The `auto 1fr auto` grid: toolbar, tabs, status bar |
-| `src/components/Toolbar.tsx` | Connect, pause notifications, clear the topic, Settings, About |
+| `src/components/Toolbar.tsx` | Connect, pause notifications, clear the topic, Settings, About, minimize to tray |
 | `src/components/MainContent.tsx` | The tab machinery and the update notice |
 | `src/components/Messages.tsx` | Tab 0: the split pane and its draggable divider |
 | `src/components/TopicTree.tsx` | The topic hierarchy and its filter |
@@ -73,6 +73,7 @@ Writing suggestions use the HTML
 | History | Clear selected topic | Deletes the selected topic and all its subtopics with their stored history |
 | Tabs | Settings (F10) | Opens or focuses the Settings tab |
 | Tabs | About | Opens or focuses the About tab |
+| Window (far right) | Minimize to system tray | Hides the main window while keeping the session running |
 
 ### Tabs
 
@@ -589,7 +590,8 @@ the same session without any IPC.
 | `events.rs` | A task that emits every `SessionEvent` under the event names below |
 | `notification.rs` | The `Toaster` of [session.md](session.md#notifications) |
 | `protocol.rs` | Re-exports the session's types, and holds the event names, the event payloads, and the managed state |
-| `window.rs` | Window geometry, `start_background_work`, and the quit path |
+| `window.rs` | Window geometry, hide/restore, `start_background_work`, and the quit path |
+| `tray.rs`, `tray/` | One reusable tray, localized menus, native activation, and Linux host availability |
 
 The types live in `crates/hiveme-core/src/session/types.rs`, re-exported by
 `src-tauri/src/protocol.rs`, and in `src/lib/protocol.ts`, which are hand-synced:
@@ -615,6 +617,7 @@ shows.
 | `get_update_result` | none | `{ "hasUpdate": false, "latestVersion": null }`, or nothing while the check is still running |
 | `list_topics` | none | `TopicNode[]` |
 | `mark_read` | `{ "topic": "hiveme" }` | none; clears unread counts throughout the selected subtree |
+| `minimize_to_tray` | none | none; creates a usable tray before hiding, or a localized error without hiding |
 | `publish` | `{ "topic": "hiveme", "body": "Build finished", "options": PublishOptions }` | the stored `MessageRow` |
 | `set_config` | `{ "config": Config }` | the config as it was saved |
 | `set_notifications_paused` | `{ "paused": true }` | `Status` |
@@ -839,6 +842,45 @@ macOS had centered it and jumped to the remembered place mid-animation. Tauri re
 both an explicit position and `center` into the frame the window is built with, so
 nothing is left to defer. The `width`, `height`, and `title` in `tauri.conf.json` are
 only the defaults this overrides.
+
+### System tray
+
+The toolbar's far-right **Minimize to system tray** button uses a generated window-to-tray glyph, rendered
+as an alpha mask in the theme’s icon color for light and dark modes. It hides the main window; it
+never destroys the webview or disconnects MQTT. All tab state, drafts, and scroll
+positions stay in memory. Pending settings save before hiding, and a save failure
+remains visible. This is an `hmg` window feature, not a terminal UI action.
+
+One tray is created at application startup and remains present while the window is
+visible, minimized, or hidden, until exit. Double-click restores the existing window
+(show, unminimize, focus); normal left-click activation also works. Windows emits a
+dedicated double-click event, macOS reports its component clicks, and Linux delegates
+activation gestures to the StatusNotifier host. Right-click opens **Restore window** and
+**Exit**. Exit uses the same bounded MQTT cleanup as the window close button. The
+normal window close button still exits. The tray uses the embedded HiveMe app artwork;
+the tooltip, accessible button label, menu items, and unavailable-tray message use
+the nine shared catalogs. Saving a language change refreshes the existing menu.
+
+- **macOS:** the tray is a menu-bar status item. Hiding switches the app to Accessory
+  activation policy so its Dock icon disappears. Restore reinstates Regular policy,
+  shows the application and window, unminimizes, and focuses it. UI calls run on the
+  main thread. The app’s colored hive icon is not used as a template, which would erase its speech bubble.
+- **Windows:** Tauri's native notification-area icon handles clicks, with the context
+  menu disabled for left clicks. Hiding removes the window from the taskbar; restore
+  brings it back. Windows may place the tray icon in its overflow area.
+- **Linux:** `ksni` implements StatusNotifier activation and a D-Bus context menu,
+  because Tauri's AppIndicator backend does not deliver tray mouse events. The
+  desktop must supply a StatusNotifier host (for example KDE, or a supported tray
+  extension on GNOME). Startup retries registration every two seconds if the host
+  is not ready yet, without delaying the window. Without a host, minimize fails
+  visibly and keeps the window accessible. If a host disappears while the window is hidden, the app restores it
+  and re-registers when the host returns. Each process uses its unique D-Bus name.
+
+Regression coverage checks startup registration and retries, double-click and button
+filtering, embedded icon pixels, all localized
+labels, toolbar placement/dispatch, preserving drafts, pending saves, and visible
+failure feedback. Native smoke checks should verify the icon before minimizing, hide, double-click restore,
+right-click Restore/Exit, changing language, and restoring an OS-minimized window.
 
 Closing the main window or quitting through the system menu first ends the MQTT
 connection and broker session. The event loop stays alive while cleanup runs, and

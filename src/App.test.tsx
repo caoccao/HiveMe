@@ -55,10 +55,14 @@ const topics: Protocol.TopicNode[] = [
 let backendConfig: Protocol.Config;
 let backendTopics: Protocol.TopicNode[];
 let failSave = false;
+let failTray = false;
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async (command: string, args?: { config?: Protocol.Config }) => {
     switch (command) {
+      case 'minimize_to_tray':
+        if (failTray) throw new Error(i18n.t('tray.unavailable'));
+        return null;
       case 'get_about':
         return about;
       case 'get_config':
@@ -88,9 +92,11 @@ vi.mock('@tauri-apps/api/event', () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   failSave = false;
+  failTray = false;
   backendTopics = topics;
   backendConfig = { version: 1, broker: {}, topics: { subscriptions: ['#'] }, gui: { language: 'en-US' } };
   useAppStore.setState({
+    dialogNotification: null,
     config: null,
     about: null,
     status: INITIAL_STATUS,
@@ -118,6 +124,30 @@ describe('the application window', () => {
     expect(screen.getByRole('tab', { name: /Messages/ })).toBeInTheDocument();
     expect(screen.getByLabelText('Settings (F10)')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'About' })).toBeInTheDocument();
+  });
+
+  it('offers a localized tray button at the right and keeps the message draft intact', async () => {
+    backendConfig.gui = { language: 'de' };
+    render(<App />);
+    const button = await screen.findByRole('button', { name: 'In den Infobereich minimieren' });
+    await waitFor(() => expect(useAppStore.getState().selectedTopic).toBe('hiveme'));
+    expect(button.closest('.MuiButtonGroup-root')).toHaveStyle({ marginLeft: 'auto' });
+    // Like MUI SVG icons, the bitmap glyph must not shrink inside IconButton padding.
+    expect(button.querySelector('[aria-hidden="true"]')).toHaveStyle({ flexShrink: '0', width: '20px' });
+    const composer = screen.getByRole('textbox', { name: i18n.t('composer.placeholder') });
+    fireEvent.change(composer, { target: { value: 'Unsent draft' } });
+    await userEvent.click(button);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('minimize_to_tray'));
+    expect(composer).toHaveValue('Unsent draft');
+    expect(useAppStore.getState().status.state).toBe('Connected');
+  });
+
+  it('shows the localized error when the desktop cannot provide a tray', async () => {
+    failTray = true;
+    render(<App />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Minimize to system tray' }));
+    expect(await screen.findByText(i18n.t('tray.unavailable'))).toBeVisible();
+    expect(screen.getByRole('tab', { name: /Messages/ })).toBeVisible();
   });
 
   it('fills the store from the backend on the first render', async () => {
@@ -334,6 +364,7 @@ describe('the application window', () => {
     expect(backendConfig.gui?.language).toBe('en-US');
     expect(screen.getByRole('tab', { name: 'メッセージ' })).toBeInTheDocument();
     failSave = false;
+    failTray = false;
     await userEvent.click(screen.getByRole('combobox', { name: 'テーマ' }));
     await userEvent.click(screen.getByRole('option', { name: '森' }));
     await waitFor(() => expect(backendConfig.gui?.language).toBe('ja'));

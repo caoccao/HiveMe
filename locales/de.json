@@ -6,7 +6,13 @@
     "resumeNotifications": "Benachrichtigungen fortsetzen",
     "clearTopic": "Verlauf des ausgewählten Topics löschen",
     "settings": "Einstellungen (F10)",
-    "about": "Über"
+    "about": "Über",
+    "minimizeToTray": "In den Infobereich minimieren"
+  },
+  "tray": {
+    "restore": "Fenster wiederherstellen",
+    "exit": "Beenden",
+    "unavailable": "Die App konnte nicht in den Infobereich minimiert werden. Stellen Sie sicher, dass Ihre Desktopumgebung einen Infobereich unterstützt, und versuchen Sie es erneut."
   },
   "tabs": {
     "messages": "Nachrichten",

@@ -27,6 +27,9 @@
 // the JSON schemas into `src/generated/` and re-exported below, because they are the
 // shared format rather than a protocol of the GUI's own.
 
+// The hmg-only `minimize_to_tray` command takes no arguments and returns void
+// (Rust unit), or a localized error string while keeping the main window open.
+
 import type { HiveMeConfig } from '../generated/config';
 import type { HiveMeMessage } from '../generated/message';
 

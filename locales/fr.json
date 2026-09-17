@@ -6,7 +6,13 @@
     "resumeNotifications": "Reprendre les notifications",
     "clearTopic": "Effacer l’historique du sujet sélectionné",
     "settings": "Paramètres (F10)",
-    "about": "À propos"
+    "about": "À propos",
+    "minimizeToTray": "Réduire dans la zone de notification"
+  },
+  "tray": {
+    "restore": "Restaurer la fenêtre",
+    "exit": "Quitter",
+    "unavailable": "Impossible de réduire l’application dans la zone de notification. Vérifiez que votre environnement de bureau prend en charge une zone de notification, puis réessayez."
   },
   "tabs": {
     "messages": "Messages",

@@ -108,8 +108,51 @@ fn save_geometry(window: &tauri::Window) {
   }
 }
 
+/// Hide only the main window; the webview, MQTT session, and notifications keep running.
+/// The caller creates a usable tray first and runs this on the native main thread.
+pub fn hide_to_tray(app: &tauri::AppHandle) -> anyhow::Result<()> {
+  anyhow::ensure!(!EXIT_REQUESTED.load(Ordering::SeqCst), "the app is exiting");
+  let window = app
+    .get_webview_window("main")
+    .ok_or_else(|| anyhow::anyhow!("the main window is missing"))?;
+  save_geometry(&window.as_ref().window());
+  window.hide()?;
+  #[cfg(target_os = "macos")]
+  if let Err(error) = app.set_activation_policy(tauri::ActivationPolicy::Accessory) {
+    let _ = restore_from_tray(app);
+    return Err(error.into());
+  }
+  Ok(())
+}
+
+/// Every tray restore path brings back the same window, including an OS-minimized one.
+pub fn restore_from_tray(app: &tauri::AppHandle) -> anyhow::Result<()> {
+  if EXIT_REQUESTED.load(Ordering::SeqCst) {
+    return Ok(());
+  }
+  let window = app
+    .get_webview_window("main")
+    .ok_or_else(|| anyhow::anyhow!("the main window is missing"))?;
+  #[cfg(target_os = "macos")]
+  {
+    app.set_activation_policy(tauri::ActivationPolicy::Regular)?;
+    app.show()?;
+  }
+  window.show()?;
+  window.unminimize()?;
+  window.set_focus()?;
+  Ok(())
+}
+
 /// All quit paths pass here, including the window close button and the system menu.
 pub fn on_run_event(app: &tauri::AppHandle, event: tauri::RunEvent) {
+  #[cfg(target_os = "macos")]
+  if matches!(event, tauri::RunEvent::Reopen { .. }) {
+    if let Err(error) = restore_from_tray(app) {
+      log::warn!("could not reopen the main window: {error}");
+    }
+    return;
+  }
   let tauri::RunEvent::ExitRequested { api, code, .. } = event else {
     return;
   };
@@ -180,12 +223,13 @@ pub fn place<R: tauri::Runtime>(context: &mut tauri::Context<R>, session: &Sessi
   }
 }
 
-/// Shows the window, then starts the session's connection, pruning, and update check.
+/// Creates the persistent tray, shows the window, and starts the session background work.
 pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
   let window = app.get_webview_window("main").expect("the main window is configured");
 
   let state = app.state::<AppState>();
   let session = state.session.clone();
+  crate::tray::setup(app.handle());
 
   // The window was built with its title and its remembered geometry already on it, by
   // `place`. It is configured hidden so that nothing reaches the screen until here.

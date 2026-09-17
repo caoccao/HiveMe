@@ -6,7 +6,13 @@
     "resumeNotifications": "通知を再開",
     "clearTopic": "選択したトピックの履歴を削除",
     "settings": "設定 (F10)",
-    "about": "このアプリについて"
+    "about": "このアプリについて",
+    "minimizeToTray": "システムトレイに最小化"
+  },
+  "tray": {
+    "restore": "ウィンドウを表示",
+    "exit": "終了",
+    "unavailable": "アプリをシステムトレイに最小化できませんでした。デスクトップがシステムトレイに対応していることを確認して、もう一度お試しください。"
   },
   "tabs": {
     "messages": "メッセージ",

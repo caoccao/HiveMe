@@ -71,6 +71,7 @@ interface AppState {
   flushConfig: () => Promise<boolean>;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
+  minimizeToTray: () => Promise<void>;
   toggleNotificationsPaused: () => Promise<void>;
 
   selectTopic: (topic: string | null) => Promise<void>;
@@ -242,6 +243,16 @@ export const useAppStore = create<AppState>((set, get) => {
       try {
         await Service.disconnect();
         await get().initStatus();
+      } catch (error) {
+        get().notifyError(error);
+      }
+    },
+
+    minimizeToTray: async () => {
+      try {
+        // Apply pending language changes before constructing the native menu.
+        if (!(await get().flushConfig())) return;
+        await Service.minimizeToTray();
       } catch (error) {
         get().notifyError(error);
       }

@@ -70,6 +70,10 @@ export async function markRead(topic: string): Promise<void> {
   return await invoke<void>('mark_read', { topic });
 }
 
+export async function minimizeToTray(): Promise<void> {
+  return await invoke<void>('minimize_to_tray');
+}
+
 export async function publish(
   topic: string,
   body: string,

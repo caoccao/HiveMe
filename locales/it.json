@@ -6,7 +6,13 @@
     "resumeNotifications": "Riprendi le notifiche",
     "clearTopic": "Cancella la cronologia dell’argomento selezionato",
     "settings": "Impostazioni (F10)",
-    "about": "Informazioni"
+    "about": "Informazioni",
+    "minimizeToTray": "Riduci nell’area di notifica"
+  },
+  "tray": {
+    "restore": "Ripristina finestra",
+    "exit": "Esci",
+    "unavailable": "Impossibile ridurre l’app nell’area di notifica. Verifica che il desktop supporti un’area di notifica e riprova."
   },
   "tabs": {
     "messages": "Messaggi",

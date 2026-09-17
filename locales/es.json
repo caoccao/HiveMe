@@ -6,7 +6,13 @@
     "resumeNotifications": "Reanudar notificaciones",
     "clearTopic": "Borrar el historial del tema seleccionado",
     "settings": "Ajustes (F10)",
-    "about": "Acerca de"
+    "about": "Acerca de",
+    "minimizeToTray": "Minimizar a la bandeja del sistema"
+  },
+  "tray": {
+    "restore": "Restaurar ventana",
+    "exit": "Salir",
+    "unavailable": "No se pudo minimizar la aplicación a la bandeja del sistema. Asegúrese de que su escritorio admita una bandeja del sistema e inténtelo de nuevo."
   },
   "tabs": {
     "messages": "Mensajes",

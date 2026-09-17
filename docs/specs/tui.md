@@ -566,6 +566,9 @@ the Appearance settings mean the same thing in both.
 
 ## Languages
 
+The shared catalogs also contain `tray.*` and `toolbar.minimizeToTray` for the desktop
+window. These labels do not add a tray action to the terminal UI.
+
 *Phase 2 for the catalogs and the publish and init lines; phase 3 for the terminal
 UI.*
 

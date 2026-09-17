@@ -6,7 +6,13 @@
     "resumeNotifications": "Resume notifications",
     "clearTopic": "Clear the history of the selected topic",
     "settings": "Settings (F10)",
-    "about": "About"
+    "about": "About",
+    "minimizeToTray": "Minimize to system tray"
+  },
+  "tray": {
+    "restore": "Restore window",
+    "exit": "Exit",
+    "unavailable": "The app could not minimize to the system tray. Make sure your desktop supports a system tray, then try again."
   },
   "tabs": {
     "messages": "Messages",

@@ -19,6 +19,12 @@ desktop, through your own HiveMQ Cloud cluster.
 
 ### Desktop app
 
+* **Minimize to the system tray.** The new button at the right of the toolbar hides
+  the window while messages and notifications keep running. The HiveMe tray icon
+  appears at startup and stays available while the app runs. Double-click it to
+  restore the window, or right-click to restore or exit. Menu labels follow your
+  language. On Linux, a missing tray host leaves the window open with an explanation.
+
 * **Topic tree.** Every topic appears as messages arrive, with unread badges and a
   filter. Selecting a topic shows its messages and those of all its subtopics.
 * **Chat view.** Messages appear as bubbles colored by level, with their title, sender,

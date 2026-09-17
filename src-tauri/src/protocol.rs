@@ -36,6 +36,9 @@
 //! Its Level enum mirrors hiveme_core::message::Level (info, success, warn,
 //! error); level fields cross IPC as strings so unknown levels remain readable.
 
+// The hmg-only `minimize_to_tray` command takes no arguments and returns void
+// (Rust unit), or a localized error string while keeping the main window open.
+
 use std::sync::Arc;
 
 use hiveme_core::session::Session;

@@ -24,6 +24,7 @@ import InfoIcon from '@mui/icons-material/Info';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import NotificationsPausedIcon from '@mui/icons-material/NotificationsPaused';
 import SettingsIcon from '@mui/icons-material/Settings';
+import minimizeToTrayIcon from '../../src-tauri/icons/minimize-to-tray.png';
 import { useTranslation } from 'react-i18next';
 import * as Protocol from '../lib/protocol';
 import { useAppStore } from '../lib/store';
@@ -35,6 +36,7 @@ export default function Toolbar() {
   const tabAboutStatus = useAppStore((state) => state.tabAboutStatus);
   const tabSettingsStatus = useAppStore((state) => state.tabSettingsStatus);
   const connect = useAppStore((state) => state.connect);
+  const minimizeToTray = useAppStore((state) => state.minimizeToTray);
   const disconnect = useAppStore((state) => state.disconnect);
   const clearSelectedTopic = useAppStore((state) => state.clearSelectedTopic);
   const togglePaused = useAppStore((state) => state.toggleNotificationsPaused);
@@ -135,6 +137,26 @@ export default function Toolbar() {
             onClick={handleSelectTabAbout}
           >
             <InfoIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </ButtonGroup>
+
+      <ButtonGroup variant="outlined" size="small" sx={{ ml: 'auto' }}>
+        <Tooltip title={t('toolbar.minimizeToTray')}>
+          <IconButton aria-label={t('toolbar.minimizeToTray')} sx={buttonSx} onClick={() => minimizeToTray()}>
+            <Box
+              component="span"
+              aria-hidden="true"
+              sx={{
+                width: 20,
+                height: 20,
+                display: 'block',
+                flexShrink: 0,
+                bgcolor: 'currentColor',
+                mask: `url(${minimizeToTrayIcon}) center / 150% no-repeat`,
+                WebkitMask: `url(${minimizeToTrayIcon}) center / 150% no-repeat`,
+              }}
+            />
           </IconButton>
         </Tooltip>
       </ButtonGroup>

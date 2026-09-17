@@ -6,7 +6,13 @@
     "resumeNotifications": "恢復通知",
     "clearTopic": "清除所選主題的歷史記錄",
     "settings": "設定 (F10)",
-    "about": "關於"
+    "about": "關於",
+    "minimizeToTray": "最小化至系統匣"
+  },
+  "tray": {
+    "restore": "還原視窗",
+    "exit": "結束",
+    "unavailable": "無法將應用程式最小化至系統匣。請確認桌面支援系統匣，然後重試。"
   },
   "tabs": {
     "messages": "訊息",

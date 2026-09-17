@@ -130,7 +130,7 @@ set of habits.
 | `App.tsx` with `ThemeProvider`, display modes, twenty palettes, compact defaults | the same | |
 | `Layout.tsx` grid `auto 1fr auto` with Toolbar, MainContent, Footer | the same | The footer is the status bar; the copyright moves to the About tab. |
 | `MainContent.tsx` tabs with `ControlStatus` and keyboard shortcuts | retained panels with stable tab identity | Tab 0 is fixed; visited tabs and settings categories retain state and measurable viewports for the window lifetime. |
-| `Toolbar.tsx` icon button groups with tooltips | the same | |
+| `Toolbar.tsx` icon button groups with tooltips | the same, plus a right-aligned minimize-to-tray button | Native tray activation belongs to hmg; Linux uses StatusNotifier because Tauri does not deliver tray click events there. |
 | `NotificationSnackbar.tsx` driven by the store | the same | |
 | `lib/store.tsx` Zustand, `lib/service.ts` invoke wrappers, `lib/constants.ts`, `lib/format.ts` | the same | Components never call Tauri APIs directly. |
 | `src/i18n` with react-i18next and nine locales | the same structure and locale set | |
@@ -168,6 +168,7 @@ HiveMe/
     tauri.windows.conf.json       # Windows only: the bundle entry that carries hmc
     src/                          # main.rs, lib.rs, controller.rs, protocol.rs, constants.rs, window.rs,
                                   # events.rs, notification.rs: adapters over hiveme_core::session
+                                  # tray.rs, tray/: native tray and Linux StatusNotifier activation
   crates/
     hiveme-core/                  # config, message, topic, rules, mqtt, storage (feature), session (feature), cloud (feature, later)
       src/session/                # the shared backend of session.md: mod, config, mqtt, notify, history, update, types
@@ -222,6 +223,7 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 
 | Feature | Spec | Module | Phase | Status |
 |---------|------|--------|-------|--------|
+| One localized desktop tray from startup; double-click restores, right-click restores or exits through MQTT cleanup | [gui.md](gui.md#system-tray) | `Toolbar`, `store`, `tray`, `window` | Desktop tray | done |
 | Specifications split by concern | all | `docs/specs` | 0.1 | done |
 | Workspace, conventions, toolchain | [app.md](#repository-layout) | root | 0.2 | done |
 | Build workflows | [app.md](#build-and-release) | `.github/workflows` | 0.3 | done |

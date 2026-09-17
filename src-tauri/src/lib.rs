@@ -31,6 +31,7 @@ mod events;
 mod notification;
 mod notification_host;
 mod protocol;
+mod tray;
 mod window;
 
 use protocol::{AppState, MessageRow, PublishOptions, Status, TopicNode, UpdateCheckResult};
@@ -125,6 +126,12 @@ async fn mark_read(topic: String, state: tauri::State<'_, AppState>) -> Result<(
 }
 
 #[tauri::command]
+async fn minimize_to_tray(app: tauri::AppHandle) -> Result<(), String> {
+  log::debug!("minimize_to_tray");
+  tray::minimize(&app).await
+}
+
+#[tauri::command]
 async fn publish(
   topic: String,
   body: String,
@@ -185,6 +192,7 @@ pub fn run() {
 
   tauri::Builder::default()
     .manage(AppState { session })
+    .manage(tray::State::default())
     .plugin(tauri_plugin_clipboard_manager::init())
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_opener::init())
@@ -202,6 +210,7 @@ pub fn run() {
       get_update_result,
       list_topics,
       mark_read,
+      minimize_to_tray,
       publish,
       set_config,
       set_notifications_paused,
@@ -214,14 +223,17 @@ pub fn run() {
 
 #[tauri::command]
 async fn set_config(
+  app: tauri::AppHandle,
   config: hiveme_core::Config,
   state: tauri::State<'_, AppState>,
 ) -> Result<hiveme_core::Config, String> {
   // The config carries the broker password, so the value itself is never logged.
   log::debug!("set_config");
-  controller::set_config(&state.session, config)
+  let config = controller::set_config(&state.session, config)
     .await
-    .map_err(convert_error)
+    .map_err(convert_error)?;
+  tray::refresh(&app).await;
+  Ok(config)
 }
 
 #[tauri::command]

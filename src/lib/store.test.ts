@@ -28,6 +28,7 @@ vi.mock('./service', () => ({
   getMessages: vi.fn(async () => [] as MessageRow[]),
   listTopics: vi.fn(async () => []),
   markRead: vi.fn(async () => undefined),
+  minimizeToTray: vi.fn(async () => undefined),
   clearTopic: vi.fn(async () => 1),
 }));
 
@@ -324,5 +325,47 @@ describe('automatic settings saves', () => {
         gui: { language: 'fr' },
       })
     );
+  });
+});
+
+describe('minimize to tray', () => {
+  it('finishes the pending language save before hiding without changing session state', async () => {
+    const store = useAppStore.getState();
+    store.updateConfig((config) => {
+      config.gui!.language = 'de';
+    });
+    const messages = store.messages;
+    let finish!: (config: Config) => void;
+    vi.mocked(Service.setConfig).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    const minimize = store.minimizeToTray();
+    expect(Service.minimizeToTray).not.toHaveBeenCalled();
+    const config = useAppStore.getState().config!;
+    finish(config);
+    await minimize;
+    expect(Service.setConfig).toHaveBeenCalledExactlyOnceWith(config);
+    expect(Service.minimizeToTray).toHaveBeenCalledExactlyOnceWith();
+    expect(useAppStore.getState().messages).toBe(messages);
+    expect(useAppStore.getState().config).toBe(config);
+  });
+
+  it('keeps a failed save visible instead of hiding its error', async () => {
+    useAppStore.getState().updateConfig((config) => {
+      config.gui!.language = 'fr';
+    });
+    vi.mocked(Service.setConfig).mockRejectedValueOnce(new Error('Cannot write config'));
+    await useAppStore.getState().minimizeToTray();
+    expect(Service.minimizeToTray).not.toHaveBeenCalled();
+    expect(useAppStore.getState().dialogNotification?.title).toBe('Cannot write config');
+    // Correcting settings permits a later minimize attempt.
+    useAppStore.getState().updateConfig((config) => {
+      config.gui!.language = 'en-US';
+    });
+    await useAppStore.getState().minimizeToTray();
+    expect(Service.minimizeToTray).toHaveBeenCalledExactlyOnceWith();
   });
 });
