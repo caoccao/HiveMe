@@ -23,7 +23,7 @@ import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import type { Config as ConfigType } from '../lib/protocol';
 import { INITIAL_STATUS, useAppStore } from '../lib/store';
 import * as Service from '../lib/service';
-import Config, { fromDrafts, isBrokerUsable, toDrafts } from './Config';
+import Config, { ConfigCategory, fromDrafts, isBrokerUsable, toDrafts } from './Config';
 
 vi.mock('../lib/service', () => ({
   setConfig: vi.fn(async (config: ConfigType) => config),
@@ -114,6 +114,28 @@ async function renderBroker() {
 }
 
 describe('the settings tab', () => {
+  it('retains every category viewport and unfinished input while moving among all categories', async () => {
+    render(<Config />);
+    const panels = new Map<string, HTMLElement>();
+    for (const [index, category] of Object.values(ConfigCategory).entries()) {
+      await userEvent.click(screen.getByRole('tab', { name: category }));
+      const panel = screen.getByRole('tabpanel', { name: category });
+      panel.scrollTop = (index + 1) * 30;
+      panels.set(category, panel);
+      expect(screen.getAllByRole('tabpanel')).toEqual([panel]);
+      if (category === ConfigCategory.Broker) await userEvent.clear(screen.getByLabelText('Keep alive (s)'));
+      if (category === ConfigCategory.History) await userEvent.clear(screen.getByLabelText('Messages per topic'));
+    }
+    for (const [index, category] of Object.values(ConfigCategory).entries()) {
+      await userEvent.click(screen.getByRole('tab', { name: category }));
+      expect(screen.getByRole('tabpanel', { name: category })).toBe(panels.get(category));
+      expect(panels.get(category)!.scrollTop).toBe((index + 1) * 30);
+      if (category === ConfigCategory.Broker) expect(screen.getByLabelText('Keep alive (s)')).toHaveValue(null);
+      if (category === ConfigCategory.History) expect(screen.getByLabelText('Messages per topic')).toHaveValue(null);
+    }
+    expect(Service.setConfig).not.toHaveBeenCalled();
+  });
+
   it('orders the categories and gives Editor five unchecked rows', async () => {
     render(<Config />);
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([

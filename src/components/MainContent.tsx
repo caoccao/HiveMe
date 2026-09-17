@@ -28,10 +28,13 @@ import type { TabControl } from '../lib/types';
 import About from './About';
 import Config from './Config';
 import Messages from './Messages';
+import TabPanel from './TabPanel';
+
+const TAB_TYPES = [Protocol.TabType.Messages, Protocol.TabType.Config, Protocol.TabType.About];
 
 export default function MainContent() {
   const { t } = useTranslation();
-  const [tabIndex, setTabIndex] = useState(0);
+  const [selectedTab, setSelectedTab] = useState(Protocol.TabType.Messages);
   const [tabControls, setTabControls] = useState<TabControl[]>([
     { type: Protocol.TabType.Messages, index: 0, value: null },
   ]);
@@ -62,10 +65,7 @@ export default function MainContent() {
         controls = controls.filter((control) => control.type !== Protocol.TabType.About);
       }
 
-      controls.forEach((control, index) => {
-        control.index = index;
-      });
-      return controls;
+      return controls.map((control, index) => ({ ...control, index }));
     });
   }, [tabAboutStatus, tabSettingsStatus]);
 
@@ -73,7 +73,7 @@ export default function MainContent() {
     if (tabSettingsStatus === Protocol.ControlStatus.Selected) {
       const tab = tabControls.find((control) => control.type === Protocol.TabType.Config);
       if (tab) {
-        setTabIndex(tab.index);
+        setSelectedTab(Protocol.TabType.Config);
         setTabSettingsStatus(Protocol.ControlStatus.Visible);
       }
     }
@@ -83,7 +83,7 @@ export default function MainContent() {
     if (tabAboutStatus === Protocol.ControlStatus.Selected) {
       const tab = tabControls.find((control) => control.type === Protocol.TabType.About);
       if (tab) {
-        setTabIndex(tab.index);
+        setSelectedTab(Protocol.TabType.About);
         setTabAboutStatus(Protocol.ControlStatus.Visible);
       }
     }
@@ -109,6 +109,13 @@ export default function MainContent() {
     [tabControls, setTabAboutStatus, setTabSettingsStatus]
   );
 
+  // Selection belongs to the tab, not its current position among the open tabs.
+  // Closing another tab must never move the user to a different panel.
+  const activeTab = tabControls.some((control) => control.type === selectedTab)
+    ? selectedTab
+    : Protocol.TabType.Messages;
+  const tabIndex = tabControls.findIndex((control) => control.type === activeTab);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.ctrlKey && !event.altKey && !event.shiftKey) {
@@ -117,7 +124,7 @@ export default function MainContent() {
           if (index >= 0 && index < tabControls.length) {
             event.preventDefault();
             event.stopPropagation();
-            setTabIndex(index);
+            setSelectedTab(tabControls[index].type);
           }
         } else if (event.key.toLowerCase() === 'w') {
           event.preventDefault();
@@ -126,23 +133,21 @@ export default function MainContent() {
         } else if (event.key === 'Tab') {
           event.preventDefault();
           event.stopPropagation();
-          setTabIndex((previous) => (previous >= tabControls.length - 1 ? 0 : previous + 1));
+          setSelectedTab(tabControls[(tabIndex + 1) % tabControls.length].type);
         }
       } else if (event.ctrlKey && !event.altKey && event.shiftKey && event.key === 'Tab') {
         event.preventDefault();
         event.stopPropagation();
-        setTabIndex((previous) => (previous > 0 ? previous - 1 : tabControls.length - 1));
+        setSelectedTab(tabControls[(tabIndex + tabControls.length - 1) % tabControls.length].type);
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [closeTab, tabIndex, tabControls.length]);
+  }, [closeTab, tabIndex, tabControls]);
 
   useEffect(() => {
-    if (tabIndex >= tabControls.length && tabControls.length > 0) {
-      setTabIndex(tabControls.length - 1);
-    }
-  }, [tabIndex, tabControls.length]);
+    if (activeTab !== selectedTab) setSelectedTab(activeTab);
+  }, [activeTab, selectedTab]);
 
   // The release check runs on its own thread in the backend, so the answer is polled
   // until it is there and then the poll stops.
@@ -171,8 +176,8 @@ export default function MainContent() {
     };
   }, []);
 
-  const label = (control: TabControl) => {
-    switch (control.type) {
+  const label = (type: Protocol.TabType) => {
+    switch (type) {
       case Protocol.TabType.Config:
         return t('tabs.settings');
       case Protocol.TabType.About:
@@ -221,8 +226,8 @@ export default function MainContent() {
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
         <Tabs
-          value={tabIndex}
-          onChange={(_, value) => setTabIndex(value)}
+          value={activeTab}
+          onChange={(_, value: Protocol.TabType) => setSelectedTab(value)}
           variant="scrollable"
           scrollButtons="auto"
           sx={{ mt: 0, minHeight: '24px' }}
@@ -230,10 +235,13 @@ export default function MainContent() {
           {tabControls.map((control) => (
             <Tab
               key={control.type}
+              component="div"
+              value={control.type}
+              aria-label={label(control.type)}
               style={{ minHeight: '24px' }}
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <span>{label(control)}</span>
+                  <span>{label(control.type)}</span>
                   {control.type !== Protocol.TabType.Messages && (
                     <Tooltip title={t('tabs.close')}>
                       <IconButton
@@ -267,30 +275,23 @@ export default function MainContent() {
           width: '100%',
           flex: 1,
           minHeight: 0,
+          position: 'relative',
           display: 'flex',
           flexDirection: 'column',
         }}
       >
-        {tabControls.map((control) => {
-          const visible = control.index === tabIndex;
-          const ownsScroll = control.type === Protocol.TabType.Messages;
-          return (
-            <Box
-              key={`content-${control.type}`}
-              sx={{
-                display: visible ? 'flex' : 'none',
-                flexDirection: 'column',
-                flex: 1,
-                minHeight: 0,
-                ...(!ownsScroll && { p: 1, overflow: 'auto' }),
-              }}
-            >
-              {control.type === Protocol.TabType.Messages && <Messages />}
-              {control.type === Protocol.TabType.Config && <Config />}
-              {control.type === Protocol.TabType.About && <About />}
-            </Box>
-          );
-        })}
+        {TAB_TYPES.map((type) => (
+          <TabPanel
+            key={type}
+            active={type === activeTab}
+            label={label(type)}
+            padded={type !== Protocol.TabType.Messages}
+          >
+            {type === Protocol.TabType.Messages && <Messages />}
+            {type === Protocol.TabType.Config && <Config />}
+            {type === Protocol.TabType.About && <About />}
+          </TabPanel>
+        ))}
       </Box>
     </Box>
   );

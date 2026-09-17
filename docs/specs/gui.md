@@ -80,6 +80,32 @@ Writing suggestions use the HTML
 (`Hidden`, `Selected`, `Visible`) pattern as the reference project. Tab 0, Messages,
 is fixed. Settings and About open as closable tabs.
 
+Tab selection follows the tab's identity, so closing an inactive tab does not change
+the selected panel. Closing the selected tab returns to Messages. A panel mounts on
+its first visit and stays mounted for the lifetime of the window, even when its tab
+is closed. Reopening Settings or About resumes the same view.
+
+`TabPanel.tsx` gives each panel its own viewport. Inactive panels use
+`visibility: hidden` and `inert`, retaining layout dimensions, native scroll offsets,
+and React state while being excluded from input and accessibility navigation.
+They must not use `display: none`: zero-size resize observations invalidate the
+message virtualizer's measured row heights and move the reading position.
+Nested category panels inherit visibility so they cannot appear through a hidden
+Settings tab. Unvisited panels do not mount or fetch data.
+
+The window keeps these states in memory across tab switches:
+
+| Panel | Retained state |
+|-------|----------------|
+| Messages | Selected topic and filter, tree expansion and scroll, divider position, message viewport and bottom-follow mode, composer drafts/options and text selection |
+| Settings | Selected category, each category's independent scroll position, unfinished field text (including blank numeric input), broker protocol selection, and password visibility |
+| About | Loaded application details and scroll position, including after closing and reopening |
+
+Messages still arrive while the panel is inactive. A reader at the bottom follows
+new arrivals; a reader inspecting earlier history keeps the reading position.
+Transient view state lasts until the window closes; it is not added to the config.
+Existing automatic settings saves and divider persistence remain unchanged.
+
 Shortcuts: `Ctrl+1` to `Ctrl+9` select a tab, `Ctrl+W` closes the current tab,
 `Ctrl+Tab` and `Ctrl+Shift+Tab` cycle, `F10` opens Settings.
 
@@ -685,6 +711,9 @@ project's centered, 960 px maximum width and sidebar spacing. Appearance follows
 `SettingRow` layout: Mode, Theme, and Language labels on the left, controls aligned
 on the right, and horizontal dividers between rows. Mode uses compact Auto Mode,
 Light Mode, and Dark Mode buttons with icons; Theme and Language use dropdown lists.
+Each visited category retains its own panel and scroll container in memory;
+switching categories does not discard partially edited fields. Appearance is the
+initial selection only; reopening Settings retains the last selected category.
 
 | Category | Config path | Groups and fields |
 |----------|-------------|-------------------|

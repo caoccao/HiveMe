@@ -117,7 +117,7 @@ describe('the application window', () => {
     expect(await screen.findByLabelText(/Connect to the broker|Disconnect from the broker/)).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Messages/ })).toBeInTheDocument();
     expect(screen.getByLabelText('Settings (F10)')).toBeInTheDocument();
-    expect(screen.getByLabelText('About')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About' })).toBeInTheDocument();
   });
 
   it('fills the store from the backend on the first render', async () => {

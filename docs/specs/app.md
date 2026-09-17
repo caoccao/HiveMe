@@ -129,7 +129,7 @@ set of habits.
 | Plugins: dialog, clipboard-manager, opener | the same | Shared native delivery replaces the notification plugin; the topmost host follows BatchMkvMerge. |
 | `App.tsx` with `ThemeProvider`, display modes, twenty palettes, compact defaults | the same | |
 | `Layout.tsx` grid `auto 1fr auto` with Toolbar, MainContent, Footer | the same | The footer is the status bar; the copyright moves to the About tab. |
-| `MainContent.tsx` tabs with `ControlStatus` and keyboard shortcuts | the same | Tab 0 is the fixed Messages tab. |
+| `MainContent.tsx` tabs with `ControlStatus` and keyboard shortcuts | retained panels with stable tab identity | Tab 0 is fixed; visited tabs and settings categories retain state and measurable viewports for the window lifetime. |
 | `Toolbar.tsx` icon button groups with tooltips | the same | |
 | `NotificationSnackbar.tsx` driven by the store | the same | |
 | `lib/store.tsx` Zustand, `lib/service.ts` invoke wrappers, `lib/constants.ts`, `lib/format.ts` | the same | Components never call Tauri APIs directly. |
@@ -247,6 +247,7 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 | Always-visible, selected startup topic `hiveme`; label selection independent of icon expansion | [gui.md](gui.md#topic-tree) | `src/components/TopicTree.tsx`, `src/lib/store.tsx` | 4.4 | done |
 | Topic filter with consistent 4 px margins | [gui.md](gui.md#topic-tree) | `src/components/TopicTree.tsx` | 4.4 | done |
 | Messages tab | [gui.md](gui.md#layout) | `src/components` | 4.4 | done |
+| In-memory state for every desktop tab and settings category, retained virtualized message scroll, and stable selection when tabs close | [gui.md](gui.md#tabs) | `src/components/TabPanel.tsx`, `MainContent.tsx`, `Config.tsx` | 4.4 | done |
 | Compact full-width composer with 4 px panel margins, a three-row input minimum, checkboxes beside QoS, collapsible options that stay active, and per-topic drafts in memory | [gui.md](gui.md#composer) | `src/components/Composer.tsx` | 4.4 | done |
 | Enter sends from every focused composer control without also activating it | [gui.md](gui.md#composer) | `src/components/Composer.tsx` | 4.4 | done |
 | Level dropdown left of More Options, remembered with all composer state per topic in memory | [gui.md](gui.md#composer) | `src/components/Composer.tsx` | 4.4 | done |

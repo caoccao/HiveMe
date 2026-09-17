@@ -67,6 +67,7 @@ import * as Protocol from '../lib/protocol';
 import { BrokerProtocol, type BrokerUrlParts, effectivePort, joinBrokerUrl, splitBrokerUrl } from '../lib/brokerUrl';
 import { getBrokerInit } from '../lib/service';
 import { useAppStore } from '../lib/store';
+import TabPanel from './TabPanel';
 
 /** One category of settings: one entry in the sidebar, one panel beside it. */
 export enum ConfigCategory {
@@ -816,6 +817,7 @@ export default function Config() {
         display: 'flex',
         gap: 2,
         height: '100%',
+        boxSizing: 'border-box',
         minHeight: 0,
       }}
     >
@@ -887,8 +889,12 @@ export default function Config() {
           label={t('settings.advanced')}
         />
       </Tabs>
-      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
-        {panels[category]}
+      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
+        {Object.values(ConfigCategory).map((value) => (
+          <TabPanel key={value} active={value === category} label={t(`settings.${value.toLowerCase()}`)}>
+            {panels[value]}
+          </TabPanel>
+        ))}
       </Box>
     </Box>
   );
