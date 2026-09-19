@@ -248,7 +248,10 @@ on its `✕` closes it. Closing a tab selects the one that took its place.
   right when the bubble is narrower than the row, holds the topic path relative to the
   selected tree topic (muted, as the GUI's `text.disabled`; empty for a row on the
   selected topic itself), the level badge in the level's color, `QoS n`, the retained
-  marker `📌` (`[R]`), the newer-version chip, and the time in the selected language. It
+  marker `📌` (`[R]`), the newer-version chip, and the time in the selected language.
+  Timestamps on today's local calendar date show only hours and minutes; other dates
+  include the localized year, month, and day before the time, including future dates.
+  This uses the local time zone, not UTC or a rolling 24-hour window. The metadata
   is drawn only for the focused row while the list has the focus, and its one-row space
   is reserved for every row so focusing does not move its neighbors. This is the GUI's
   hover row without a pointer. The focused bubble's border is bold, and in the primary

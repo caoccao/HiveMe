@@ -25,13 +25,14 @@ export function formatNumber(value: number, options?: Intl.NumberFormatOptions):
   return new Intl.NumberFormat(i18n.resolvedLanguage, options).format(value);
 }
 
-/** The clock time of an RFC 3339 timestamp, in the user's locale. */
-export function formatTime(timestamp: string): string {
+/** A message's local time, including its date unless it falls on today. */
+export function formatTime(timestamp: string, now = new Date()): string {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) {
     return timestamp;
   }
-  return date.toLocaleTimeString(i18n.resolvedLanguage, { hour: 'numeric', minute: '2-digit' });
+  const time = date.toLocaleTimeString(i18n.resolvedLanguage, { hour: 'numeric', minute: '2-digit' });
+  return date.toDateString() === now.toDateString() ? time : `${formatDay(timestamp)} ${time}`;
 }
 
 /** The date and time of an RFC 3339 timestamp, for a tooltip. */

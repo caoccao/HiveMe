@@ -783,7 +783,7 @@ pub fn metadata(row: &MessageRow, reading: &Reading, look: &Look) -> Vec<Span<'s
       Style::new().fg(theme.warning),
     ));
   }
-  let time = format::local(&row.ts).map_or_else(|| row.ts.clone(), |at| format::time(look.locale, &at));
+  let time = format::message_time(look.locale, &row.ts);
   push(Span::styled(time, theme.muted()));
   spans
 }
@@ -938,6 +938,22 @@ fn centered(frame: &mut Frame, area: Rect, text: &str, style: Style) {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn message_metadata_includes_the_local_date_for_older_messages() {
+    let mut row = crate::tui::tests::row(1, "hiveme");
+    row.ts = "2000-01-01T09:41:23Z".to_owned();
+    let look = Look {
+      locale: Locale::EnUs,
+      glyphs: Glyphs::UNICODE,
+      theme: Theme::from_gui(&hiveme_core::config::Gui::default()),
+      selected: "hiveme",
+    };
+    let at = format::local(&row.ts).unwrap();
+    let expected = format!("{} {}", format::day(look.locale, &at), format::time(look.locale, &at));
+    let spans = metadata(&row, &read(&row), &look);
+    assert_eq!(spans.last().unwrap().content, expected);
+  }
 
   #[test]
   fn a_relative_topic_is_empty_on_the_selection_and_needs_a_slash_boundary() {

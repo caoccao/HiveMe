@@ -223,6 +223,7 @@ well, so an editor that rewrites a file cannot be mistaken for a drifted schema.
 
 | Feature | Spec | Module | Phase | Status |
 |---------|------|--------|-------|--------|
+| Message timestamps show only time today and localized date plus time on other local calendar dates in both apps | [gui.md](gui.md#message-view), [tui.md](tui.md#message-view) | `src/lib/format.ts`, `MessageView`, `hiveme-core::i18n::format`, terminal message metadata | Message timestamps | done |
 | One localized desktop tray from startup; double-click restores, right-click restores or exits through MQTT cleanup | [gui.md](gui.md#system-tray) | `Toolbar`, `store`, `tray`, `window` | Desktop tray | done |
 | Specifications split by concern | all | `docs/specs` | 0.1 | done |
 | Workspace, conventions, toolchain | [app.md](#repository-layout) | root | 0.2 | done |

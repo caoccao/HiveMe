@@ -113,14 +113,13 @@ describe('language resolution and formatting', () => {
   it('uses the selected language for dates, decimal sizes, and countdowns', async () => {
     const timestamp = '2026-09-12T09:41:23Z';
     const date = new Date(timestamp);
+    const nextDay = new Date(date);
+    nextDay.setDate(nextDay.getDate() + 1);
     for (const language of LANGUAGES) {
       await changeLanguage(language);
-      expect(formatTime(timestamp)).toBe(
-        date.toLocaleTimeString(language, {
-          hour: 'numeric',
-          minute: '2-digit',
-        })
-      );
+      const time = date.toLocaleTimeString(language, { hour: 'numeric', minute: '2-digit' });
+      expect(formatTime(timestamp, date)).toBe(time);
+      expect(formatTime(timestamp, nextDay)).toBe(`${formatDay(timestamp)} ${time}`);
       expect(formatDateTime(timestamp)).toBe(date.toLocaleString(language));
       expect(formatDay(timestamp)).toBe(
         date.toLocaleDateString(language, {

@@ -195,8 +195,12 @@ including the relative path, is hidden until the pointer is over the message or
 its controls and hides again when the pointer leaves. Its space is reserved so
 hovering does not move adjacent messages.
 
-The timestamp shows hours and minutes in the selected language, with the full date
-and time in its tooltip. The split button copies the body directly; its arrow opens
+The timestamp shows hours and minutes in the selected language. It includes the
+localized date (year, month, and day) unless the timestamp falls on today's local
+calendar date; this also applies to future dates. The comparison uses the system's
+local time zone, not UTC or a rolling 24-hour window. Retained messages refresh at
+local midnight and when the window regains focus or visibility. The full date and
+time remain in the tooltip. The split button copies the body directly; its arrow opens
 a right-aligned menu containing **Copy** and **Copy Raw JSON**. Both copy actions use the
 clipboard plugin and report success or failure through the snackbar.
 

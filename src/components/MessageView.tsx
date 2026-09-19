@@ -99,7 +99,7 @@ export function JsonTree({ value, name, depth = 0 }: { value: unknown; name?: st
 }
 
 /** One message bubble. Exported so the rendering of each tier can be tested. */
-export function Bubble({ row, selectedTopic }: { row: Protocol.MessageRow; selectedTopic: string }) {
+export function Bubble({ row, selectedTopic, now }: { row: Protocol.MessageRow; selectedTopic: string; now?: Date }) {
   const { t } = useTranslation();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const notifyInfo = useAppStore((state) => state.notifyInfo);
@@ -271,7 +271,7 @@ export function Bubble({ row, selectedTopic }: { row: Protocol.MessageRow; selec
           )}
           <Tooltip title={formatDateTime(row.ts)}>
             <Typography component="time" dateTime={row.ts} variant="caption" sx={{ whiteSpace: 'nowrap' }}>
-              {formatTime(row.ts)}
+              {formatTime(row.ts, now)}
             </Typography>
           </Tooltip>
           <ButtonGroup
@@ -322,6 +322,22 @@ export function relativeTopicOf(topic: string, selected: string): string {
 
 export default function MessageView() {
   const { t } = useTranslation();
+  const [now, setNow] = useState(() => new Date());
+
+  // Retained tabs can stay open overnight. Reformat at local midnight and on resume.
+  useEffect(() => {
+    const refresh = () => setNow(new Date());
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const timer = window.setTimeout(refresh, Math.max(0, midnight.getTime() - Date.now()));
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [now]);
+
   const selectedTopic = useAppStore((state) => state.selectedTopic);
   const messages = useAppStore((state) =>
     selectedTopic ? (state.messages.get(selectedTopic) ?? NO_MESSAGES) : NO_MESSAGES
@@ -436,7 +452,7 @@ export default function MessageView() {
                       {formatDay(row.ts)}
                     </Typography>
                   )}
-                  <Bubble row={row} selectedTopic={selectedTopic} />
+                  <Bubble row={row} selectedTopic={selectedTopic} now={now} />
                 </Box>
               );
             })}

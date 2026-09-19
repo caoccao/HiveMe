@@ -15,7 +15,8 @@
 * limitations under the License.
 */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { changeLanguage } from '../i18n';
 import { formatBytes, formatDuration, formatHex, formatTime } from './format';
 
 describe('formatBytes', () => {
@@ -59,6 +60,44 @@ describe('formatHex', () => {
 });
 
 describe('formatTime', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 19, 0, 5));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('shows only hours and minutes for any time on the current local date', () => {
+    expect(formatTime(new Date(2026, 8, 19, 0, 1).toISOString())).toBe('12:01 AM');
+    expect(formatTime(new Date(2026, 8, 19, 23, 59).toISOString())).toBe('11:59 PM');
+  });
+
+  it.each([
+    [2026, 8, 18, 'Sep 18, 2026 11:59 PM'],
+    [2026, 7, 19, 'Aug 19, 2026 11:59 PM'],
+    [2025, 8, 19, 'Sep 19, 2025 11:59 PM'],
+    [2026, 8, 20, 'Sep 20, 2026 11:59 PM'],
+  ])('includes the date for %i/%i/%i, even across a recent midnight or in the future', (year, month, day, expected) => {
+    expect(formatTime(new Date(year, month, day, 23, 59).toISOString())).toBe(expected);
+  });
+
+  it('compares calendar dates across New Year', () => {
+    vi.setSystemTime(new Date(2027, 0, 1, 0, 1));
+    expect(formatTime(new Date(2026, 11, 31, 23, 59).toISOString())).toBe('Dec 31, 2026 11:59 PM');
+  });
+
+  it.each([-12, 14])('converts a timestamp with a %i-hour offset to the local day', (offset) => {
+    const instant = new Date(2026, 8, 19, 0, 1);
+    const shifted = new Date(instant.getTime() + offset * 60 * 60 * 1000);
+    const timestamp = `${shifted.toISOString().slice(0, -1)}${offset < 0 ? '-' : '+'}${Math.abs(offset)}:00`;
+    expect(formatTime(timestamp)).toBe('12:01 AM');
+  });
+
+  it('uses the selected language for both the date and the time', async () => {
+    await changeLanguage('de');
+    expect(formatTime(new Date(2026, 8, 19, 9, 41).toISOString())).toBe('9:41');
+    expect(formatTime(new Date(2026, 8, 18, 9, 41).toISOString())).toBe('18. Sept. 2026 9:41');
+  });
+
   it('hands back anything it cannot read, rather than showing "Invalid Date"', () => {
     expect(formatTime('not a timestamp')).toBe('not a timestamp');
   });

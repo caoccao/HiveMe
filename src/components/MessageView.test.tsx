@@ -17,7 +17,7 @@
 
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ThemeProvider, alpha, createTheme } from '@mui/material/styles';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import i18n, { changeLanguage } from '../i18n';
 import { useAppStore } from '../lib/store';
@@ -26,6 +26,7 @@ import { Tier } from '../lib/protocol';
 import MessageView, { Bubble, JsonTree } from './MessageView';
 
 const virtual = vi.hoisted(() => ({
+  visible: false,
   scrollToOffset: vi.fn(),
   scrollToIndex: vi.fn(),
   element: null as (() => HTMLElement | null) | null,
@@ -41,7 +42,8 @@ vi.mock('@tanstack/react-virtual', () => ({
     virtual.key = options.getItemKey;
     return {
       getTotalSize: () => options.count * 88,
-      getVirtualItems: () => [],
+      getVirtualItems: () =>
+        virtual.visible ? Array.from({ length: options.count }, (_, index) => ({ index, start: index * 88 })) : [],
       scrollToOffset: virtual.scrollToOffset,
       scrollToIndex: virtual.scrollToIndex,
       measureElement: vi.fn(),
@@ -50,7 +52,10 @@ vi.mock('@tanstack/react-virtual', () => ({
 }));
 
 vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({ writeText: vi.fn(async () => undefined) }));
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  virtual.visible = false;
+});
 
 function openCopyMenu() {
   fireEvent.click(screen.getByLabelText(i18n.t('messages.actions')));
@@ -311,6 +316,47 @@ describe('the tiers', () => {
     render(<Bubble selectedTopic="hiveme" row={row({ retain: true })} />);
     expect(screen.getByLabelText('Retained by the broker')).toBeInTheDocument();
     expect(screen.getByTestId('PushPinIcon')).toBeInTheDocument();
+  });
+});
+
+describe('message timestamps', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it.each([
+    [19, '9:41 AM'],
+    [18, 'Sep 18, 2026 9:41 AM'],
+  ])('renders the correct timestamp for September %i and keeps the full tooltip', (day, expected) => {
+    const now = new Date(2026, 8, 19, 12);
+    const at = new Date(2026, 8, day, 9, 41, 23);
+    render(<Bubble selectedTopic="hiveme" row={row({ ts: at.toISOString() })} now={now} />);
+    const time = screen.getByRole('article').querySelector('time');
+    expect(time?.textContent).toBe(expected);
+    expect(time).toHaveAttribute('datetime', at.toISOString());
+    expect(time).toHaveAttribute('aria-label', at.toLocaleString('en-US'));
+  });
+
+  it.each(['midnight', 'focus', 'visibilitychange'])('refreshes retained messages at %s', (trigger) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 19, 23, 59, 59));
+    virtual.visible = true;
+    useAppStore.setState({
+      selectedTopic: 'hiveme',
+      messages: new Map([['hiveme', [row({ ts: new Date(2026, 8, 19, 9, 41).toISOString() })]]]),
+      hasOlder: new Map(),
+    });
+    const { unmount } = render(<MessageView />);
+    expect(screen.getByRole('article').querySelector('time')?.textContent).toBe('9:41 AM');
+    act(() => {
+      if (trigger === 'midnight') {
+        vi.advanceTimersByTime(1000);
+      } else {
+        vi.setSystemTime(new Date(2026, 8, 20, 8));
+        (trigger === 'focus' ? window : document).dispatchEvent(new Event(trigger));
+      }
+    });
+    expect(screen.getByRole('article').querySelector('time')?.textContent).toBe('Sep 19, 2026 9:41 AM');
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 

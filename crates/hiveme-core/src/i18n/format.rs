@@ -23,7 +23,7 @@
 //! the decimal separator, the short month names, and the order and padding of the
 //! date and time fields.
 
-use chrono::{DateTime, Datelike, Local, NaiveDateTime, Timelike};
+use chrono::{DateTime, Datelike, Local, NaiveDate, NaiveDateTime, Timelike};
 
 use super::{Locale, t, t_with};
 
@@ -130,6 +130,23 @@ pub fn time(locale: Locale, at: &NaiveDateTime) -> String {
     Locale::EnUs => format!("{}:{minute:02} {}", hour12(hour), meridiem_en(hour)),
     Locale::ZhHk | Locale::ZhTw => format!("{}{}:{minute:02}", meridiem_zh(hour), hour12(hour)),
     _ => format!("{hour}:{minute:02}"),
+  }
+}
+
+/// A message's local time, including its date unless it falls on today.
+pub fn message_time(locale: Locale, timestamp: &str) -> String {
+  local(timestamp).map_or_else(
+    || timestamp.to_owned(),
+    |at| message_time_on_day(locale, &at, Local::now().date_naive()),
+  )
+}
+
+fn message_time_on_day(locale: Locale, at: &NaiveDateTime, today: NaiveDate) -> String {
+  let clock = time(locale, at);
+  if at.date() == today {
+    clock
+  } else {
+    format!("{} {clock}", day(locale, at))
   }
 }
 
@@ -303,6 +320,49 @@ mod tests {
       let actual = hours.map(|hour| time(locale, &at(2026, 11, 25, hour, 7, 3)));
       assert_eq!(actual, expected, "{locale}");
     }
+  }
+
+  #[test]
+  fn message_times_include_dates_except_on_the_current_local_day() {
+    let today = at(2026, 9, 19, 0, 5, 0).date();
+    for (date, expected) in [
+      (at(2026, 9, 19, 0, 1, 0), "12:01 AM"),
+      (at(2026, 9, 19, 23, 59, 0), "11:59 PM"),
+      (at(2026, 9, 18, 23, 59, 0), "Sep 18, 2026 11:59 PM"),
+      (at(2026, 8, 19, 9, 41, 0), "Aug 19, 2026 9:41 AM"),
+      (at(2025, 9, 19, 9, 41, 0), "Sep 19, 2025 9:41 AM"),
+      (at(2026, 9, 20, 9, 41, 0), "Sep 20, 2026 9:41 AM"),
+    ] {
+      assert_eq!(message_time_on_day(Locale::EnUs, &date, today), expected);
+    }
+    assert_eq!(
+      message_time_on_day(
+        Locale::EnUs,
+        &at(2026, 12, 31, 23, 59, 0),
+        at(2027, 1, 1, 0, 1, 0).date()
+      ),
+      "Dec 31, 2026 11:59 PM"
+    );
+    assert_eq!(message_time(Locale::EnUs, "invalid"), "invalid");
+  }
+
+  #[test]
+  fn message_dates_and_times_follow_the_selected_language() {
+    let timestamp = at(2026, 9, 18, 9, 41, 0);
+    for locale in Locale::ALL {
+      assert_eq!(
+        message_time_on_day(locale, &timestamp, timestamp.date()),
+        time(locale, &timestamp)
+      );
+      assert_eq!(
+        message_time_on_day(locale, &timestamp, at(2026, 9, 19, 0, 0, 0).date()),
+        format!("{} {}", day(locale, &timestamp), time(locale, &timestamp))
+      );
+    }
+    assert_eq!(
+      message_time_on_day(Locale::De, &timestamp, at(2026, 9, 19, 0, 0, 0).date()),
+      "18. Sept. 2026 9:41"
+    );
   }
 
   #[test]

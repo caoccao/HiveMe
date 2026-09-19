@@ -19,6 +19,10 @@ desktop, through your own HiveMQ Cloud cluster.
 
 ### Desktop app
 
+* **Message dates.** Both the desktop app and terminal UI show time only for today's
+  messages and date plus time for other days, using your local time zone and selected
+  language. Open desktop messages refresh their timestamps at midnight.
+
 * **Minimize to the system tray.** The new button at the right of the toolbar hides
   the window while messages and notifications keep running. The HiveMe tray icon
   appears at startup and stays available while the app runs. Double-click it to
